@@ -1,0 +1,510 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with preferences and savings target tracker",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "preferredLanguage": { "type": "string", "enum": ["en", "ar"] },
+        "homeCountry": { "type": "string" },
+        "favoriteProviders": { "type": "array" },
+        "savingsTargetSar": { "type": "number" },
+        "totalSavedSar": { "type": "number" },
+        "joinedDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "preferredLanguage", "homeCountry"]
+    },
+    "AdminRateOverride": {
+      "title": "AdminRateOverride",
+      "description": "Administrative currency corridor rate override definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "providerId": { "type": "string" },
+        "providerName": { "type": "string" },
+        "transferPartner": { "type": "string" },
+        "corridor": { "type": "string" },
+        "sendAmountMin": { "type": "number" },
+        "sendAmountMax": { "type": "number" },
+        "receiveMethod": { "type": "string" },
+        "exchangeRate": { "type": "number" },
+        "transferFee": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "additionalCharges": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "overrideReason": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "providerId", "providerName", "corridor", "exchangeRate", "transferFee", "overrideReason"]
+    },
+    "CrowdsourcedRate": {
+      "title": "CrowdsourcedRate",
+      "description": "Expat community crowdsourced current exchange rate report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "corridorId": { "type": "string" },
+        "providerId": { "type": "string" },
+        "exchangeRate": { "type": "number" },
+        "fee": { "type": "number" },
+        "amountSar": { "type": "number" },
+        "recipientAmount": { "type": "number" },
+        "submittedBy": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "votes": { "type": "number" },
+        "isVerified": { "type": "boolean" }
+      },
+      "required": ["id", "corridorId", "providerId", "exchangeRate", "fee", "submittedBy"]
+    },
+    "ReportedIssue": {
+      "title": "ReportedIssue",
+      "description": "Expat bug or rate difference complaint report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "email": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "resolved"] }
+      },
+      "required": ["id", "category", "description", "timestamp", "status"]
+    },
+    "RateAlert": {
+      "title": "RateAlert",
+      "description": "User-defined Price Watch threshold target alert",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "corridorId": { "type": "string" },
+        "providerId": { "type": "string" },
+        "targetRate": { "type": "number" },
+        "condition": { "type": "string", "enum": ["above", "below"] },
+        "contactInfo": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "corridorId", "providerId", "targetRate", "condition", "contactInfo", "createdAt", "isActive"]
+    },
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "Global application configuration documents",
+      "type": "object",
+      "properties": {
+        "value": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["value"]
+    },
+    "DeviceSession": {
+      "title": "DeviceSession",
+      "description": "User secure or flagged device session details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "deviceType": { "type": "string" },
+        "os": { "type": "string" },
+        "browser": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "location": { "type": "string" },
+        "lastActive": { "type": "string" },
+        "status": { "type": "string", "enum": ["Secure", "Flagged", "Revoked"] },
+        "threatLevel": { "type": "string", "enum": ["Low", "Medium", "High"] }
+      },
+      "required": ["id", "email", "status", "threatLevel"]
+    },
+    "ContributorReputation": {
+      "title": "ContributorReputation",
+      "description": "Contributor reputation and trust scoring metrics",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "contributorScore": { "type": "number" },
+        "verifiedCount": { "type": "number" },
+        "rejectedCount": { "type": "number" },
+        "trustLevel": { "type": "string" },
+        "joinedDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Under Investigation", "Suspended"] }
+      },
+      "required": ["email", "name", "role", "contributorScore", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Platform activity chronological immutable audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "actorEmail": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "actionCategory": { "type": "string" },
+        "actionDetails": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "status": { "type": "string", "enum": ["Success", "Failed", "Blocked"] },
+        "severity": { "type": "string", "enum": ["Info", "Warning", "Critical"] }
+      },
+      "required": ["id", "timestamp", "actorEmail", "actionCategory", "actionDetails", "status", "severity"]
+    },
+    "CommunityRateSubmission": {
+      "title": "CommunityRateSubmission",
+      "description": "Crowdsourced rate submission with screenshot, verification status, and confidence metrics",
+      "type": "object",
+      "properties": {
+        "submission_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "provider": { "type": "string" },
+        "corridor": { "type": "string" },
+        "currency": { "type": "string" },
+        "send_amount": { "type": "number" },
+        "exchange_rate": { "type": "number" },
+        "transfer_fee": { "type": "number" },
+        "recipient_amount": { "type": "number" },
+        "submission_time": { "type": "string" },
+        "verification_status": { "type": "string" },
+        "confidence_score": { "type": "number" }
+      },
+      "required": ["submission_id", "user_id", "provider", "corridor", "exchange_rate", "transfer_fee"]
+    },
+    "CommunityRateConsensus": {
+      "title": "CommunityRateConsensus",
+      "description": "Statistically resolved consensus across multiple community reports",
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "corridor": { "type": "string" },
+        "currency": { "type": "string" },
+        "community_rate": { "type": "number" },
+        "community_fee": { "type": "number" },
+        "submission_count": { "type": "number" },
+        "confidence": { "type": "number" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["provider", "corridor", "community_rate", "community_fee", "submission_count", "confidence"]
+    },
+    "MarketReferenceRate": {
+      "title": "MarketReferenceRate",
+      "description": "Market index rate reference used for fallback estimates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "corridor": { "type": "string" },
+        "exchange_rate": { "type": "number" },
+        "provider_id": { "type": "string" },
+        "source": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "corridor", "exchange_rate", "provider_id", "source"]
+    },
+    "ResolvedRate": {
+      "title": "ResolvedRate",
+      "description": "Final platform resolved rate with confidence, freshness, and source badge details",
+      "type": "object",
+      "properties": {
+        "provider_id": { "type": "string" },
+        "corridor_id": { "type": "string" },
+        "resolved_rate": { "type": "number" },
+        "resolved_fee": { "type": "number" },
+        "confidence_score": { "type": "number" },
+        "freshness_score": { "type": "number" },
+        "freshness_label": { "type": "string" },
+        "source_badge": { "type": "string" },
+        "last_updated_at": { "type": "string" }
+      },
+      "required": ["provider_id", "corridor_id", "resolved_rate", "resolved_fee", "confidence_score", "source_badge"]
+    },
+    "AnalyticsEvent": {
+      "title": "AnalyticsEvent",
+      "description": "User behavior tracking event for product analytics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "is_authenticated": { "type": "boolean" },
+        "event_type": { "type": "string" },
+        "event_name": { "type": "string" },
+        "page": { "type": "string" },
+        "corridor": { "type": "string" },
+        "provider": { "type": "string" },
+        "amount": { "type": "number" },
+        "metadata": { "type": "object" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "session_id", "is_authenticated", "event_name", "created_at"]
+    },
+    "UserFeedback": {
+      "title": "UserFeedback",
+      "description": "End user post-transfer recommendation feedback",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "transfer_record_id": { "type": "string" },
+        "recommendation_id": { "type": "string" },
+        "provider": { "type": "string" },
+        "corridor": { "type": "string" },
+        "helpfulness_rating": { "type": "string", "enum": ["Very helpful", "Helpful", "Not sure", "Not helpful"] },
+        "amount_accuracy": { "type": "string", "enum": ["Yes, it matched", "Almost matched", "No, it was different"] },
+        "transfer_completed": { "type": "boolean" },
+        "issue_type": { "type": "string" },
+        "comment": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "archived"] },
+        "admin_notes": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "reviewed_at": { "type": "string" },
+        "reviewed_by": { "type": "string" }
+      },
+      "required": ["id", "helpfulness_rating", "amount_accuracy", "created_at", "status"]
+    },
+    "AdminActivityLog": {
+      "title": "AdminActivityLog",
+      "description": "Immutable log of admin actions for security auditability",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "admin_user_id": { "type": "string" },
+        "admin_email": { "type": "string" },
+        "action_type": { "type": "string" },
+        "target_collection": { "type": "string" },
+        "target_id": { "type": "string" },
+        "details": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "admin_email", "action_type", "details", "created_at"]
+    },
+    "RateDataHealth": {
+      "title": "RateDataHealth",
+      "description": "Rate data freshness and coverage health report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "corridor": { "type": "string" },
+        "provider": { "type": "string" },
+        "status": { "type": "string", "enum": ["Healthy", "Needs Review", "Stale", "Critical"] },
+        "last_updated": { "type": "string" },
+        "missing_fields": { "type": "array" }
+      },
+      "required": ["id", "status"]
+    },
+    "UserIssueReport": {
+      "title": "UserIssueReport",
+      "description": "User reported system or rate mismatch issue report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "page": { "type": "string" },
+        "issue_type": { "type": "string" },
+        "issue_title": { "type": "string" },
+        "issue_description": { "type": "string" },
+        "screenshot_url": { "type": "string" },
+        "provider": { "type": "string" },
+        "corridor": { "type": "string" },
+        "status": { "type": "string", "enum": ["new", "open", "resolved", "in_progress", "archived"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "reviewed_at": { "type": "string" },
+        "reviewed_by": { "type": "string" },
+        "admin_notes": { "type": "string" }
+      },
+      "required": ["id", "issue_type", "issue_title", "issue_description", "status", "priority", "created_at"]
+    },
+    "UserFirstImpressionFeedback": {
+      "title": "UserFirstImpressionFeedback",
+      "description": "Expat post-onboarding trust and confidence survey response",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "rating": { "type": "number" },
+        "selected_reasons": { "type": "array" },
+        "comment": { "type": "string" },
+        "submitted_at": { "type": "string", "format": "date-time" },
+        "platform": { "type": "string" },
+        "corridor": { "type": "string" },
+        "provider": { "type": "string" }
+      },
+      "required": ["id", "user_id", "rating", "selected_reasons", "submitted_at"]
+    },
+    "TrustSurvey": {
+      "title": "TrustSurvey",
+      "description": "One-time post-onboarding trust and confidence survey response",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "confidence_rating": { "type": "number" },
+        "used_recommended_provider": { "type": "string" },
+        "comment": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "user_id", "confidence_rating", "timestamp", "created_at"]
+    },
+    "MarketApiHealth": {
+      "title": "MarketApiHealth",
+      "description": "Market Reference rate API provider health status monitor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "provider_name": { "type": "string" },
+        "status": { "type": "string", "enum": ["Healthy", "Needs Review", "Stale", "Critical"] },
+        "last_attempt_at": { "type": "string", "format": "date-time" },
+        "last_success_at": { "type": "string", "format": "date-time" },
+        "consecutive_failures": { "type": "number" },
+        "error_message": { "type": "string" },
+        "response_time_ms": { "type": "number" }
+      },
+      "required": ["id", "provider_name", "status"]
+    },
+    "MarketReferenceAudit": {
+      "title": "MarketReferenceAudit",
+      "description": "Audit log for manual changes and API fetches of Market Reference rates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "action_type": { "type": "string" },
+        "details": { "type": "string" },
+        "actor": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "action_type", "details", "actor"]
+    },
+    "CommunityTransferVerification": {
+      "title": "CommunityTransferVerification",
+      "description": "Expat submitted transfer verification with screenshot and admin review status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "providerId": { "type": "string" },
+        "providerName": { "type": "string" },
+        "corridor": { "type": "string" },
+        "destinationCountry": { "type": "string" },
+        "receiveCurrency": { "type": "string" },
+        "amountSent": { "type": "number" },
+        "exchangeRate": { "type": "number" },
+        "transferFee": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "additionalCharges": { "type": "number" },
+        "receiveMethod": { "type": "string" },
+        "recipientAmount": { "type": "number" },
+        "screenshotUrl": { "type": "string" },
+        "screenshotStoragePath": { "type": "string" },
+        "submissionStatus": { "type": "string" },
+        "verificationStatus": { "type": "string" },
+        "reviewedBy": { "type": "string" },
+        "reviewNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userEmail", "sessionId", "providerId", "providerName", "corridor", "amountSent", "exchangeRate", "transferFee", "receiveMethod", "recipientAmount", "screenshotUrl", "submissionStatus", "verificationStatus", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "community_transfer_verifications/{id}": {
+      "schema": "CommunityTransferVerification",
+      "description": "Expat submitted transfer verifications review queue"
+    },
+    "profiles/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles database"
+    },
+    "admin_rate_overrides/{overrideId}": {
+      "schema": "AdminRateOverride",
+      "description": "Administrative corridor rate overrides"
+    },
+    "crowdsourced_rates/{rateId}": {
+      "schema": "CrowdsourcedRate",
+      "description": "Crowdsourced remittance rates from expats"
+    },
+    "reported_issues/{issueId}": {
+      "schema": "ReportedIssue",
+      "description": "Feedback, complaints, and bug logs"
+    },
+    "rate_alerts/{alertId}": {
+      "schema": "RateAlert",
+      "description": "Price watch target alert records"
+    },
+    "app_config/{configId}": {
+      "schema": "AppConfig",
+      "description": "Global settings and feature configurations"
+    },
+    "device_sessions/{sessionId}": {
+      "schema": "DeviceSession",
+      "description": "User security device sessions"
+    },
+    "contributor_reputations/{reputationId}": {
+      "schema": "ContributorReputation",
+      "description": "Contributor trust reputations"
+    },
+    "security_audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Chronological audit trail logs"
+    },
+    "community_rate_submissions/{id}": {
+      "schema": "CommunityRateSubmission",
+      "description": "Verification pipeline submissions and screenshots"
+    },
+    "community_rate_consensus/{id}": {
+      "schema": "CommunityRateConsensus",
+      "description": "Community aggregated consensus files"
+    },
+    "market_reference_rates/{id}": {
+      "schema": "MarketReferenceRate",
+      "description": "Third-party indices reference data"
+    },
+    "market_api_health/{id}": {
+      "schema": "MarketApiHealth",
+      "description": "API status and health logs"
+    },
+    "market_reference_audit/{id}": {
+      "schema": "MarketReferenceAudit",
+      "description": "API fetches and manual overrides audit log"
+    },
+    "trust_surveys/{id}": {
+      "schema": "TrustSurvey",
+      "description": "One-time post-onboarding trust survey responses"
+    },
+    "user_first_impression_feedback/{id}": {
+      "schema": "UserFirstImpressionFeedback",
+      "description": "One-time post-onboarding trust and confidence survey responses with reasons and metadata"
+    },
+    "resolved_rates/{id}": {
+      "schema": "ResolvedRate",
+      "description": "Resolved platform-wide reference outputs"
+    },
+    "analytics_events/{id}": {
+      "schema": "AnalyticsEvent",
+      "description": "User behavior tracking events"
+    },
+    "user_feedback/{id}": {
+      "schema": "UserFeedback",
+      "description": "End-user post-transfer feedbacks"
+    },
+    "user_issue_reports/{id}": {
+      "schema": "UserIssueReport",
+      "description": "User-reported system issues and rate mismatch complaints"
+    },
+    "admin_activity_logs/{id}": {
+      "schema": "AdminActivityLog",
+      "description": "Administrator activity logs"
+    },
+    "rate_data_health/{id}": {
+      "schema": "RateDataHealth",
+      "description": "Periodical rate health states"
+    }
+  }
+}

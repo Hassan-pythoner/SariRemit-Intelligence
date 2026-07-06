@@ -1,0 +1,286 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // GLOBAL CATCH-ALL DEFAULT DENY GATE
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // REUSABLE HARDENED GLOBAL HELPERS
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.email == "hassan.gaturu20@gmail.com");
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "hassan.gaturu20@gmail.com" ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // =========================================================================
+    // USER PROFILE SCHEMAS AND MATCH RULES
+    // =========================================================================
+    function isValidUserProfile(data) {
+      return data.name is string && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 30 &&
+             data.preferredLanguage is string && (data.preferredLanguage == 'en' || data.preferredLanguage == 'ar') &&
+             data.homeCountry is string && data.homeCountry.size() <= 10 &&
+             data.favoriteProviders is list && data.favoriteProviders.size() <= 20 &&
+             data.savingsTargetSar is number && data.savingsTargetSar >= 0 &&
+             data.totalSavedSar is number && data.totalSavedSar >= 0;
+    }
+
+    function isValidTrustSurvey(data) {
+      return data.user_id is string && data.user_id.size() <= 128 &&
+             data.confidence_rating is number && data.confidence_rating >= 1 && data.confidence_rating <= 5;
+    }
+
+    match /profiles/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow create, update: if isSignedIn() && request.auth.uid == userId && isValidUserProfile(incoming());
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /trust_surveys/{surveyId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isSignedIn() && isValidId(surveyId) && isValidTrustSurvey(incoming());
+    }
+
+    // =========================================================================
+    // ADMIN RATE OVERRIDES MATCH RULES
+    // =========================================================================
+    function isValidAdminOverride(data) {
+      return true;
+    }
+
+    match /admin_overrides/{overrideId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /admin_rate_overrides/{overrideId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /market_reference_rates/{id} {
+      allow read: if true;
+      allow write: if isAdmin() || (incoming().backend_secret == "SariRemitBackendSecret2026");
+    }
+
+    match /market_api_health/{id} {
+      allow read: if true;
+      allow write: if isAdmin() || (incoming().backend_secret == "SariRemitBackendSecret2026");
+    }
+
+    match /market_reference_audit/{id} {
+      allow read: if true;
+      allow write: if isAdmin() || (incoming().backend_secret == "SariRemitBackendSecret2026");
+    }
+
+    match /normalized_rates/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /verified_provider_rates/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /public_recommendation_outputs/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /provider_rates/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /community_rate_submissions/{id} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /community_rate_consensus/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /resolved_rates/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /resolved_rates_audit_history/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // CROWDSOURCED RATES MATCH RULES
+    // =========================================================================
+    function isValidCrowdsourcedRate(data) {
+      return data.id is string && data.id.size() <= 100 &&
+             data.corridorId is string && data.corridorId.size() <= 10 &&
+             data.providerId is string && data.providerId.size() <= 50 &&
+             data.exchangeRate is number && data.exchangeRate >= 0 &&
+             data.fee is number && data.fee >= 0 &&
+             data.submittedBy is string && data.submittedBy.size() <= 100;
+    }
+
+    match /crowdsourced_rates/{rateId} {
+      allow read: if true;
+      allow create: if isEmailVerified() && isValidId(rateId) && isValidCrowdsourcedRate(incoming());
+      allow update: if isSignedIn() && isValidId(rateId) && isValidCrowdsourcedRate(incoming()) && (
+        (existing().submittedByUid == request.auth.uid) || isAdmin()
+      );
+      allow delete: if isSignedIn() && isValidId(rateId) && (
+        (existing().submittedByUid == request.auth.uid) || isAdmin()
+      );
+    }
+
+    // =========================================================================
+    // REPORTED ISSUES MATCH RULES
+    // =========================================================================
+    function isValidReportedIssue(data) {
+      return data.id is string && data.id.size() <= 100 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.description is string && data.description.size() <= 5000 &&
+             data.status is string && (data.status == 'pending' || data.status == 'resolved');
+    }
+
+    match /reported_issues/{issueId} {
+      allow create: if isValidId(issueId) && isValidReportedIssue(incoming());
+      allow read, update, delete: if isAdmin() && isValidId(issueId);
+    }
+
+    // =========================================================================
+    // RATE ALERTS (PRICE WATCH) MATCH RULES
+    // =========================================================================
+    function isValidRateAlert(data) {
+      return data.id is string && data.id.size() <= 100 &&
+             data.corridorId is string && data.corridorId.size() <= 10 &&
+             data.providerId is string && data.providerId.size() <= 50 &&
+             data.targetRate is number && data.targetRate >= 0 &&
+             data.condition is string && (data.condition == 'above' || data.condition == 'below') &&
+             data.contactInfo is string && data.contactInfo.size() <= 200 &&
+             data.createdAt is string &&
+             data.isActive is bool &&
+             data.userId is string && data.userId == request.auth.uid;
+    }
+
+    match /rate_alerts/{alertId} {
+      allow get: if isSignedIn() && isValidId(alertId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(alertId) && isValidRateAlert(incoming());
+      allow update: if isSignedIn() && isValidId(alertId) && isValidRateAlert(incoming()) && (existing().userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && isValidId(alertId) && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    // =========================================================================
+    // GLOBAL APP CONFIGURATION MATCH RULES
+    // =========================================================================
+    match /app_config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(configId);
+    }
+
+    // =========================================================================
+    // SECURITY CONTROL CENTER AND HANDSHAKE MATCH RULES
+    // =========================================================================
+    function isValidDeviceSession(data) {
+      return data.id is string && data.id.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.status is string && (data.status == 'Secure' || data.status == 'Flagged' || data.status == 'Revoked') &&
+             data.threatLevel is string && (data.threatLevel == 'Low' || data.threatLevel == 'Medium' || data.threatLevel == 'High');
+    }
+
+    match /device_sessions/{sessionId} {
+      allow read: if isSignedIn() && (request.auth.token.email == resource.data.email || isAdmin());
+      allow create, update: if isSignedIn() && isValidId(sessionId) && isValidDeviceSession(incoming()) && (request.auth.token.email == incoming().email || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    function isValidContributorReputation(data) {
+      return data.email is string && data.email.size() <= 100 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.role is string &&
+             data.contributorScore is number &&
+             data.status is string && (data.status == 'Active' || data.status == 'Under Investigation' || data.status == 'Suspended');
+    }
+
+    match /contributor_reputations/{reputationId} {
+      allow read: if isSignedIn() && (request.auth.token.email == resource.data.email || isAdmin());
+      allow create, update: if isSignedIn() && isValidId(reputationId) && isValidContributorReputation(incoming()) && (request.auth.token.email == incoming().email || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    function isValidAuditLog(data) {
+      return data.id is string && data.id.size() <= 100 &&
+             data.timestamp is string &&
+             data.actorEmail is string && data.actorEmail.size() <= 100 &&
+             data.actionCategory is string &&
+             data.actionDetails is string && data.actionDetails.size() <= 5000 &&
+             data.status is string && (data.status == 'Success' || data.status == 'Failed' || data.status == 'Blocked') &&
+             data.severity is string && (data.severity == 'Info' || data.severity == 'Warning' || data.severity == 'Critical');
+    }
+
+    match /security_audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && isValidId(logId) && isValidAuditLog(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // ANALYTICS EVENTS, USER FEEDBACK, ADMIN ACTIONS, RATE HEALTH MATCH RULES
+    // =========================================================================
+    match /analytics_events/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /user_feedback/{id} {
+      allow create: if true;
+      allow read, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /user_issue_reports/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /admin_activity_logs/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /rate_data_health/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

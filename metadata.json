@@ -1,0 +1,8 @@
+{
+  "name": "SariRemit",
+  "description": "Remittance rate comparison and savings assistant for expats in Saudi Arabia sending money home.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
