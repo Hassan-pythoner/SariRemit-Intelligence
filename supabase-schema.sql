@@ -201,6 +201,7 @@ ON CONFLICT (id) DO NOTHING;
 -- ==========================================
 CREATE TABLE IF NOT EXISTS public.srcmc_admin_access (
     id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('main_admin', 'rate_monitor', 'override_manager', 'community_verifier', 'channel_manager', 'corridor_manager', 'viewer')),
     permissions TEXT[] NOT NULL,
@@ -217,11 +218,20 @@ CREATE TABLE IF NOT EXISTS public.srcmc_admin_access (
         ON UPDATE CASCADE
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS srcmc_admin_access_user_id_unique
+ON public.srcmc_admin_access(user_id)
+WHERE user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS srcmc_admin_access_active_user_idx
+ON public.srcmc_admin_access(user_id, is_active);
+
 -- Enable RLS & Policies
 ALTER TABLE public.srcmc_admin_access ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable read/write for all" ON public.srcmc_admin_access;
+DROP POLICY IF EXISTS "Users can read own SRCMC access" ON public.srcmc_admin_access;
 
 CREATE POLICY "Enable read/write for all" ON public.srcmc_admin_access FOR ALL USING (true);
+CREATE POLICY "Users can read own SRCMC access" ON public.srcmc_admin_access FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
 
 -- ==========================================
