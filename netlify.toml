@@ -1,8 +1,15 @@
+# Netlify Configuration File for SariRemit
+# Documentation: https://docs.netlify.com/configure-builds/file-based-configuration/
+
 [build]
+  # The command Netlify runs to build the React Vite SPA
   command = "npm run build"
+  # The output directory where Vite generates static files
   publish = "dist"
 
-# Redirects rule for SPA routing fallback
+# Redirect rule for Single Page Applications (SPA)
+# Ensures that any client-side routes (e.g., /compare, /savings, /profile)
+# resolve correctly to index.html instead of showing a Netlify 404 page
 [[redirects]]
   from = "/*"
   to = "/index.html"

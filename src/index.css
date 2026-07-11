@@ -25,6 +25,14 @@
 }
 
 /* Custom directions utilities */
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
 .direction-rtl {
   direction: rtl;
 }

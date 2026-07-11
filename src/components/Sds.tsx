@@ -202,8 +202,8 @@ export function SDSCard({
 
   const variants = {
     flat: 'bg-sds-bg-sec border border-transparent',
-    outline: 'bg-white border border-sds-border',
-    shadow: 'bg-white border border-sds-border shadow-sds-sm',
+    outline: 'bg-sds-card border border-sds-border',
+    shadow: 'bg-sds-card border border-sds-border shadow-sds-sm',
   };
 
   return (
@@ -569,7 +569,7 @@ export function SDSTable<T>({
   id,
 }: SDSTableProps<T>) {
   return (
-    <div id={id} className={`w-full overflow-hidden border border-sds-border rounded-2xl bg-white shadow-sds-sm ${className}`}>
+    <div id={id} className={`w-full overflow-hidden border border-sds-border rounded-2xl bg-sds-card shadow-sds-sm ${className}`}>
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -660,7 +660,7 @@ export function SDSDialog({
       
       {/* Container Card */}
       <div className={`
-        relative w-full bg-white rounded-3xl border border-sds-border shadow-sds-lg overflow-hidden z-10 
+        relative w-full bg-sds-card rounded-3xl border border-sds-border shadow-sds-lg overflow-hidden z-10 
         transform transition-all scale-100 animate-slideUp
         ${sizes[size]}
       `}>
