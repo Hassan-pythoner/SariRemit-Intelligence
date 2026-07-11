@@ -1,131 +1,50 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
 @import "tailwindcss";
 
-@variant dark (&:where(.dark, .dark *));
-
 @theme {
-  --font-sans: "Inter", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  
-  --color-primary: #00C16A;
-  --color-primary-hover: #00E07A;
-  --color-primary-light: #00E07A;
-  
-  --color-bg-primary: #0a2346;
-  --color-bg-secondary: #071a34;
-  --color-bg-card: #113262;
-  --color-brand-green: #00C16A;
-  --color-brand-emerald: #00E07A;
-  --color-brand-gold: #F4B63F;
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #B8C7D9;
-  --color-text-muted: #B8C7D9;
-  --color-border-light: rgba(255, 255, 255, 0.10);
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* SARIREMIT REDESIGN: Premium Dark Navy Financial Theme */
+  --color-sds-primary: #10B981;      /* Premium Green (emerald-500) */
+  --color-sds-secondary: #F59E0B;    /* Gold (amber-500) */
+  --color-sds-bg: #071A35;           /* Deep Navy (Primary Background) */
+  --color-sds-card: #0C2547;         /* Slightly lighter Navy (Cards) */
+  --color-sds-bg-sec: #091F3E;       /* Secondary lighter Navy */
+  --color-sds-text: #F8FAFC;         /* Off-white / Slate-50 */
+  --color-sds-text-sec: #94A3B8;     /* Muted Slate-400 */
+  --color-sds-border: rgba(148, 163, 184, 0.12); /* Subtle borders */
+  --color-sds-success: #10B981;      /* Success Green */
+  --color-sds-warning: #F59E0B;      /* Warning Amber */
+  --color-sds-error: #EF4444;        /* Error Red */
+
+  /* Shadows and Radius */
+  --shadow-sds-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
+  --shadow-sds-md: 0 4px 12px -2px rgba(0, 0, 0, 0.3), 0 2px 6px -1px rgba(0, 0, 0, 0.2);
+  --shadow-sds-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.4), 0 4px 12px -2px rgba(0, 0, 0, 0.3);
 }
 
-html, body {
-  background-color: #0a2346 !important;
-  color: #FFFFFF !important;
-  font-family: "Inter", "Plus Jakarta Sans", sans-serif;
+/* Custom directions utilities */
+.direction-rtl {
+  direction: rtl;
+}
+.direction-ltr {
+  direction: ltr;
 }
 
-/* Glassmorphism utilities based on new brand colors */
-.glass-panel {
-  background: rgba(10, 35, 70, 0.65) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+/* Custom fade scrollbars for clean dashboards */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.06) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-/* Smart redirect for existing hardcoded colors across components */
-[class*="bg-[#031126]"] {
-  background-color: #0a2346 !important;
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
 }
-[class*="bg-[#071326]"] {
-  background-color: #0a2346 !important;
-}
-[class*="bg-[#0B1E35]"] {
-  background-color: #071a34 !important;
-}
-[class*="bg-[#061B3A]"] {
-  background-color: #071a34 !important;
-}
-[class*="bg-[#10263D]"] {
-  background-color: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(255, 255, 255, 0.10) !important;
-}
-[class*="border-white/5"] {
-  border-color: rgba(255, 255, 255, 0.10) !important;
-}
-[class*="text-[#AFC4D8]"] {
-  color: #B8C7D9 !important;
-}
-[class*="text-[#7E96AA]"] {
-  color: rgba(255, 255, 255, 0.5) !important;
-}
-
-.glow-green {
-  box-shadow: 0 0 20px rgba(0, 193, 106, 0.15);
-}
-
-.glow-emerald {
-  box-shadow: 0 0 25px rgba(0, 224, 122, 0.25);
-}
-
-/* Custom highlight and fade animations for rate refresh */
-@keyframes highlight-fade-standard {
-  0% {
-    background-color: rgba(0, 193, 106, 0.16);
-    border-color: rgba(0, 193, 106, 0.7);
-    box-shadow: 0 0 25px rgba(0, 193, 106, 0.25);
-  }
-  100% {
-    background-color: #071a34;
-    border-color: rgba(255, 255, 255, 0.10);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  }
-}
-
-@keyframes highlight-fade-best {
-  0% {
-    background-color: rgba(0, 193, 106, 0.22);
-    border-color: rgba(0, 193, 106, 0.85);
-    box-shadow: 0 0 30px rgba(0, 193, 106, 0.35);
-  }
-  100% {
-    background-color: rgba(10, 35, 70, 0.9);
-    border-color: rgba(0, 193, 106, 0.45);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  }
-}
-
-.animate-highlight-standard {
-  animation: highlight-fade-standard 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-highlight-best {
-  animation: highlight-fade-best 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Subtle, engaging entry animation for empty states */
-@keyframes empty-state-entry {
-  0% {
-    opacity: 0;
-    transform: translateY(10px) scale(0.97);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.animate-empty-state {
-  animation: empty-state-entry 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 

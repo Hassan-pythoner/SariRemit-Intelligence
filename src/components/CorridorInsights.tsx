@@ -1,356 +1,370 @@
 import React, { useState } from 'react';
-import { useLanguage } from './LanguageContext';
-import { CORRIDORS, PROVIDERS, getHistoricalTrends } from '../data/mockData';
-import { CorridorId } from '../types';
+import { TranslationDict, Corridor } from '../types';
+import { CORRIDORS, PROVIDERS, getRemittanceRates } from '../services/ratesService';
+import { getAuthSession } from '../services/supabaseService';
 import { 
-  TrendingUp, Calendar, Clock, DollarSign, Wallet, ArrowRight, ArrowLeft,
-  Info, ShieldCheck, Landmark, CheckCircle, Activity, ChevronRight
+  TrendingUp, Compass, Calendar, AlertCircle, Info, Landmark, 
+  HelpCircle, Sparkles, CheckCircle2, Award, Zap, ArrowRight, ArrowLeft 
 } from 'lucide-react';
 
-export const CorridorInsights: React.FC = () => {
-  const { t, language, isRtl } = useLanguage();
-  const [selectedCorridorId, setSelectedCorridorId] = useState<CorridorId>('PK');
+interface CorridorInsightsProps {
+  language: 'en' | 'ar';
+  t: TranslationDict;
+}
 
-  // Selected corridor details
-  const selectedCorridor = CORRIDORS.find(c => c.id === selectedCorridorId) || CORRIDORS[0];
-
-  // Load historical trend points
-  const history = getHistoricalTrends(selectedCorridorId);
-
-  // Math helper to scale coordinates for beautiful responsive custom SVG Line Chart
-  const minRate = Math.min(...history.map(h => h.rate));
-  const maxRate = Math.max(...history.map(h => h.rate));
-  const rateRange = maxRate - minRate || 1;
-
-  // Let's create beautiful SVG points
-  const svgWidth = 600;
-  const svgHeight = 220;
-  const padding = 35;
-
-  const points = history.map((pt, idx) => {
-    const x = padding + (idx * (svgWidth - padding * 2) / (history.length - 1));
-    // Invert Y so higher rates are at the top
-    const y = svgHeight - padding - ((pt.rate - minRate) * (svgHeight - padding * 2) / rateRange);
-    return { ...pt, x, y };
+export default function CorridorInsights({
+  language,
+  t,
+}: CorridorInsightsProps) {
+  const isRtl = language === 'ar';
+  const [selectedCorridorId, setSelectedCorridorId] = useState<string>(() => {
+    const session = getAuthSession();
+    return session.user?.preferredCorridorId || 'sa-pk';
   });
 
-  // Create path strings
-  const linePath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${svgHeight - padding} L ${points[0].x} ${svgHeight - padding} Z`;
+  const activeCorridor = CORRIDORS.find(c => c.id === selectedCorridorId) || CORRIDORS[0];
 
-  // Dynamic country-specific remittance advice/tips
-  const getCorridorTips = (id: CorridorId) => {
+  // Mock Trend data for past 7 days based on the corridor's base exchange rate
+  const getTrendData = (base: number) => {
+    return [
+      { day: 'Wed', rate: parseFloat((base * 0.992).toFixed(2)) },
+      { day: 'Thu', rate: parseFloat((base * 0.995).toFixed(2)) },
+      { day: 'Fri', rate: parseFloat((base * 0.991).toFixed(2)) },
+      { day: 'Sat', rate: parseFloat((base * 1.002).toFixed(2)) },
+      { day: 'Sun', rate: parseFloat((base * 1.006).toFixed(2)) },
+      { day: 'Mon', rate: parseFloat((base * 1.004).toFixed(2)) },
+      { day: 'Today', rate: parseFloat((base * 1.011).toFixed(2)) },
+    ];
+  };
+
+  const trendData = getTrendData(activeCorridor.baseExchangeRate);
+  
+  // Calculate analytics
+  const rates = getRemittanceRates(selectedCorridorId, 1000);
+  const lowestFee = Math.min(...rates.map(r => r.transferFee));
+  const highestRate = Math.max(...rates.map(r => r.exchangeRate));
+  
+  const bestFeeProvider = rates.find(r => r.transferFee === lowestFee)?.providerName || 'Mobily Pay';
+  const bestRateProvider = rates.find(r => r.exchangeRate === highestRate)?.providerName || 'STC Pay';
+
+  // SVG coordinate calculations for sparkline
+  const svgWidth = 500;
+  const svgHeight = 150;
+  const padding = 30;
+
+  const minRate = Math.min(...trendData.map(d => d.rate));
+  const maxRate = Math.max(...trendData.map(d => d.rate));
+  const rateRange = maxRate - minRate || 1;
+
+  // Generate SVG path string
+  const points = trendData.map((d, index) => {
+    const x = padding + (index * (svgWidth - padding * 2)) / (trendData.length - 1);
+    // Invert Y coordinate so higher rate is at the top of the SVG canvas
+    const y = svgHeight - padding - ((d.rate - minRate) / rateRange) * (svgHeight - padding * 2);
+    return { x, y, day: d.day, rate: d.rate };
+  });
+
+  const pathD = points.reduce((acc, p, i) => {
+    return i === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`;
+  }, '');
+
+  // Fill area path
+  const areaD = `${pathD} L ${points[points.length - 1].x} ${svgHeight - padding} L ${points[0].x} ${svgHeight - padding} Z`;
+
+  // Specific tips depending on corridor
+  const getCorridorTips = (id: string) => {
     switch (id) {
-      case 'PK':
-        return [
-          { title: 'Tax Incentives (PRI)', desc: 'Government of Pakistan exempts tax on personal home remittances sent through official banking channels like QuickPay or urpay.' },
-          { title: 'Fast Cash Pickups', desc: 'Enjaz offers same-minute cash pick up at Allied Bank, National Bank of Pakistan, or MCB branches.' },
-          { title: 'Mobile Wallet Speed', desc: 'Easypaisa and JazzCash receiving routes are instant but check limit caps before sending larger sums.' }
-        ];
-      case 'IN':
-        return [
-          { title: 'Same-day Bank Payouts', desc: 'Most direct bank deposits to SBI, ICICI, or HDFC take less than 2 hours using STC Pay or urpay routes.' },
-          { title: 'Zero Fee Offers', desc: 'Many providers run zero fee transfer promos if sending more than 1500 SAR. Always compare.' },
-          { title: 'Rupee Volatility', desc: 'INR rate fluctuates mid-day following Reserve Bank announcements. Tuesday morning usually yields the peak rates.' }
-        ];
-      case 'KE':
-        return [
-          { title: 'M-PESA Payout Dominance', desc: 'STC Pay and urpay are highly integrated with Safaricom M-PESA. Payouts arrive instantly 24/7.' },
-          { title: 'Cash Out Limits', desc: 'Ensure your recipient has upgraded their M-PESA wallet limit if you are sending more than 2500 SAR.' },
-          { title: 'Equity Bank alternative', desc: 'Direct bank deposit is also available but might take up to 24 hours depending on weekend schedules.' }
-        ];
-      case 'PH':
-        return [
-          { title: 'GCash & PayMaya Integration', desc: 'Sending to digital wallets in the Philippines is instant. Preferred providers are Mobily Pay and STC Pay.' },
-          { title: 'Pawnshop Cash Pickups', desc: 'Western Union and Enjaz provide physical collection at Cebuana Lhuillier or M Lhuillier locations.' },
-          { title: 'SSS and Pag-IBIG payouts', desc: 'Check if your chosen channel allows direct contributions to state saving funds.' }
-        ];
-      case 'BD':
-        return [
-          { title: '2.5% Cash Incentive', desc: 'The Bangladesh government provides a 2.5% instant cash incentive for remitting through formal channels like urpay or QuickPay.' },
-          { title: 'bKash Instant Transfer', desc: 'Digital wallets to bKash wallets are executed instantly. Great for urgent pocket money support.' },
-          { title: 'Sonali Bank direct routing', desc: 'Traditional bank direct routing can take up to 2 working days.' }
-        ];
-      case 'EG':
-        return [
-          { title: 'National Bank of Egypt (NBE) Cash pickup', desc: 'Enjaz and Al Rajhi Tahweel have direct bank cash arrangements with extremely high payout reliability.' },
-          { title: 'InstaPay receiving capability', desc: 'Check for InstaPay-enabled digital wallets which transfer funds to Egyptian bank cards instantly.' },
-          { title: 'Egyptian Pound rate gaps', desc: 'Compare official rates carefully as digital wallets might offer promotional bonuses.' }
-        ];
-      case 'UG':
-        return [
-          { title: 'MTN Mobile Money & Airtel Pay', desc: 'Remittances directly arrive at MTN or Airtel Money accounts in minutes when using STC Pay wallet.' },
-          { title: 'Withdrawal Charge Awareness', desc: 'Keep in mind mobile cash withdrawal fees back home; consider sending slightly extra to cover the local fees.' },
-          { title: 'Direct Bank Deposits', desc: 'Best for larger sums. It takes 1 business day for Centenary or Stanbic Bank routing.' }
-        ];
-      case 'ET':
-        return [
-          { title: 'CBE Birr & Telebirr Mobile wallet', desc: 'Digital wallets offer swift transfer direct to Commercial Bank of Ethiopia (CBE) mobile accounts.' },
-          { title: 'Currency Regulation Checks', desc: 'Expat home remittances are highly encouraged and are exempt from standard import duties.' },
-          { title: 'Cash Out Centers', desc: 'CBE branches are standard for cash pickup collection. Ensure recipients carry valid national IDs.' }
-        ];
+      case 'sa-pk':
+        return {
+          bestDay: 'Sunday / Monday',
+          bestDayAr: 'الأحد / الاثنين',
+          limitTips: 'Sending above 1,500 SAR waives cash pickup fees at Western Union.',
+          limitTipsAr: 'إرسال أكثر من ١,٥٠٠ ريال يلغي رسوم الاستلام النقدي في ويسترن يونيون.',
+          channelTip: 'Urpay wallet has a direct cash promotion with Pakistan post offices.'
+        };
+      case 'sa-in':
+        return {
+          bestDay: 'Saturday / Sunday',
+          bestDayAr: 'السبت / الأحد',
+          limitTips: 'QuickPay offers zero fee for amounts over 2,000 SAR.',
+          limitTipsAr: 'كويك باي يتيح الرسوم مجاناً للمبالغ التي تزيد عن ٢,٠٠٠ ريال.',
+          channelTip: 'STC Pay has direct instant transfers to SBI bank accounts.'
+        };
+      case 'sa-ph':
+        return {
+          bestDay: 'Tuesday',
+          bestDayAr: 'الثلاثاء',
+          limitTips: 'GCash transfers are instant and carry 0 fees via Mobily Pay.',
+          limitTipsAr: 'تحويلات GCash فورية وبدون رسوم عبر موبايلي باي.',
+          channelTip: 'Urpay matches BDO Bank rates best on weekdays.'
+        };
       default:
-        return [
-          { title: 'Digital Wallets First', desc: 'Digital wallet routes are usually 40% cheaper and 10x faster than traditional brick-and-mortar queues.' }
-        ];
+        return {
+          bestDay: 'Wednesday',
+          bestDayAr: 'الأربعاء',
+          limitTips: 'Compare mobile wallets (STC Pay/Urpay) vs cash pick up before sending.',
+          limitTipsAr: 'قارن المحافظ الرقمية مقابل الاستلام النقدي قبل التحويل.',
+          channelTip: 'Direct bank transfers are processed instantly within business hours.'
+        };
     }
   };
 
-  const currentTips = getCorridorTips(selectedCorridorId);
+  const tips = getCorridorTips(selectedCorridorId);
 
   return (
-    <div className="space-y-8 pb-16 text-white animate-fade-in">
+    <div className="space-y-8 pb-24">
       
-      {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-2">
-          <TrendingUp className="w-8 h-8 text-[#00E07A]" />
-          <span>{t('insightsTitle')}</span>
+      {/* Page Header */}
+      <div className={`space-y-2 ${isRtl ? 'text-right' : 'text-left'}`}>
+        <h1 className="text-2xl sm:text-3xl font-sans font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <Compass className="w-7 h-7 text-emerald-600 shrink-0" />
+          {t.corridorInsights}
         </h1>
-        <p className="text-[#AFC4D8] text-sm max-w-2xl leading-relaxed">
-          {t('insightsSub')}
+        <p className="text-sm text-slate-500 max-w-2xl leading-relaxed">
+          Unlock community data to optimize when, how, and which providers save you the most money.
         </p>
       </div>
 
-      {/* Selector & Quick Stats Row */}
-      <div className="bg-[#061B3A] border border-white/10 p-6 rounded-[24px] shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <label className="block text-[10px] font-bold text-[#B8C7D9]/60 uppercase tracking-widest mb-1.5 font-mono">
-            {t('selectCorridor')}
-          </label>
-          <select
-            id="insights-corridor-select"
-            value={selectedCorridorId}
-            onChange={(e) => setSelectedCorridorId(e.target.value as CorridorId)}
-            className="bg-[#031126] text-white text-base font-bold px-4 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-[#00C16A] cursor-pointer min-w-[220px]"
-          >
-            {CORRIDORS.map((c) => (
-              <option key={c.id} value={c.id} className="bg-[#031126] text-white">
-                {c.flag} {language === 'en' ? c.nameEn : c.nameAr} ({c.currencyCode})
-              </option>
-            ))}
-          </select>
+      {/* Corridor Selector Card */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className={`${isRtl ? 'text-right' : 'text-left'}`}>
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-widest">Analyze Corridor</span>
+          <h3 className="text-base font-bold text-slate-800 mt-1">
+            Saudi Arabia (SAR) to {activeCorridor.flag} {language === 'en' ? activeCorridor.toCountry : activeCorridor.toCountryAr} ({activeCorridor.currencyCode})
+          </h3>
         </div>
 
-        {/* Quick Corridor Stats Card */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 w-full md:w-auto md:divide-x md:rtl:divide-x-reverse md:divide-white/10">
-          
-          <div className="md:px-4">
-            <span className="text-[10px] text-[#B8C7D9]/60 block uppercase font-semibold font-sans">{t('averageFeeTitle')}</span>
-            <span className="text-lg font-bold text-white font-mono mt-0.5 block">8.00 - 10.00 SAR</span>
-            <span className="text-[10px] text-[#00E07A] block font-sans font-bold mt-0.5">
-              {language === 'en' ? 'Digital Wallets' : 'المحافظ الرقمية'}
-            </span>
-          </div>
-
-          <div className="md:px-4">
-            <span className="text-[10px] text-[#B8C7D9]/60 block uppercase font-semibold font-sans">{t('rateVolatility')}</span>
-            <span className="text-lg font-bold text-[#00E07A] font-mono mt-0.5 block">
-              {selectedCorridorId === 'PK' || selectedCorridorId === 'EG' ? '0.84% (Med)' : '0.12% (Low)'}
-            </span>
-            <span className="text-[10px] text-[#B8C7D9]/60 block font-sans mt-0.5">
-              {language === 'en' ? 'Last 15 days' : 'آخر ١٥ يوماً'}
-            </span>
-          </div>
-
-          <div className="col-span-2 sm:col-span-1 md:px-4">
-            <span className="text-[10px] text-[#B8C7D9]/60 block uppercase font-semibold font-sans">
-              {language === 'en' ? 'Optimal Day' : 'اليوم الأمثل'}
-            </span>
-            <span className="text-lg font-black text-white font-mono mt-0.5 block">
-              {language === 'en' ? 'Tuesday' : 'الثلاثاء'}
-            </span>
-            <span className="text-[10px] text-[#B8C7D9]/60 block font-sans mt-0.5">
-              {language === 'en' ? 'Before weekend rush' : 'قبل زحمة نهاية الأسبوع'}
-            </span>
-          </div>
-
-        </div>
+        <select
+          value={selectedCorridorId}
+          onChange={(e) => setSelectedCorridorId(e.target.value)}
+          className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-750 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-w-[200px] cursor-pointer transition-colors"
+        >
+          {CORRIDORS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.flag} {language === 'en' ? c.toCountry : c.toCountryAr}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Main layout: Line chart on left, timing guidance/tips on right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {/* Corridor Quick Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         
-        {/* Left Side: Historical Trend Chart */}
-        <div className="lg:col-span-8 bg-[#061B3A] border border-white/10 p-6 rounded-[24px] shadow-2xl space-y-4">
-          
-          <div className="flex justify-between items-center border-b border-white/10 pb-3">
-            <h3 className="font-extrabold text-white flex items-center gap-1.5 text-xs uppercase tracking-wider">
-              <Activity className="w-5 h-5 text-[#00E07A]" />
-              <span>{t('historicalRates')}</span>
-            </h3>
+        {/* Metric 1 */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-left">
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">Best Rate Provider</span>
+          <span className="text-sm font-black text-slate-800 block truncate">{bestRateProvider}</span>
+          <span className="text-xs text-emerald-600 font-bold font-mono">1 SAR = {highestRate}</span>
+        </div>
 
-            <div className="flex items-center gap-2 text-xs font-mono bg-[#031126] border border-white/10 px-2.5 py-1 rounded-lg text-[#00E07A]">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#00E07A]"></span>
-              <span className="text-white font-bold">SAR to {selectedCorridor.currencyCode}</span>
+        {/* Metric 2 */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-left">
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">Cheapest Fees</span>
+          <span className="text-sm font-black text-slate-800 block truncate">{bestFeeProvider}</span>
+          <span className="text-xs text-emerald-600 font-bold font-mono">{lowestFee === 0 ? '0 SAR Fee' : `${lowestFee} SAR Fee`}</span>
+        </div>
+
+        {/* Metric 3 */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-left">
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">Best Day to Send</span>
+          <span className="text-sm font-black text-indigo-700 block">{language === 'en' ? tips.bestDay : tips.bestDayAr}</span>
+          <span className="text-xs text-slate-400 font-semibold">Historically higher rates</span>
+        </div>
+
+        {/* Metric 4 */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-left">
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">Trend Status</span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-sm font-black text-emerald-600 uppercase tracking-tight">STABLE / RISING</span>
+          </div>
+          <span className="text-xs text-slate-400 font-semibold">Weekly increase of 1.1%</span>
+        </div>
+
+      </div>
+
+      {/* Main Graph Panel & Tips Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+        
+        {/* Custom Rates Trend Chart (Col span 7) */}
+        <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 ${isRtl ? 'sm:flex-row-reverse text-right' : 'text-left'}`}>
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-1.5 justify-start">
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+                <span>Exchange Rate Trend (Past 7 Days)</span>
+              </h3>
+              <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">Reflects averages from Saudi Arabia to {activeCorridor.currencyCode}</p>
+            </div>
+
+            <div className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold font-mono">
+              High: {maxRate} • Low: {minRate}
             </div>
           </div>
 
-          {/* SVG Canvas Container */}
-          <div className="w-full overflow-x-auto pt-4">
-            <div className="min-w-[500px] h-[240px] relative">
-              <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full text-white/5">
-                {/* Horizontal grid lines */}
-                {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-                  const y = padding + ratio * (svgHeight - padding * 2);
-                  const rateVal = maxRate - ratio * rateRange;
-                  return (
-                    <g key={i} className="opacity-40">
-                      <line
-                        x1={padding}
-                        y1={y}
-                        x2={svgWidth - padding}
-                        y2={y}
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        strokeDasharray="4 4"
-                      />
-                      <text
-                        x={padding - 5}
-                        y={y + 3}
-                        textAnchor="end"
-                        className="text-[10px] fill-[#B8C7D9]/60 font-mono font-bold"
-                      >
-                        {rateVal.toFixed(2)}
-                      </text>
-                    </g>
-                  );
-                })}
+          {/* SVG Sparkline Graph */}
+          <div className="relative w-full overflow-x-auto py-2">
+            <svg 
+              viewBox={`0 0 ${svgWidth} ${svgHeight}`} 
+              className="w-full min-w-[400px] h-40 overflow-visible"
+            >
+              {/* Grid Lines */}
+              <line x1={padding} y1={padding} x2={svgWidth - padding} y2={padding} stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3" />
+              <line x1={padding} y1={svgHeight / 2} x2={svgWidth - padding} y2={svgHeight / 2} stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3" />
+              <line x1={padding} y1={svgHeight - padding} x2={svgWidth - padding} y2={svgHeight - padding} stroke="#e2e8f0" strokeWidth="1" />
 
-                {/* Shaded Area Fill under line */}
-                <path
-                  d={areaPath}
-                  fill="url(#chartGradient)"
-                  className="opacity-15"
-                />
+              {/* Gradient definition */}
+              <defs>
+                <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
 
-                {/* Main line path */}
-                <path
-                  d={linePath}
-                  fill="none"
-                  stroke="#00E07A"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+              {/* Area path */}
+              <path d={areaD} fill="url(#chart-grad)" />
 
-                {/* SVG Color Gradients */}
-                <defs>
-                  <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#00E07A" />
-                    <stop offset="100%" stopColor="#00E07A" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
+              {/* Sparkline Path */}
+              <path d={pathD} fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
-                {/* Nodes & tooltip pointers */}
-                {points.map((pt, idx) => {
-                  const isLast = idx === points.length - 1;
-                  return (
-                    <g key={idx} className="group cursor-pointer">
-                      <circle
-                        cx={pt.x}
-                        cy={pt.y}
-                        r={isLast ? "6" : "4"}
-                        fill={isLast ? "#00E07A" : "#031126"}
-                        stroke="#00E07A"
-                        strokeWidth="2.5"
-                        className="transition-all duration-200 hover:r-8"
-                      />
-                      
-                      {/* Label on Hover / Display */}
-                      <text
-                        x={pt.x}
-                        y={pt.y - 12}
-                        textAnchor="middle"
-                        className="text-[9px] font-mono font-bold fill-white opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 px-1 py-0.5"
-                      >
-                        {pt.rate}
-                      </text>
-
-                      {/* X-Axis labels */}
-                      {(idx % 2 === 0 || isLast) && (
-                        <text
-                          x={pt.x}
-                          y={svgHeight - 10}
-                          textAnchor="middle"
-                          className="text-[10px] fill-[#B8C7D9]/60 font-mono"
-                        >
-                          {pt.date}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
+              {/* Node points and hover rate values */}
+              {points.map((p, i) => (
+                <g key={i} className="group cursor-pointer">
+                  <circle 
+                    cx={p.x} 
+                    cy={p.y} 
+                    r="4" 
+                    fill="#ffffff" 
+                    stroke="#059669" 
+                    strokeWidth="2.5" 
+                    className="hover:r-6 hover:fill-emerald-600 transition-all"
+                  />
+                  {/* Tooltip rate */}
+                  <text 
+                    x={p.x} 
+                    y={p.y - 10} 
+                    textAnchor="middle" 
+                    fontSize="9" 
+                    fontWeight="bold" 
+                    fill="#334155"
+                    className="font-mono bg-white"
+                  >
+                    {p.rate}
+                  </text>
+                  {/* Day labels on X Axis */}
+                  <text 
+                    x={p.x} 
+                    y={svgHeight - 10} 
+                    textAnchor="middle" 
+                    fontSize="10" 
+                    fontWeight="600" 
+                    fill="#94a3b8"
+                  >
+                    {p.day}
+                  </text>
+                </g>
+              ))}
+            </svg>
           </div>
 
-          <div className="flex justify-between items-center text-[11px] text-[#B8C7D9]/60 border-t border-white/10 pt-3">
-            <span>💡 {language === 'en' ? 'Hover on circles to view rate value' : 'مرر على الدوائر لمشاهدة قيمة السعر'}</span>
-            <span className="font-mono">Min: {minRate.toFixed(3)} | Max: {maxRate.toFixed(3)}</span>
+          <div className={`p-3.5 bg-indigo-50 border border-indigo-100/50 rounded-xl flex items-start gap-2.5 text-xs text-indigo-800 ${
+            isRtl ? 'flex-row-reverse text-right' : 'flex-row text-left'
+          }`}>
+            <Zap className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <p className="leading-relaxed font-bold">
+              {t.trendUp} Use <strong>{bestRateProvider}</strong> inside your digital app today for the maximum savings.
+            </p>
           </div>
 
         </div>
 
-        {/* Right Side: Corridor specific advice & tips */}
-        <div className="lg:col-span-4 space-y-6">
-          
-          {/* Timing Guide Card */}
-          <div className="bg-[#061B3A] border border-white/10 p-6 rounded-[24px] shadow-2xl space-y-4">
-            <h3 className="font-extrabold text-white pb-2 border-b border-white/10 text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <Clock className="w-5 h-5 text-[#00E07A]" />
-              <span>{t('bestTimeToTransfer')}</span>
+        {/* Optimizations & Advice checklist (Col span 5) */}
+        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className={`space-y-1 ${isRtl ? 'text-right' : 'text-left'}`}>
+            <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-1.5 justify-start">
+              <Award className="w-4 h-4 text-emerald-600" />
+              <span>SariRemit Optimization Tips</span>
             </h3>
-
-            <div className="space-y-4 text-xs">
-              <div className="flex gap-3">
-                <span className="text-xl">📅</span>
-                <div>
-                  <h4 className="font-bold text-white">{t('bestDayTitle')}</h4>
-                  <p className="text-[#B8C7D9] mt-1 leading-relaxed text-[11px]">{t('bestDayDesc')}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <span className="text-xl">💳</span>
-                <div>
-                  <h4 className="font-bold text-white">{t('averageFeeTitle')}</h4>
-                  <p className="text-[#B8C7D9] mt-1 leading-relaxed text-[11px]">{t('averageFeeDesc')}</p>
-                </div>
-              </div>
-            </div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Simple advice verified by the community to avoid fee traps.</p>
           </div>
 
-          {/* Tips Checklist Accordion */}
-          <div className="bg-[#0B2A5B]/40 text-white p-6 rounded-[24px] space-y-4 border border-white/10 shadow-2xl">
-            <h3 className="font-bold text-xs flex items-center gap-1.5 text-[#F4B63F] uppercase tracking-wider font-mono">
-              <ShieldCheck className="w-5 h-5" />
-              <span>{language === 'en' ? 'Smart Transfer Checklist' : 'قائمة التحويل الذكي'}</span>
-            </h3>
-
-            <div className="space-y-4">
-              {currentTips.map((tip, idx) => (
-                <div key={idx} className="space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-white">
-                    <CheckCircle className="w-4 h-4 text-[#00E07A] shrink-0" />
-                    <span>{tip.title}</span>
-                  </div>
-                  <p className="text-[11px] text-[#B8C7D9] ps-5 leading-normal">
-                    {tip.desc}
-                  </p>
-                </div>
-              ))}
+          <div className="space-y-4 my-6">
+            
+            {/* Tip 1 */}
+            <div className={`flex items-start gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 ${isRtl ? 'flex-row-reverse text-right' : 'flex-row text-left'}`}>
+              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">Timing optimization</h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Avoid weekends if possible. Digital wallets and physical banks have slightly larger margins on Fridays and Saturdays. Weekdays yield 0.4% better rates.
+                </p>
+              </div>
             </div>
 
-            <div className="bg-[#061B3A] p-3 rounded-xl text-[10px] text-[#B8C7D9]/60 text-center font-mono border border-white/10">
-              {language === 'en' ? 'Source: Central Bank Regulations & Expat Feeds' : 'المصدر: أنظمة البنوك المركزية ومساهمات المغتربين'}
+            {/* Tip 2 */}
+            <div className={`flex items-start gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 ${isRtl ? 'flex-row-reverse text-right' : 'flex-row text-left'}`}>
+              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">Threshold waiver</h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {language === 'en' ? tips.limitTips : tips.limitTipsAr}
+                </p>
+              </div>
             </div>
+
+            {/* Tip 3 */}
+            <div className={`flex items-start gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 ${isRtl ? 'flex-row-reverse text-right' : 'flex-row text-left'}`}>
+              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+                <Landmark className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">Direct Partner tip</h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {tips.channelTip}
+                </p>
+              </div>
+            </div>
+
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 text-center">
+            <span className="text-[10px] text-slate-405 font-bold block uppercase tracking-wider">
+              Updated just minutes ago
+            </span>
           </div>
 
         </div>
 
       </div>
+
+      {/* Corridor FAQ Section */}
+      <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 className={`text-sm font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+          <HelpCircle className="w-4 h-4 text-emerald-600" />
+          <span>Community Corridor FAQs</span>
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-left">
+          <div className="p-4 bg-slate-50 rounded-xl space-y-1.5 border border-slate-100">
+            <h4 className="font-bold text-slate-800">Q: Does STC Pay charge cash pickup fees?</h4>
+            <p className="text-slate-400 leading-relaxed">
+              Yes, if you select cash pickup, the fee is usually higher (around 15-18 SAR) compared to sending to a bank account or mobile wallet (which is often around 5-10 SAR).
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 rounded-xl space-y-1.5 border border-slate-100">
+            <h4 className="font-bold text-slate-800">Q: How fast does Mobily Pay process to wallets?</h4>
+            <p className="text-slate-400 leading-relaxed">
+              GCash and bKash wallet transfers are virtually instant (under 2 minutes). Traditional bank transfers take up to 24 hours depending on recipient bank holidays.
+            </p>
+          </div>
+        </div>
+      </section>
 
     </div>
   );
-};
+}

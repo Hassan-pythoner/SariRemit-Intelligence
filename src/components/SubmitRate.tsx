@@ -1,903 +1,775 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useLanguage } from './LanguageContext';
-import { CORRIDORS, PROVIDERS } from '../data/mockData';
-import { ProviderId, CorridorId, CrowdsourcedRate, CommunityTransferVerification } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { TranslationDict, Corridor, Provider, RateSubmission } from '../types';
+import { CORRIDORS, PROVIDERS } from '../services/ratesService';
+import { saveCommunitySubmission, getAuthSession, fetchCommunitySubmissions } from '../services/supabaseService';
 import { 
-  PlusCircle, UploadCloud, Info, CheckCircle, FileText, ArrowRight, ArrowLeft,
-  AlertCircle, ShieldAlert, Award, FileSpreadsheet, Sparkles, ThumbsUp, KeyRound, ShieldCheck, Inbox, Shield, HelpCircle
+  PlusCircle, Upload, CheckCircle2, ShieldAlert, Sparkles, 
+  Trash2, Image as ImageIcon, ArrowRight, ArrowLeft, RefreshCw,
+  MapPin, Wallet, Landmark, HelpCircle, Check, Info
 } from 'lucide-react';
-import { submitCommunityTransferVerification, uploadScreenshot, trackEvent } from '../lib/firebase';
+import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
 
 interface SubmitRateProps {
-  addNewSubmission: (sub: Omit<CrowdsourcedRate, 'id' | 'timestamp' | 'votes' | 'isVerified'> & { screenshot?: File }) => void;
-  recentSubmissions: CrowdsourcedRate[];
-  upvoteSubmission: (id: string) => void;
-  verifySubmission: (id: string) => void;
-  userSession: { id?: string; name: string; email: string; homeCountry: CorridorId; isGuest?: boolean } | null;
-  onOpenAuthModal: () => void;
+  language: 'en' | 'ar';
+  t: TranslationDict;
+  onSubmissionSuccess: () => void;
 }
 
-export const SubmitRate: React.FC<SubmitRateProps> = ({
-  addNewSubmission,
-  recentSubmissions,
-  upvoteSubmission,
-  verifySubmission,
-  userSession,
-  onOpenAuthModal,
-}) => {
-  const { t, language, isRtl } = useLanguage();
-  const isEn = language === 'en';
+export default function SubmitRate({
+  language,
+  t,
+  onSubmissionSuccess,
+}: SubmitRateProps) {
+  const isRtl = language === 'ar';
 
-  // Multi-step state: 1 = Provider, 2 = Corridor, 3 = Details, 4 = Screenshot, 5 = Success
-  const [step, setStep] = useState<number>(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Form states
-  const [providerId, setProviderId] = useState<ProviderId>('urpay');
-  const [corridorId, setCorridorId] = useState<CorridorId>('PK');
-  const [amountSent, setAmountSent] = useState<string>('1000');
-  const [exchangeRate, setExchangeRate] = useState<string>('74.5');
-  const [transferFee, setTransferFee] = useState<string>('8.0');
-  const [vat, setVat] = useState<string>('1.2');
-  const [additionalCharges, setAdditionalCharges] = useState<string>('0');
-  const [receiveMethod, setReceiveMethod] = useState<'wallet' | 'bank' | 'cash'>('wallet');
+  // Relativized time text
+  const getRelativeTimeText = (isoString: string) => {
+    if (!isoString) return language === 'en' ? 'Recently' : 'مؤخراً';
+    const mins = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000);
+    if (mins <= 1) return language === 'en' ? 'Just now' : 'الآن';
+    if (mins < 60) return language === 'en' ? `${mins}m ago` : `منذ ${mins} د`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return language === 'en' ? `${hrs}h ago` : `منذ ${hrs} ساعة`;
+    return language === 'en' ? 'Recently' : 'مؤخراً';
+  };
   
-  // Drag & drop screenshot files
-  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
-  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
+  // Form states
+  const [providerId, setProviderId] = useState<string>('stc-pay');
+  const [corridorId, setCorridorId] = useState<string>(() => {
+    const session = getAuthSession();
+    return session.user?.preferredCorridorId || 'sa-pk';
+  });
+  const [sendAmount, setSendAmount] = useState<number>(1000);
+  const [exchangeRate, setExchangeRate] = useState<string>('');
+  const [transferFee, setTransferFee] = useState<number>(15);
+  const [vatAmount, setVatAmount] = useState<string>(''); // blank = auto compute
+  const [otherCosts, setOtherCosts] = useState<string>('0');
+  
+  // File upload state
+  const [dragActive, setDragActive] = useState<boolean>(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+
+  // Success & navigation timeline states
+  const [activeStep, setActiveStep] = useState<number>(1); // Timeline step (1, 2, 3)
+  const [success, setSuccess] = useState<boolean>(false);
+  const [validationError, setValidationError] = useState<string>('');
+  const [myRecentSubmissions, setMyRecentSubmissions] = useState<RateSubmission[]>([]);
+
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  const [isRefreshingHistory, setIsRefreshingHistory] = useState<boolean>(false);
+
+  // Fetch recent user contributions for live history updates
+  const loadSubmissions = () => {
+    const session = getAuthSession();
+    if (session.user) {
+      setIsRefreshingHistory(true);
+      fetchCommunitySubmissions()
+        .then((allSubmissions) => {
+          const filtered: RateSubmission[] = allSubmissions
+            .filter(
+              s => s.submitted_by_email?.toLowerCase() === session.user?.email.toLowerCase()
+            )
+            .map(s => ({
+              id: s.id,
+              providerId: s.provider_id,
+              providerName: s.provider_name,
+              corridorId: s.corridor_id,
+              exchangeRate: s.exchange_rate,
+              transferFee: s.transfer_fee,
+              sendAmount: s.send_amount,
+              receiveAmount: s.receive_amount,
+              submittedByEmail: s.submitted_by_email,
+              submittedAt: s.submitted_at,
+              screenshotName: s.screenshot_name,
+              status: s.status,
+              vatAmount: s.vat_amount,
+              other_costs: s.other_costs
+            }));
+          setMyRecentSubmissions(filtered);
+          setIsRefreshingHistory(false);
+        })
+        .catch((err) => {
+          console.error("Failed to load user submissions in SubmitRate:", err);
+          setIsRefreshingHistory(false);
+        });
+    }
+  };
+
+  useEffect(() => {
+    loadSubmissions();
+
+    // Set up active automatic liveness polling every 8 seconds
+    const interval = setInterval(() => {
+      loadSubmissions();
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [success, refreshTrigger]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Interactive help toggle
-  const [showHelp, setShowHelp] = useState(false);
+  const activeCorridor = CORRIDORS.find(c => c.id === corridorId) || CORRIDORS[0];
+  const activeProvider = PROVIDERS.find(p => p.id === providerId) || PROVIDERS[0];
 
-  // Success message states
-  const [errorMsg, setErrorMsg] = useState('');
-
-  // Fire tracking on step start
+  // Auto-fill suggested exchange rate when corridor changes
   useEffect(() => {
-    if (step === 1) {
-      trackEvent('verification_started', { page: 'verify_transfer', step: 1 });
-    }
-  }, [step]);
+    setExchangeRate(activeCorridor.baseExchangeRate.toString());
+    setTransferFee(activeCorridor.typicalFee);
+  }, [corridorId]);
 
-  // Handle file select
-  const handleFileChange = (file: File) => {
-    const allowedExtensions = ['png', 'jpg', 'jpeg', 'pdf'];
-    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
-    
-    if (!allowedExtensions.includes(fileExtension)) {
-      setErrorMsg(
-        isEn 
-          ? 'Invalid file format. Please upload PNG, JPG, JPEG, or PDF.' 
-          : 'صيغة ملف غير صالحة. يرجى تحميل ملف PNG أو JPG أو JPEG أو PDF.'
-      );
-      trackEvent('verification_rejected', { reason: 'invalid_file_format', file_name: file.name });
-      return;
-    }
+  // Compute recipient amount based on entered rates
+  const parsedRate = parseFloat(exchangeRate) || 0;
+  const calculatedReceive = sendAmount * parsedRate;
 
-    // Max size 10MB
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setErrorMsg(
-        isEn 
-          ? 'File is too large. Maximum size is 10MB.' 
-          : 'حجم الملف كبير جداً. الحد الأقصى هو ١٠ ميجابايت.'
-      );
-      trackEvent('verification_rejected', { reason: 'file_too_large', file_size: file.size });
-      return;
-    }
-
-    setErrorMsg('');
-    setScreenshotFile(file);
-    trackEvent('screenshot_uploaded', { file_name: file.name, file_size: file.size });
-
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setScreenshotPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      // For PDF show a placeholder preview icon
-      setScreenshotPreview('pdf_placeholder');
-    }
-  };
-
-  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFileChange(e.target.files[0]);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
+  // File drag & drop handlers
+  const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragOver(true);
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
   };
 
-  const handleDragLeave = () => {
-    setIsDragOver(false);
+  const processFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setValidationError(language === 'en' ? 'Only images are supported' : 'الرجاء تحميل صور فقط');
+      return;
+    }
+    
+    setValidationError('');
+    setSelectedFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPreviewUrl(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Simulate upload progress
+    setIsUploading(true);
+    setUploadProgress(0);
+    const interval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsUploading(false);
+          return 100;
+        }
+        return prev + 25;
+      });
+    }, 150);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileChange(e.dataTransfer.files[0]);
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
     }
   };
 
-  // Safe parsed values
-  const parsedAmount = Math.max(0, Number(amountSent) || 0);
-  const parsedRate = Math.max(0, Number(exchangeRate) || 0);
-  const parsedFee = Math.max(0, Number(transferFee) || 0);
-  const parsedVat = Math.max(0, Number(vat) || 0);
-  const parsedCharges = Math.max(0, Number(additionalCharges) || 0);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
+    }
+  };
 
-  // Auto-calculate recipient payout
-  const calculatedRecipientAmount = Math.max(0, (parsedAmount - parsedFee - parsedVat - parsedCharges) * parsedRate);
+  const removeFile = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setUploadProgress(0);
+    setIsUploading(false);
+  };
 
-  // Checklist Validation
-  const isFormComplete = 
-    providerId && 
-    corridorId && 
-    parsedAmount > 0 && 
-    parsedRate > 0 && 
-    parsedFee >= 0 && 
-    parsedVat > 0 && 
-    screenshotFile !== null;
+  const handleNextStep = () => {
+    setValidationError('');
+    if (activeStep === 1) {
+      if (!providerId) {
+        setValidationError(language === 'en' ? 'Please select a provider' : 'الرجاء اختيار مزود الخدمة');
+        return;
+      }
+      setActiveStep(2);
+    } else if (activeStep === 2) {
+      if (!exchangeRate || isNaN(parseFloat(exchangeRate)) || parseFloat(exchangeRate) <= 0) {
+        setValidationError(language === 'en' ? 'Please enter a valid exchange rate' : 'الرجاء إدخال سعر صرف صحيح');
+        return;
+      }
+      if (sendAmount <= 0) {
+        setValidationError(language === 'en' ? 'Please enter a valid send amount' : 'الرجاء إدخال مبلغ إرسال صحيح');
+        return;
+      }
+      setActiveStep(3);
+    }
+  };
 
-  // Handle Form Submit
+  const handlePrevStep = () => {
+    setValidationError('');
+    setActiveStep(prev => Math.max(1, prev - 1));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!isFormComplete) {
-      setErrorMsg(
-        isEn 
-          ? 'Please complete all required fields and upload a screenshot.' 
-          : 'يرجى إكمال جميع الحقول المطلوبة وتحميل لقطة الشاشة.'
-      );
+    setValidationError('');
+
+    const parsedVat = vatAmount !== '' ? parseFloat(vatAmount) : undefined;
+    const parsedOtherCosts = parseFloat(otherCosts) || 0;
+
+    if (parsedVat !== undefined && (isNaN(parsedVat) || parsedVat < 0)) {
+      setValidationError(language === 'en' ? 'Please enter a valid VAT amount' : 'الرجاء إدخال ضريبة قيمة مضافة صحيحة');
+      return;
+    }
+    if (isNaN(parsedOtherCosts) || parsedOtherCosts < 0) {
+      setValidationError(language === 'en' ? 'Please enter valid other costs' : 'الرجاء إدخال تكاليف أخرى صحيحة');
       return;
     }
 
-    setIsSubmitting(true);
-    const verificationId = `ver-${Date.now()}`;
-    const timestampStr = new Date().toISOString();
+    try {
+      setIsUploading(true);
+      const session = getAuthSession();
+      await saveCommunitySubmission({
+        provider_id: providerId,
+        provider_name: activeProvider.name,
+        corridor_id: corridorId,
+        exchange_rate: parsedRate,
+        transfer_fee: transferFee,
+        send_amount: sendAmount,
+        receive_amount: calculatedReceive,
+        submitted_by_name: session.user?.name || 'Ahmed Hassan',
+        submitted_by_email: session.user?.email || 'ahmed.hassan@saudi-expats.com',
+        screenshot_name: selectedFile ? selectedFile.name : undefined,
+        vat_amount: parsedVat,
+        other_costs: parsedOtherCosts,
+      });
 
-    let finalScreenshotUrl = screenshotPreview || '';
-    let storagePath = '';
-    
-    if (screenshotFile) {
-      storagePath = `community_transfer_verifications/${verificationId}_${screenshotFile.name}`;
-      try {
-        finalScreenshotUrl = await uploadScreenshot(screenshotFile, storagePath);
-      } catch (err) {
-        console.warn("Error uploading screenshot, fallback to local URL:", err);
-      }
+      setIsUploading(false);
+      setSuccess(true);
+      onSubmissionSuccess();
+
+      // Reset Form & active step
+      setTimeout(() => {
+        setSuccess(false);
+        setVatAmount('');
+        setOtherCosts('0');
+        setActiveStep(1);
+        removeFile();
+      }, 4000);
+    } catch (err: any) {
+      console.error('Failed to submit rate:', err);
+      setValidationError(language === 'en' ? 'Failed to save rate submission. Please try again.' : 'فشل حفظ السعر المرسل. الرجاء المحاولة مجدداً.');
+      setIsUploading(false);
     }
-
-    const selectedCorrObj = CORRIDORS.find(c => c.id === corridorId) || CORRIDORS[0];
-    const selectedProviderObj = PROVIDERS.find(p => p.id === providerId) || PROVIDERS[0];
-
-    const newVerification: CommunityTransferVerification = {
-      id: verificationId,
-      userId: userSession?.id || 'guest_user',
-      userEmail: userSession?.email || 'guest@example.com',
-      sessionId: sessionStorage.getItem('sariremit_session_id') || 'session_xyz',
-      providerId: providerId,
-      providerName: selectedProviderObj.name,
-      corridor: corridorId,
-      destinationCountry: selectedCorrObj.nameEn,
-      receiveCurrency: selectedCorrObj.currencyCode,
-      amountSent: parsedAmount,
-      exchangeRate: parsedRate,
-      transferFee: parsedFee,
-      vatAmount: parsedVat,
-      additionalCharges: parsedCharges,
-      receiveMethod: receiveMethod,
-      recipientAmount: calculatedRecipientAmount,
-      screenshotUrl: finalScreenshotUrl,
-      screenshotStoragePath: storagePath,
-      submissionStatus: "pending",
-      verificationStatus: "pending_review",
-      reviewedBy: null,
-      reviewNotes: "",
-      createdAt: timestampStr,
-      updatedAt: timestampStr,
-
-      // Compatibility fields with snake_case
-      user_id: userSession?.id || 'guest_user',
-      session_id: sessionStorage.getItem('sariremit_session_id') || 'session_xyz',
-      provider: providerId,
-      amount_sent: parsedAmount,
-      exchange_rate: parsedRate,
-      transfer_fee: parsedFee,
-      vat: parsedVat,
-      additional_charges: parsedCharges,
-      receive_method: receiveMethod,
-      recipient_amount: calculatedRecipientAmount,
-      screenshot_url: finalScreenshotUrl,
-      submission_status: "pending",
-      verification_status: "pending_review",
-      created_at: timestampStr,
-      updated_at: timestampStr
-    };
-
-    // Save Verification locally and push to Firestore
-    await submitCommunityTransferVerification(newVerification);
-
-    // Track completed verification event
-    trackEvent('verification_completed', {
-      verification_id: verificationId,
-      provider: providerId,
-      corridor: corridorId,
-      amount: parsedAmount,
-      exchange_rate: parsedRate,
-      transfer_fee: parsedFee,
-      vat: parsedVat
-    });
-
-    // Also call existing app state sync to display in global lists
-    addNewSubmission({
-      providerId,
-      corridorId,
-      amountSar: parsedAmount,
-      exchangeRate: parsedRate,
-      fee: parsedFee,
-      recipientAmount: calculatedRecipientAmount,
-      submittedBy: userSession ? userSession.name : 'Expat Member',
-      screenshotUrl: finalScreenshotUrl && finalScreenshotUrl !== 'pdf_placeholder' ? finalScreenshotUrl : undefined
-    });
-
-    setIsSubmitting(false);
-    // Move to success step
-    setStep(5);
   };
 
-  const selectedCorr = CORRIDORS.find(c => c.id === corridorId) || CORRIDORS[0];
-  const selectedProvider = PROVIDERS.find(p => p.id === providerId) || PROVIDERS[0];
-
   return (
-    <div className="space-y-8 pb-16 text-white animate-fade-in max-w-4xl mx-auto">
+    <div className={`space-y-6 pb-24 text-sds-text ${isRtl ? 'text-right' : 'text-left'} animate-fadeIn`}>
       
       {/* Page Header */}
-      <div className="space-y-2 text-center">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#00C16A]/10 border border-[#00C16A]/20 text-[10px] font-bold text-[#00E07A] rounded-full font-mono uppercase tracking-wider">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>{isEn ? 'Trust-First Community Verification' : 'توثيق مجتمعي موثوق'}</span>
-        </span>
-        <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">
-          {isEn ? 'Verify a Transfer' : 'توثيق عملية تحويل'}
+      <div className="space-y-1 text-left">
+        <h1 className="text-2xl sm:text-3xl font-sans font-black text-white tracking-tight flex items-center gap-2.5">
+          <PlusCircle className="w-7 h-7 text-[#10B981] shrink-0" />
+          <span>{t.submitRate}</span>
         </h1>
-        <p className="text-[#AFC4D8] text-sm max-w-2xl mx-auto leading-relaxed">
-          {isEn 
-            ? "Submit evidence of your completed remittance to help keep SariRemit's exchange rates 100% accurate and gain trust points."
-            : 'شارك إثبات حوالتك المكتملة لمساعدة مجتمعنا في الحفاظ على دقة أسعار الصرف بنسبة ١٠٠٪ والحصول على نقاط الثقة.'}
+        <p className="text-xs text-sds-text-sec max-w-2xl">
+          {t.submitRateDesc}
         </p>
       </div>
 
-      {/* Auth Gate for non-logged-in users */}
-      {!userSession ? (
-        <div className="max-w-xl mx-auto bg-[#0B1E35] border border-white/5 p-8 rounded-[28px] shadow-2xl text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="w-16 h-16 rounded-2xl bg-[#00E07A]/10 border border-[#00E07A]/25 flex items-center justify-center text-[#00E07A] shadow-lg">
-              <KeyRound className="w-8 h-8" />
-            </div>
+      {success ? (
+        <div className="bg-[#0C2547] border border-[#10B981]/30 rounded-3xl p-8 text-center max-w-xl mx-auto space-y-4 shadow-lg">
+          <div className="w-16 h-16 rounded-full bg-[#10B981]/10 text-[#10B981] flex items-center justify-center mx-auto shadow-md border border-[#10B981]/20">
+            <CheckCircle2 className="w-10 h-10" />
           </div>
-
-          <div className="space-y-2">
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-[#00E07A]/10 border border-[#00E07A]/20 text-[9px] font-bold text-[#00E07A] rounded-full font-mono uppercase tracking-wider">
-              {isEn ? 'MEMBERS ONLY' : 'للأعضاء فقط'}
-            </span>
-            <h3 className="text-xl font-extrabold text-white">
-              {isEn ? 'Verify Transfer Evidence' : 'توثيق حوالتك المكتملة'}
-            </h3>
-            <p className="text-xs text-[#AFC4D8] max-w-sm mx-auto leading-relaxed">
-              {isEn
-                ? 'To protect community accuracy and maintain elite trust indexes, only registered members can verify transfers. Create an account in seconds!'
-                : 'لحماية دقة بيانات المجتمع والأسعار المعتمدة، تقتصر كتابة وتوثيق الأسعار على الأعضاء المسجلين. يستغرق التسجيل ثوانٍ معدودة!'}
-            </p>
-          </div>
-
-          <div className="pt-2 max-w-xs mx-auto space-y-3">
-            <button
-              id="verify-transfer-gate-btn"
-              onClick={onOpenAuthModal}
-              className="w-full py-3.5 bg-[#00C16A] hover:bg-[#00E07A] text-[#071326] font-extrabold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 uppercase tracking-wider"
-            >
-              <span>{isEn ? 'Sign In / Register Now' : 'تسجيل دخول / إنشاء حساب'}</span>
-              {isRtl ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
-            </button>
-            <div className="flex items-center justify-center gap-1.5 text-[10px] text-[#7E96AA]">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#00E07A]" />
-              <span>{isEn ? 'Earn +15 Expat Trust Points instantly' : 'احصل على +١٥ نقطة موثوقية فوراً'}</span>
-            </div>
+          <h3 className="text-lg font-black text-white uppercase tracking-wide">
+            {language === 'en' ? 'Thank you, Rate Submitted!' : 'شكراً لك، تم إرسال السعر بنجاح!'}
+          </h3>
+          <p className="text-xs text-sds-text-sec leading-relaxed">
+            {language === 'en' 
+              ? "Your rate contribution has been submitted to the SariRemit verification system. Once approved, it will update live for fellow expats."
+              : "تم إرسال مساهمتك بنجاح إلى نظام التدقيق. بمجرد الموافقة عليها، سيتم تحديث الأسعار للمغتربين الآخرين."}
+          </p>
+          <div className="p-4 bg-[#071A35] rounded-xl max-w-sm mx-auto text-xs font-bold text-[#10B981] font-mono border border-sds-border">
+            {activeProvider.name} • 1 SAR = {parsedRate} {activeCorridor.currencyCode}
           </div>
         </div>
       ) : (
-        <div className="bg-[#0B1E35] border border-white/5 rounded-[28px] shadow-2xl overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* Progress Indicator Steps (Visible only for non-success steps) */}
-          {step < 5 && (
-            <div className="bg-[#071326]/60 border-b border-white/5 px-6 py-5">
-              <div className="flex justify-between items-center max-w-lg mx-auto relative">
-                {/* Connecting background line */}
-                <div className="absolute left-0 right-0 top-1/2 h-[2px] bg-white/5 -translate-y-1/2 z-0" />
-                <div 
-                  className="absolute left-0 top-1/2 h-[2px] bg-[#00E07A] -translate-y-1/2 z-0 transition-all duration-300" 
-                  style={{ width: `${((step - 1) / 3) * 100}%` }}
-                />
+          {/* TIMELINE FORM - LEFT (Col span 7) */}
+          <div className="lg:col-span-7 bg-[#0C2547] border border-sds-border rounded-3xl p-6 sm:p-8 space-y-6 shadow-sds-lg">
+            
+            {/* INTERACTIVE TIMELINE HEADER */}
+            <div className="relative flex justify-between items-center max-w-md mx-auto mb-6">
+              {/* Timeline Connector Line */}
+              <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-sds-border/60 -translate-y-1/2 pointer-events-none" />
+              <div 
+                className="absolute top-1/2 left-4 h-0.5 bg-[#10B981] -translate-y-1/2 transition-all duration-300 pointer-events-none" 
+                style={{ width: activeStep === 1 ? '0%' : activeStep === 2 ? '50%' : '100%' }}
+              />
 
-                {[1, 2, 3, 4].map((num) => {
-                  const isActive = step === num;
-                  const isCompleted = step > num;
-                  const stepLabel = [
-                    isEn ? 'Provider' : 'المحفظة',
-                    isEn ? 'Corridor' : 'الوجهة',
-                    isEn ? 'Details' : 'التفاصيل',
-                    isEn ? 'Evidence' : 'الإثبات'
-                  ][num - 1];
+              {/* Step 1 Node */}
+              <button 
+                type="button"
+                onClick={() => setActiveStep(1)}
+                className={`relative z-10 w-9 h-9 rounded-full font-black text-xs font-mono transition-all border flex items-center justify-center ${
+                  activeStep >= 1 
+                    ? 'bg-[#10B981] border-[#10B981] text-[#071A35]' 
+                    : 'bg-[#071A35] border-sds-border text-sds-text-sec'
+                }`}
+              >
+                {activeStep > 1 ? <Check className="w-4 h-4" /> : '1'}
+                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-black uppercase tracking-wider text-sds-text-sec whitespace-nowrap">
+                  Channel
+                </span>
+              </button>
 
-                  return (
-                    <div key={num} className="relative z-10 flex flex-col items-center gap-1.5">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          if (isCompleted || num < step) {
-                            setStep(num);
-                          }
-                        }}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold font-mono transition-all duration-300 ${
-                          isActive 
-                            ? 'bg-[#00E07A] text-[#071326] shadow-[0_0_12px_#00E07A]' 
-                            : isCompleted 
-                              ? 'bg-amber-400 text-[#071326]' 
-                              : 'bg-[#10263D] text-[#7E96AA] border border-white/5'
-                        }`}
-                      >
-                        {isCompleted ? '✓' : num}
-                      </button>
-                      <span className={`text-[10px] font-bold tracking-wider uppercase font-sans ${
-                        isActive ? 'text-[#00E07A]' : isCompleted ? 'text-amber-400' : 'text-[#7E96AA]'
-                      }`}>
-                        {stepLabel}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              {/* Step 2 Node */}
+              <button 
+                type="button"
+                onClick={() => activeStep >= 2 ? setActiveStep(2) : null}
+                className={`relative z-10 w-9 h-9 rounded-full font-black text-xs font-mono transition-all border flex items-center justify-center ${
+                  activeStep >= 2 
+                    ? 'bg-[#10B981] border-[#10B981] text-[#071A35]' 
+                    : 'bg-[#071A35] border-sds-border text-sds-text-sec'
+                }`}
+              >
+                {activeStep > 2 ? <Check className="w-4 h-4" /> : '2'}
+                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-black uppercase tracking-wider text-sds-text-sec whitespace-nowrap">
+                  Rate Info
+                </span>
+              </button>
+
+              {/* Step 3 Node */}
+              <button 
+                type="button"
+                className={`relative z-10 w-9 h-9 rounded-full font-black text-xs font-mono transition-all border flex items-center justify-center ${
+                  activeStep === 3 
+                    ? 'bg-[#10B981] border-[#10B981] text-[#071A35]' 
+                    : 'bg-[#071A35] border-sds-border text-sds-text-sec'
+                }`}
+              >
+                '3'
+                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-black uppercase tracking-wider text-sds-text-sec whitespace-nowrap">
+                  Proof & Submit
+                </span>
+              </button>
             </div>
-          )}
 
-          {/* Form and step content */}
-          <div className="p-6 md:p-8 space-y-6">
+            {/* Step Spacer */}
+            <div className="pt-6"></div>
 
-            {errorMsg && (
-              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl flex items-center gap-2 animate-fade-in text-xs font-bold">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <span>{errorMsg}</span>
+            {validationError && (
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs text-red-400 font-bold flex items-center gap-2 text-left">
+                <ShieldAlert className="w-4 h-4" />
+                <span>{validationError}</span>
               </div>
             )}
 
-            {/* Step 1: Choose Provider */}
-            {step === 1 && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold text-white">
-                    {isEn ? 'Select Remittance Channel' : 'اختر قناة تحويل الأموال'}
+            {/* TIMELINE STEP 1: CHANNEL SELECT */}
+            {activeStep === 1 && (
+              <div className="space-y-5 text-left animate-fadeIn">
+                <div className="border-b border-sds-border/60 pb-2">
+                  <h3 className="text-sm font-black text-white uppercase tracking-wide">
+                    Step 1: Remittance Channel Setup
                   </h3>
-                  <p className="text-xs text-[#7E96AA]">
-                    {isEn ? 'Choose the wallet provider or bank used for this transfer.' : 'حدد المحفظة الرقمية أو البنك المستخدم في التحويل.'}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {PROVIDERS.map((p) => {
-                    const isSelected = providerId === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setProviderId(p.id)}
-                        className={`flex flex-col items-center justify-center p-4 rounded-2xl border text-center transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-[#00E07A]/50 bg-[#00E07A]/5 ring-2 ring-[#00E07A]/20'
-                            : 'border-white/5 bg-[#071326] hover:bg-white/5 text-slate-300'
-                        }`}
-                      >
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg text-[#071326] ${p.logoColor} shadow-md mb-2`}>
-                          {p.name.charAt(0)}
-                        </div>
-                        <span className="text-xs font-extrabold text-white block">{p.name}</span>
-                        <span className="text-[10px] text-[#7E96AA] mt-1">⭐️ {p.rating}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="pt-4 flex justify-end border-t border-white/5">
-                  <button
-                    type="button"
-                    onClick={() => setStep(2)}
-                    className="px-6 py-2.5 bg-[#00C16A] hover:bg-[#00E07A] text-[#071326] font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1 uppercase tracking-wider cursor-pointer"
-                  >
-                    <span>{isEn ? 'Continue' : 'متابعة'}</span>
-                    {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Choose Corridor */}
-            {step === 2 && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold text-white">
-                    {isEn ? 'Select Destination Corridor' : 'اختر دولة الوجهة'}
-                  </h3>
-                  <p className="text-xs text-[#7E96AA]">
-                    {isEn ? 'Which sending corridor was this remittance made to?' : 'ما هي الدولة المستلمة التي تم تحويل الأموال إليها؟'}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {CORRIDORS.map((c) => {
-                    const isSelected = corridorId === c.id;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setCorridorId(c.id)}
-                        className={`flex flex-col items-center justify-center p-4 rounded-2xl border text-center transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-[#00E07A]/50 bg-[#00E07A]/5 ring-2 ring-[#00E07A]/20'
-                            : 'border-white/5 bg-[#071326] hover:bg-white/5 text-slate-300'
-                        }`}
-                      >
-                        <span className="text-3xl mb-2">{c.flag}</span>
-                        <span className="text-xs font-bold text-white block">{isEn ? c.nameEn : c.nameAr}</span>
-                        <span className="text-[10px] text-[#7E96AA] font-mono mt-0.5">{c.currencyCode}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="pt-4 flex justify-between border-t border-white/5">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-xl transition-all flex items-center gap-1 uppercase tracking-wider cursor-pointer"
-                  >
-                    {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-                    <span>{isEn ? 'Back' : 'رجوع'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setStep(3)}
-                    className="px-6 py-2.5 bg-[#00C16A] hover:bg-[#00E07A] text-[#071326] font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1 uppercase tracking-wider cursor-pointer"
-                  >
-                    <span>{isEn ? 'Continue' : 'متابعة'}</span>
-                    {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Transfer Details */}
-            {step === 3 && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold text-white">
-                    {isEn ? 'Remittance Details' : 'تفاصيل الحوالة المالية'}
-                  </h3>
-                  <p className="text-xs text-[#7E96AA]">
-                    {isEn ? 'Enter the precise values as displayed on your transfer receipt.' : 'أدخل البيانات الدقيقة كما تظهر في إيصال التحويل الخاص بك.'}
-                  </p>
+                  <p className="text-xs text-sds-text-sec mt-0.5">Which app or provider are you currently viewing today?</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Provider Selection */}
                   <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-[#7E96AA] uppercase tracking-widest">
-                      {isEn ? 'Sent Amount (SAR) *' : 'المبلغ المرسل (ريال سعودي) *'}
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      {t.provider}
                     </label>
-                    <input
-                      type="number"
-                      id="details-amount"
-                      value={amountSent}
-                      onChange={(e) => setAmountSent(e.target.value)}
-                      className="w-full bg-[#071326] text-white font-mono text-sm px-3.5 py-2.5 rounded-xl border border-white/5 focus:outline-none focus:border-[#00C16A]"
-                      required
-                    />
+                    <select
+                      value={providerId}
+                      onChange={(e) => setProviderId(e.target.value)}
+                      className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
+                    >
+                      {PROVIDERS.map((p) => (
+                        <option key={p.id} value={p.id} className="bg-[#071A35] text-white">
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
+                  {/* Corridor country Selection */}
                   <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-[#7E96AA] uppercase tracking-widest">
-                      {isEn ? 'Exchange Rate (1 SAR = X) *' : 'سعر الصرف (١ ريال = X) *'}
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      {t.chooseCountry}
                     </label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      id="details-rate"
-                      value={exchangeRate}
-                      onChange={(e) => setExchangeRate(e.target.value)}
-                      className="w-full bg-[#071326] text-white font-mono text-sm px-3.5 py-2.5 rounded-xl border border-white/5 focus:outline-none focus:border-[#00C16A]"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-[#7E96AA] uppercase tracking-widest">
-                      {isEn ? 'Transfer Fee (SAR) *' : 'رسوم التحويل (ريال سعودي) *'}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="details-fee"
-                      value={transferFee}
-                      onChange={(e) => setTransferFee(e.target.value)}
-                      className="w-full bg-[#071326] text-white font-mono text-sm px-3.5 py-2.5 rounded-xl border border-white/5 focus:outline-none focus:border-[#00C16A]"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-[#7E96AA] uppercase tracking-widest">
-                      {isEn ? 'VAT Amount (SAR) *' : 'ضريبة القيمة المضافة (ريال سعودي) *'}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="details-vat"
-                      value={vat}
-                      onChange={(e) => setVat(e.target.value)}
-                      className="w-full bg-[#071326] text-white font-mono text-sm px-3.5 py-2.5 rounded-xl border border-white/5 focus:outline-none focus:border-[#00C16A]"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-[#7E96AA] uppercase tracking-widest">
-                      {isEn ? 'Additional Charges (SAR) - Optional' : 'رسوم إضافية أخرى (ريال سعودي) - اختياري'}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      id="details-additional"
-                      value={additionalCharges}
-                      onChange={(e) => setAdditionalCharges(e.target.value)}
-                      className="w-full bg-[#071326] text-white font-mono text-sm px-3.5 py-2.5 rounded-xl border border-white/5 focus:outline-none focus:border-[#00C16A]"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-[#7E96AA] uppercase tracking-widest">
-                      {isEn ? 'Receive Method' : 'طريقة الاستلام'}
-                    </label>
-                    <div className="grid grid-cols-3 gap-1.5 bg-[#071326] p-1 rounded-xl border border-white/5">
-                      {(['wallet', 'bank', 'cash'] as const).map((method) => {
-                        const isSel = receiveMethod === method;
-                        const methodLabel = {
-                          wallet: isEn ? 'Wallet' : 'محفظة',
-                          bank: isEn ? 'Bank Account' : 'بنك',
-                          cash: isEn ? 'Cash Pickup' : 'نقدي'
-                        }[method];
-
-                        return (
-                          <button
-                            key={method}
-                            type="button"
-                            onClick={() => setReceiveMethod(method)}
-                            className={`py-2 text-[10px] font-bold rounded-lg transition-all cursor-pointer uppercase ${
-                              isSel 
-                                ? 'bg-[#00C16A] text-[#071326]' 
-                                : 'text-[#7E96AA] hover:text-white'
-                            }`}
-                          >
-                            {methodLabel}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <select
+                      value={corridorId}
+                      onChange={(e) => setCorridorId(e.target.value)}
+                      className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
+                    >
+                      {CORRIDORS.map((c) => (
+                        <option key={c.id} value={c.id} className="bg-[#071A35] text-white">
+                          {c.flag} {language === 'en' ? c.toCountry : c.toCountryAr} ({c.currencyCode})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                {/* Live Payout Calculations Area */}
-                <div className="bg-[#00E07A]/5 border border-[#00E07A]/25 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs font-mono">
-                  <div className="space-y-1">
-                    <span className="text-[#00E07A] font-extrabold block text-[11px] uppercase tracking-wider font-sans">
-                      {isEn ? 'Formula & Net Transferred' : 'معادلة الحساب وصافي المبلغ'}
-                    </span>
-                    <span className="text-[#AFC4D8] block text-[10px] leading-relaxed">
-                      ({parsedAmount} SAR - {parsedFee} Fee - {parsedVat} VAT {parsedCharges > 0 ? `- ${parsedCharges} Additional` : ''}) × {parsedRate} Rate
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 block font-sans uppercase">{isEn ? 'Recipient Receives:' : 'المستلم يحصل على:'}</span>
-                    <span className="text-2xl font-black text-[#00E07A] block mt-1">
-                      {calculatedRecipientAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })}{' '}
-                      {selectedCorr.currencyCode}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-4 flex justify-between border-t border-white/5">
+                <div className="pt-4 flex justify-end">
                   <button
                     type="button"
-                    onClick={() => setStep(2)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-xl transition-all flex items-center gap-1 uppercase tracking-wider cursor-pointer"
+                    onClick={handleNextStep}
+                    className="px-5 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                   >
-                    {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-                    <span>{isEn ? 'Back' : 'رجوع'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (parsedAmount <= 0 || parsedRate <= 0 || parsedVat < 0) {
-                        setErrorMsg(isEn ? 'Amount, Rate, and VAT must be greater than zero.' : 'يجب أن يكون المبلغ وسعر الصرف والضريبة أكبر من الصفر.');
-                        return;
-                      }
-                      setErrorMsg('');
-                      setStep(4);
-                    }}
-                    className="px-6 py-2.5 bg-[#00C16A] hover:bg-[#00E07A] text-[#071326] font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1 uppercase tracking-wider cursor-pointer"
-                  >
-                    <span>{isEn ? 'Continue' : 'متابعة'}</span>
-                    {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                    <span>Configure Rates</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Step 4: Upload screenshot evidence */}
-            {step === 4 && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold text-white">
-                    {isEn ? 'Upload Proof of Transfer' : 'تحميل إثبات التحويل'}
+            {/* TIMELINE STEP 2: RATES & FEES */}
+            {activeStep === 2 && (
+              <div className="space-y-5 text-left animate-fadeIn">
+                <div className="border-b border-sds-border/60 pb-2">
+                  <h3 className="text-sm font-black text-white uppercase tracking-wide">
+                    Step 2: Enter Today's Rates
                   </h3>
-                  <p className="text-xs text-[#7E96AA]">
-                    {isEn ? 'Attach a screenshot of your digital wallet receipt to complete verification.' : 'أرفق لقطة شاشة لإيصال محفظتك الرقمية لإكمال التوثيق.'}
-                  </p>
+                  <p className="text-xs text-sds-text-sec mt-0.5">Configure transaction parameters currently shown inside your wallet.</p>
                 </div>
 
-                {/* Educational Section - Why Require Screenshot? */}
-                <div className="bg-[#10263D] border border-white/5 rounded-2xl p-5 space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowHelp(!showHelp)}
-                    className="w-full flex justify-between items-center text-xs font-extrabold text-[#00E07A] uppercase tracking-wider cursor-pointer"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <HelpCircle className="w-4.5 h-4.5" />
-                      <span>{isEn ? 'Why do we require a screenshot?' : 'لماذا نطلب لقطة شاشة؟'}</span>
-                    </span>
-                    <span className="text-lg">{showHelp ? '−' : '+'}</span>
-                  </button>
-                  
-                  {showHelp && (
-                    <p className="text-xs text-[#AFC4D8] leading-relaxed animate-fade-in">
-                      {isEn 
-                        ? "Community financial intelligence is only useful when trustworthy. SariRemit verifies every single submission against a real mobile screenshot to eliminate fake rates, stale information, and bank manipulation. This guarantees maximum reliability for all expats."
-                        : 'الذكاء المالي للمجتمع يكون مفيداً فقط عندما يكون موثوقاً به بالكامل. يقوم ساري ريميت بالتحقق من كل مشاركة بمطابقتها مع لقطة شاشة حقيقية لاستبعاد الأسعار المزيفة، والبيانات القديمة، وتلاعب البنوك.'}
-                    </p>
-                  )}
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Send Amount */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      {t.sendingAmount}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={sendAmount}
+                        onChange={(e) => setSendAmount(Math.max(1, parseInt(e.target.value) || 0))}
+                        className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold font-mono text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sds-text-sec text-xs font-bold font-mono">
+                        SAR
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Privacy Notice */}
-                <div className="bg-amber-400/5 border border-amber-400/25 rounded-2xl p-4 flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                  <div className="text-xs space-y-1">
-                    <span className="font-extrabold text-amber-400 block uppercase tracking-wider">
-                      {isEn ? '🔒 Privacy Protected & Encrypted' : '🔒 الخصوصية محمية ومشفرة'}
-                    </span>
-                    <p className="text-[#AFC4D8] leading-relaxed">
-                      {isEn 
-                        ? 'SariRemit automatically blurs or ignores sensitive personal details (such as names, bank account balances, or account numbers). We only extract the sending channel, corridor, rate, fees, VAT, and timestamp to audit the transaction.'
-                        : 'يقوم ساري ريميت تلقائياً بحجب وتجاهل التفاصيل الشخصية الحساسة (مثل الأسماء، أو أرصدة الحسابات البنكية). نقوم فقط باستخراج قناة الإرسال، والوجهة، وسعر الصرف، والرسوم، والضريبة.'}
-                    </p>
+                  {/* Exchange Rate */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Rate (1 SAR =)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={exchangeRate}
+                        onChange={(e) => setExchangeRate(e.target.value)}
+                        placeholder={activeCorridor.baseExchangeRate.toString()}
+                        className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold font-mono text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sds-text-sec text-xs font-bold font-mono">
+                        {activeCorridor.currencyCode}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transfer Fee */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      {t.transferFee} (SAR)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={transferFee}
+                        onChange={(e) => setTransferFee(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold font-mono text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sds-text-sec text-xs font-bold font-mono">
+                        SAR
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Drag and drop Area */}
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-bold text-[#7E96AA] uppercase tracking-widest">
-                    {isEn ? 'Screenshot / Receipt Evidence (Required) *' : 'لقطة الشاشة / إثبات الإيصال (مطلوب) *'}
-                  </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* VAT */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      VAT Amount (SAR)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={vatAmount}
+                        onChange={(e) => setVatAmount(e.target.value)}
+                        placeholder="Auto (15%)"
+                        className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold font-mono text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sds-text-sec text-xs font-bold font-mono">
+                        SAR
+                      </div>
+                    </div>
+                  </div>
 
+                  {/* Other hidden costs */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Other / Hidden Costs (SAR)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={otherCosts}
+                        onChange={(e) => setOtherCosts(Math.max(0, parseInt(e.target.value) || 0).toString())}
+                        placeholder="0"
+                        className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold font-mono text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sds-text-sec text-xs font-bold font-mono">
+                        SAR
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-4">
+                  <button
+                    type="button"
+                    onClick={handlePrevStep}
+                    className="px-4 py-2.5 bg-[#071A35] border border-sds-border hover:bg-[#091f3e] text-slate-300 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Back</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextStep}
+                    className="px-5 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                  >
+                    <span>Upload Proof</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TIMELINE STEP 3: PROOF SCREENSHOT & SUBMIT */}
+            {activeStep === 3 && (
+              <div className="space-y-5 text-left animate-fadeIn">
+                <div className="border-b border-sds-border/60 pb-2">
+                  <h3 className="text-sm font-black text-white uppercase tracking-wide">
+                    Step 3: Verification Evidence
+                  </h3>
+                  <p className="text-xs text-sds-text-sec mt-0.5">Please provide a screenshot of the wallet interface as verification proof.</p>
+                </div>
+
+                {/* Drag and Drop */}
+                <div className="space-y-2">
                   <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
+                    onDragEnter={handleDrag}
+                    onDragOver={handleDrag}
+                    onDragLeave={handleDrag}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-[20px] p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 min-h-[180px] ${
-                      isDragOver
-                        ? 'border-[#00E07A] bg-[#00E07A]/10'
-                        : 'border-white/10 bg-[#071326] hover:bg-white/5'
+                    className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center min-h-[140px] ${
+                      dragActive 
+                        ? 'border-[#10B981] bg-[#10B981]/5' 
+                        : previewUrl 
+                        ? 'border-[#10B981]/40 bg-[#071A35]/50' 
+                        : 'border-sds-border hover:border-[#10B981] hover:bg-[#071A35]/30'
                     }`}
                   >
                     <input
-                      type="file"
-                      id="details-screenshot-file"
                       ref={fileInputRef}
-                      onChange={onFileInputChange}
-                      accept="image/png, image/jpeg, image/jpg, application/pdf"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
                       className="hidden"
                     />
 
-                    {screenshotPreview ? (
-                      <div className="space-y-3 w-full max-w-xs relative">
-                        {screenshotPreview === 'pdf_placeholder' ? (
-                          <div className="w-16 h-16 rounded-xl bg-slate-800/80 border border-white/10 flex items-center justify-center text-rose-400 mx-auto">
-                            <FileText className="w-10 h-10" />
-                          </div>
-                        ) : (
-                          <img
-                            src={screenshotPreview}
-                            alt="Verification receipt proof"
-                            referrerPolicy="no-referrer"
-                            className="max-h-32 mx-auto rounded-lg object-contain border border-white/10 shadow-lg"
-                          />
-                        )}
-                        <div className="text-[11px] text-[#00E07A] font-extrabold font-mono flex items-center justify-center gap-1">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span className="truncate max-w-[200px]">{screenshotFile?.name}</span>
+                    {previewUrl ? (
+                      <div className="space-y-3 w-full max-w-xs relative" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative mx-auto w-24 h-24 rounded-lg overflow-hidden border border-sds-border shadow-sm">
+                          <img src={previewUrl} alt="Screenshot Preview" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={removeFile}
+                            className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors shadow-xs"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          id="remove-verification-screenshot"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setScreenshotFile(null);
-                            setScreenshotPreview(null);
-                          }}
-                          className="absolute -top-2 -right-2 bg-slate-900 border border-white/15 text-white rounded-full p-1.5 text-xs transition-colors hover:bg-red-500/10 cursor-pointer shadow-md"
-                        >
-                          ✕
-                        </button>
+                        <div className="text-xs">
+                          <span className="font-bold text-white block truncate">{selectedFile?.name}</span>
+                          <span className="text-sds-text-sec font-mono">{(selectedFile!.size / 1024).toFixed(0)} KB</span>
+                        </div>
                       </div>
                     ) : (
                       <>
-                        <UploadCloud className="w-10 h-10 text-[#7E96AA]" />
-                        <p className="text-xs font-bold text-white">
-                          {isEn ? 'Drag and drop your screenshot here, or browse' : 'اسحب وأفلت لقطة الشاشة هنا، أو تصفح الملفات'}
-                        </p>
-                        <p className="text-[10px] text-[#7E96AA] leading-normal font-medium">
-                          Supports PNG, JPG, JPEG, PDF • Maximum size 10MB
-                        </p>
+                        <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/20 rounded-xl text-[#10B981] mb-2">
+                          <Upload className="w-6 h-6" />
+                        </div>
+                        <span className="text-xs font-bold text-white block">
+                          {language === 'en' ? 'Click to upload or drag screenshot' : 'اضغط للتحميل أو اسحب لقطة الشاشة'}
+                        </span>
+                        <span className="text-[10px] text-sds-text-sec block mt-1">
+                          PNG, JPG, up to 5MB (Receipts from STC Pay, Urpay, etc.)
+                        </span>
                       </>
+                    )}
+
+                    {isUploading && (
+                      <div className="w-full max-w-xs mt-3 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-sds-text-sec uppercase font-mono">
+                          <span>Uploading...</span>
+                          <span>{uploadProgress}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#10B981] transition-all" style={{ width: `${uploadProgress}%` }} />
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {/* Submit button with checklist check */}
-                <div className="pt-4 border-t border-white/5 space-y-4">
-                  
-                  {/* Submission Checklist Display */}
-                  <div className="bg-[#071326] p-4 rounded-xl border border-white/5 text-[11px] text-[#AFC4D8] space-y-2">
-                    <span className="font-extrabold text-white block uppercase tracking-wider text-[9px] mb-1">
-                      {isEn ? 'Verification Submission Checklist' : 'قائمة مراجعة متطلبات التوثيق'}
+                {/* Recipient breakdown receipt widget */}
+                <div className="p-4 bg-[#071A35] rounded-2xl border border-sds-border flex items-center justify-between text-left">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black text-[#F59E0B] block uppercase tracking-wider font-mono">Calculated Recipient Return</span>
+                    <span className="text-[10px] text-sds-text-sec block leading-relaxed max-w-[280px]">
+                      Formula: ({sendAmount} SAR - {transferFee} SAR Fee - {vatAmount !== '' ? parseFloat(vatAmount) || 0 : (transferFee * 0.15).toFixed(2)} SAR VAT {parseFloat(otherCosts) > 0 ? `- ${otherCosts} SAR Other` : ''}) * {parsedRate} Rate
                     </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className={providerId ? 'text-[#00E07A]' : 'text-[#7E96AA]'}>{providerId ? '✓' : '○'}</span>
-                        <span>{isEn ? 'Wallet Provider' : 'تحديد المحفظة'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={corridorId ? 'text-[#00E07A]' : 'text-[#7E96AA]'}>{corridorId ? '✓' : '○'}</span>
-                        <span>{isEn ? 'Sending Corridor' : 'تحديد الوجهة'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={parsedAmount > 0 && parsedRate > 0 && parsedVat > 0 ? 'text-[#00E07A]' : 'text-[#7E96AA]'}>
-                          {parsedAmount > 0 && parsedRate > 0 && parsedVat > 0 ? '✓' : '○'}
-                        </span>
-                        <span>{isEn ? 'Rates, Fee, VAT' : 'الأسعار والرسوم والضريبة'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={screenshotFile ? 'text-[#00E07A]' : 'text-[#7E96AA]'}>{screenshotFile ? '✓' : '○'}</span>
-                        <span>{isEn ? 'Evidence Receipt' : 'إرفاق الإيصال'}</span>
-                      </div>
-                    </div>
                   </div>
-
-                  <div className="flex justify-between items-center">
-                    <button
-                      type="button"
-                      onClick={() => setStep(3)}
-                      className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-xl transition-all flex items-center gap-1 uppercase tracking-wider cursor-pointer"
-                    >
-                      {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-                      <span>{isEn ? 'Back' : 'رجوع'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      id="verify-transfer-submit-btn"
-                      disabled={!isFormComplete || isSubmitting}
-                      onClick={handleSubmit}
-                      className={`px-8 py-3 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                        isFormComplete && !isSubmitting
-                          ? 'bg-[#00C16A] hover:bg-[#00E07A] text-[#071326] shadow-lg shadow-[#00C16A]/10' 
-                          : 'bg-slate-800 text-[#7E96AA] border border-white/5 cursor-not-allowed opacity-60'
-                      }`}
-                    >
-                      {isSubmitting ? (
-                        <div className="w-4 h-4 border-2 border-[#071326] border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <ShieldCheck className="w-4 h-4" />
-                      )}
-                      <span>{isSubmitting ? (isEn ? 'Submitting...' : 'جاري التقديم...') : (isEn ? 'Verify Transfer' : 'توثيق الحوالة')}</span>
-                    </button>
+                  <div className="text-right">
+                    <span className="font-mono text-base sm:text-lg font-black text-[#10B981] block leading-none">
+                      {Math.max(0, (sendAmount - transferFee - (vatAmount !== '' ? parseFloat(vatAmount) || 0 : transferFee * 0.15) - (parseFloat(otherCosts) || 0)) * parsedRate).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                    </span>
+                    <span className="text-[9px] text-sds-text-sec font-bold uppercase font-mono mt-1 block">
+                      {activeCorridor.currencyCode}
+                    </span>
                   </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-4">
+                  <button
+                    type="button"
+                    onClick={handlePrevStep}
+                    className="px-4 py-2.5 bg-[#071A35] border border-sds-border hover:bg-[#091f3e] text-slate-300 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Back</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={isUploading}
+                    className="px-6 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Submit Verification</span>
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* Step 5: Success & Community Impact Screen */}
-            {step === 5 && (
-              <div className="text-center py-8 space-y-6 max-w-lg mx-auto animate-fade-in">
-                <div className="flex justify-center">
-                  <div className="w-20 h-20 rounded-full bg-[#00E07A]/10 border border-[#00E07A]/30 flex items-center justify-center text-[#00E07A] animate-pulse">
-                    <CheckCircle className="w-12 h-12 stroke-[1.5]" />
-                  </div>
-                </div>
+          </div>
 
-                <div className="space-y-3">
-                  <div className="bg-[#00E07A]/10 border border-[#00E07A]/20 p-3.5 rounded-xl text-[#00E07A] font-bold text-xs max-w-sm mx-auto">
-                    {isEn ? 'Transfer submitted for verification.' : 'تم تقديم الحوالة للتحقق والاعتماد.'}
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#00E07A]/15 border border-[#00E07A]/30 text-[10px] font-black text-[#00E07A] rounded-full font-mono uppercase tracking-wider">
-                    🎉 +15 Expat Trust Points Earned
-                  </span>
-                  <h2 className="text-2xl font-black text-white leading-tight">
-                    {isEn ? 'Evidence Submitted Successfully!' : 'تم تقديم إثبات التوثيق بنجاح!'}
-                  </h2>
-                  <p className="text-xs text-[#AFC4D8] leading-relaxed">
-                    {isEn 
-                      ? "Thank you! Your verified transfer will help strengthen SariRemit's community intelligence. Our moderators are auditing the screenshot. Check your Profile page under 'My Verified Transfers' to monitor its real-time approval status."
-                      : 'شكراً لك! سيساعد إثبات حوالتك الموثقة في تعزيز دقة بيانات المجتمع في ساري ريميت. يقوم المشرفون الآن بمراجعة لقطة الشاشة. تفقد صفحة ملفك الشخصي لمتابعة حالة الاعتماد.'}
-                  </p>
+          {/* SIDEBAR GUIDELINES & HISTORY - RIGHT (Col span 5) */}
+          <div className="lg:col-span-5 space-y-6 text-left">
+            
+            {/* Guidelines Card */}
+            <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-6 space-y-4 shadow-sds-md">
+              <div className="p-2 bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] rounded-xl w-fit">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-white">Why share rates with SariRemit?</h3>
+              <p className="text-xs text-sds-text-sec leading-relaxed">
+                Remittance services fluctuate every hour. By sharing the rate currently showing inside your app, you empower thousands of expats to make smart decisions and save money.
+              </p>
+              
+              <div className="space-y-3 pt-3 text-xs border-t border-sds-border/60">
+                <div className="flex items-start gap-2">
+                  <span className="text-[#10B981] font-bold font-mono">✓</span>
+                  <span className="text-sds-text-sec">Earn Contributor points on your Profile.</span>
                 </div>
-
-                {/* Visual Impact summary card */}
-                <div className="bg-[#071326] border border-white/5 rounded-2xl p-5 text-left rtl:text-right space-y-3 text-xs">
-                  <span className="text-[10px] text-[#00E07A] font-extrabold uppercase tracking-widest font-mono">
-                    {isEn ? 'Submission Summary' : 'ملخص التوثيق المرسل'}
-                  </span>
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 border-t border-white/5 pt-3 text-[#B8C7D9]">
-                    <div className="flex justify-between items-center text-xs">
-                      <span>{isEn ? 'Channel:' : 'القناة:'}</span>
-                      <strong className="text-white uppercase font-bold">{selectedProvider.name}</strong>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span>{isEn ? 'Corridor:' : 'الوجهة:'}</span>
-                      <strong className="text-white font-bold">{selectedCorr.flag} {selectedCorr.id}</strong>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span>{isEn ? 'Sent Amount:' : 'المبلغ المرسل:'}</span>
-                      <strong className="text-white font-mono font-bold">{parsedAmount} SAR</strong>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span>{isEn ? 'Exchange Rate:' : 'سعر الصرف:'}</span>
-                      <strong className="text-white font-mono font-bold">{parsedRate}</strong>
-                    </div>
-                  </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[#10B981] font-bold font-mono">✓</span>
+                  <span className="text-sds-text-sec">Screenshots are auto-redacted for safety. No private data is ever shared.</span>
                 </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[#10B981] font-bold font-mono">✓</span>
+                  <span className="text-sds-text-sec">Rates are immediately verified by community moderators.</span>
+                </div>
+              </div>
+            </div>
 
-                <div className="pt-4 max-w-xs mx-auto">
+            {/* CONTRIBUTION HISTORY TIMELINE */}
+            {myRecentSubmissions.length > 0 && (
+              <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-6 space-y-4 shadow-sds-md">
+                <div className="flex items-center justify-between border-b border-sds-border/60 pb-2.5">
+                  <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                    {language === 'en' ? 'Your Contribution Timeline' : 'مشاركاتك الأخيرة'}
+                  </h3>
                   <button
                     type="button"
-                    onClick={() => {
-                      setStep(1);
-                      setScreenshotFile(null);
-                      setScreenshotPreview(null);
-                      setAmountSent('1000');
-                    }}
-                    className="w-full py-3.5 bg-slate-800 hover:bg-slate-750 text-white font-extrabold text-xs rounded-xl transition-all uppercase tracking-wider cursor-pointer"
+                    onClick={() => setRefreshTrigger(prev => prev + 1)}
+                    disabled={isRefreshingHistory}
+                    className="p-1 hover:bg-white/10 rounded text-sds-text-sec hover:text-white transition-all flex items-center gap-1 text-[10px] font-black font-mono cursor-pointer"
                   >
-                    {isEn ? 'Verify Another Transfer' : 'توثيق حوالة أخرى'}
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingHistory ? 'animate-spin text-[#10B981]' : ''}`} />
+                    <span>Sync</span>
                   </button>
+                </div>
+
+                {/* Submissions Vertical Timeline Layout */}
+                <div className="space-y-4 max-h-[320px] overflow-y-auto pr-1">
+                  {myRecentSubmissions.map((sub, idx) => {
+                    const corr = CORRIDORS.find(c => c.id === sub.corridorId) || CORRIDORS[0];
+                    return (
+                      <div key={sub.id} className="relative pl-5 border-l-2 border-sds-border/50 space-y-2 pb-2">
+                        {/* Dot indicator */}
+                        <div className={`absolute -left-[6px] top-1.5 w-2.5 h-2.5 rounded-full ${
+                          sub.status === 'approved' ? 'bg-[#10B981]' : sub.status === 'pending' ? 'bg-[#F59E0B]' : 'bg-rose-500'
+                        }`} />
+
+                        <div className="text-xs text-left">
+                          <div className="flex justify-between items-center">
+                            <span className="font-black text-white uppercase text-[11px] leading-none">
+                              {sub.providerName} ({corr.flag})
+                            </span>
+                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                              sub.status === 'approved' 
+                                ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' 
+                                : sub.status === 'pending' 
+                                ? 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20 animate-pulse' 
+                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            }`}>
+                              {sub.status}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-[10px] text-sds-text-sec mt-1">
+                            <span>1 SAR = <span className="text-[#F59E0B] font-bold font-mono">{sub.exchangeRate}</span> {corr.currencyCode}</span>
+                            <span className="text-[9px] font-mono">{getRelativeTimeText(sub.submittedAt)}</span>
+                          </div>
+
+                          <div className="mt-1.5 p-2 bg-[#071A35] rounded-xl border border-sds-border/60 flex justify-between text-[9px] text-sds-text-sec font-mono">
+                            <span>Fee: {sub.transferFee} SAR</span>
+                            <span>Other: {sub.otherCosts || 0} SAR</span>
+                            <span>Total Payout: {sub.receiveAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} {corr.currencyCode}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -907,6 +779,14 @@ export const SubmitRate: React.FC<SubmitRateProps> = ({
         </div>
       )}
 
+      {/* Disclaimers */}
+      <div className={`p-4 bg-[#0C2547]/60 border border-sds-border rounded-2xl flex items-start gap-2.5 ${isRtl ? 'flex-row-reverse text-right' : 'flex-row text-left'}`}>
+        <Info className="w-4 h-4 text-sds-text-sec shrink-0 mt-0.5" />
+        <p className="text-[10px] sm:text-xs text-sds-text-sec leading-relaxed font-medium">
+          Evidence photos are automatically processed by our SariRemit receipt OCR parser. No personal identity data is captured. Your contribution remains private, secure, and helpful.
+        </p>
+      </div>
+
     </div>
   );
-};
+}

@@ -1,6 +1,6 @@
 {
-  "name": "SariRemit",
-  "description": "Remittance rate comparison and savings assistant for expats in Saudi Arabia sending money home.",
+  "name": "Remix: SariRemit",
+  "description": "A remittance savings and rates comparison dashboard for expats in Saudi Arabia. Compare STC Pay, Urpay, Mobily Pay, Western Union, and more to get the best SAR exchange rates.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
