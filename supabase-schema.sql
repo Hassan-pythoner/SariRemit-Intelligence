@@ -38,7 +38,9 @@ DROP POLICY IF EXISTS "Enable insert/upsert for all" ON public.user_profiles;
 DROP POLICY IF EXISTS "Enable update for all" ON public.user_profiles;
 
 DROP POLICY IF EXISTS "Users can read own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Admins can read all profiles" ON public.user_profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Admins can update all profiles" ON public.user_profiles;
 DROP POLICY IF EXISTS "Users can create own profile" ON public.user_profiles;
 
 CREATE POLICY "Users can read own profile"
@@ -47,12 +49,43 @@ FOR SELECT
 TO authenticated
 USING (auth.uid()::text = id);
 
+CREATE POLICY "Admins can read all profiles"
+ON public.user_profiles
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.srcmc_admin_access
+    WHERE srcmc_admin_access.user_id = auth.uid()
+    AND srcmc_admin_access.is_active = true
+  )
+);
+
 CREATE POLICY "Users can update own profile"
 ON public.user_profiles
 FOR UPDATE
 TO authenticated
 USING (auth.uid()::text = id)
 WITH CHECK (auth.uid()::text = id);
+
+CREATE POLICY "Admins can update all profiles"
+ON public.user_profiles
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.srcmc_admin_access
+    WHERE srcmc_admin_access.user_id = auth.uid()
+    AND srcmc_admin_access.is_active = true
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.srcmc_admin_access
+    WHERE srcmc_admin_access.user_id = auth.uid()
+    AND srcmc_admin_access.is_active = true
+  )
+);
 
 CREATE POLICY "Users can create own profile"
 ON public.user_profiles

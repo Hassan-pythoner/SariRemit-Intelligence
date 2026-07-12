@@ -2719,13 +2719,26 @@ export async function fetchAllUserProfiles(): Promise<any[]> {
   if (isSupabaseConfigured && supabaseClient) {
     try {
       const { data, error } = await supabaseClient.from('user_profiles').select('*').order('created_at', { ascending: false });
-      if (!error && data) return data;
+      if (!error && data) {
+        return data.map(u => ({
+          ...u,
+          preferredCorridorId: u.preferred_corridor_id,
+          createdAt: u.created_at,
+          onboardingCompleted: u.onboarding_completed
+        }));
+      }
       console.warn('Supabase fetch all profiles error, using emulated storage:', error);
     } catch (err) {
       console.warn('Supabase fetch all profiles error:', err);
     }
   }
-  return getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+  const emulated = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+  return emulated.map(u => ({
+    ...u,
+    preferredCorridorId: u.preferred_corridor_id || u.preferredCorridorId,
+    createdAt: u.created_at || u.createdAt,
+    onboardingCompleted: u.onboarding_completed !== undefined ? u.onboarding_completed : u.onboardingCompleted
+  }));
 }
 
 export function signOutSession(): void {
