@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
     primary_destination_currency TEXT,
     preferred_channels JSONB DEFAULT '[]'::jsonb,
     estimated_monthly_send_amount NUMERIC,
+    rate_submissions_restricted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -31,14 +32,77 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 
--- Permissive preview policies
+-- Secure RLS policies
 DROP POLICY IF EXISTS "Enable read access for all" ON public.user_profiles;
 DROP POLICY IF EXISTS "Enable insert/upsert for all" ON public.user_profiles;
 DROP POLICY IF EXISTS "Enable update for all" ON public.user_profiles;
 
-CREATE POLICY "Enable read access for all" ON public.user_profiles FOR SELECT USING (true);
-CREATE POLICY "Enable insert/upsert for all" ON public.user_profiles FOR INSERT WITH CHECK (true);
-CREATE POLICY "Enable update for all" ON public.user_profiles FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Users can read own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can create own profile" ON public.user_profiles;
+
+CREATE POLICY "Users can read own profile"
+ON public.user_profiles
+FOR SELECT
+TO authenticated
+USING (auth.uid()::text = id);
+
+CREATE POLICY "Users can update own profile"
+ON public.user_profiles
+FOR UPDATE
+TO authenticated
+USING (auth.uid()::text = id)
+WITH CHECK (auth.uid()::text = id);
+
+CREATE POLICY "Users can create own profile"
+ON public.user_profiles
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid()::text = id);
+
+-- Enforce email uniqueness on lower email
+CREATE UNIQUE INDEX IF NOT EXISTS user_profiles_email_lower_unique
+ON public.user_profiles(lower(email))
+WHERE email IS NOT NULL;
+
+-- Automatic Profile Creation Trigger
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.user_profiles (
+    id,
+    email,
+    name,
+    phone,
+    preferred_corridor_id,
+    onboarding_completed,
+    language
+  )
+  VALUES (
+    new.id::text,
+    lower(new.email),
+    coalesce(new.raw_user_meta_data ->> 'name', new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
+    coalesce(new.raw_user_meta_data ->> 'phone', '+966 50 123 4567'),
+    'sa-pk',
+    false,
+    'en'
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  RETURN new;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_new_user();
 
 
 -- ==========================================
@@ -51,10 +115,47 @@ CREATE TABLE IF NOT EXISTS public.community_rate_submissions (
     provider_name TEXT NOT NULL,
     exchange_rate NUMERIC(10, 4) NOT NULL,
     transfer_fee NUMERIC(8, 2) DEFAULT 10.00 NOT NULL,
+    send_amount NUMERIC(12, 2) DEFAULT 0.00,
+    receive_amount NUMERIC(12, 2) DEFAULT 0.00,
     submitted_by TEXT,                               -- Relates to user_profiles(id)
+    submitted_by_name TEXT,
     submitted_by_email TEXT,                         -- Relates to user_profiles(email)
-    status TEXT DEFAULT 'pending' NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+    status TEXT DEFAULT 'pending' NOT NULL,          -- Managed by CRVS state machine
+    screenshot_name TEXT,
+    screenshot_url TEXT,
+    screenshot_storage_path TEXT,
+    vat_amount NUMERIC(8, 2),
+    other_costs NUMERIC(8, 2),
+    
+    destination_country TEXT,
+    destination_currency TEXT,
+    date_observed TEXT,
+    time_observed TEXT,
+    transfer_method TEXT,
+    user_note TEXT,
+    amount_sent NUMERIC(12, 2),
+    amount_received NUMERIC(12, 2),
+    screenshot_path TEXT,
+    screenshot_original_name TEXT,
+    screenshot_mime_type TEXT,
+    screenshot_size_bytes BIGINT,
+    screenshot_hash TEXT,
+    screenshot_uploaded_at TIMESTAMPTZ,
+    evidence_status TEXT DEFAULT 'pending',
+    fraud_risk_score NUMERIC(5, 2) DEFAULT 0.00,
+    fraud_risk_level TEXT DEFAULT 'low',
+    fraud_flags TEXT[] DEFAULT '{}'::TEXT[],
+    
+    approved_by TEXT,
+    approved_at TIMESTAMPTZ,
+    rejected_by TEXT,
+    rejected_at TIMESTAMPTZ,
+    rejection_reason TEXT,
+    reviewer_notes TEXT,
+    valid_until TIMESTAMPTZ,
+    
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     
     -- Relational Foreign Key Connection
     CONSTRAINT fk_user_profile_email 
@@ -419,3 +520,101 @@ VALUES
     )
 ON CONFLICT (email) DO UPDATE 
 SET role = EXCLUDED.role, permissions = EXCLUDED.permissions, is_active = EXCLUDED.is_active;
+
+
+-- ==========================================
+-- 15. FRAUD INTEGRITY EVENTS TABLE (CRVS & SAF)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.fraud_integrity_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+    user_id TEXT,
+    submission_id TEXT,
+    channel_id TEXT,
+    corridor_id TEXT,
+    risk_score NUMERIC(5, 2) NOT NULL,
+    risk_flags TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,
+    metadata JSONB,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+    reviewed_by TEXT,
+    reviewed_at TIMESTAMPTZ,
+    resolution TEXT,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS & Policies
+ALTER TABLE public.fraud_integrity_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable read/write for all" ON public.fraud_integrity_events;
+CREATE POLICY "Enable read/write for all" ON public.fraud_integrity_events FOR ALL USING (true);
+
+
+-- ==========================================
+-- 16. STORAGE BUCKET CONFIGURATION & POLICIES FOR SCREENSHOTS
+-- ==========================================
+
+-- Ensure verification-screenshots bucket exists in storage.buckets
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('verification-screenshots', 'verification-screenshots', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage policies for verification-screenshots
+DROP POLICY IF EXISTS "Allow public uploads" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public read" ON storage.objects;
+
+CREATE POLICY "Allow public uploads" ON storage.objects
+FOR INSERT TO public
+WITH CHECK (bucket_id = 'verification-screenshots');
+
+CREATE POLICY "Allow public read" ON storage.objects
+FOR SELECT TO public
+USING (bucket_id = 'verification-screenshots');
+
+
+-- =========================================================================
+-- INCREMENTAL SCHEMA UPDATES & MIGRATION ALTER CODES (FOR EXISTING DATABASES)
+-- =========================================================================
+
+-- 1. Update user_profiles for rate submissions restriction
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS rate_submissions_restricted BOOLEAN DEFAULT false;
+
+-- 2. Drop the old restrictive check on community_rate_submissions status
+ALTER TABLE public.community_rate_submissions DROP CONSTRAINT IF EXISTS community_rate_submissions_status_check;
+
+-- 3. Add all new CRVS & SAF columns to community_rate_submissions
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS send_amount NUMERIC(12, 2) DEFAULT 0.00;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS receive_amount NUMERIC(12, 2) DEFAULT 0.00;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS submitted_by_name TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_name TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_url TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_storage_path TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS vat_amount NUMERIC(8, 2);
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS other_costs NUMERIC(8, 2);
+
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS destination_country TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS destination_currency TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS date_observed TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS time_observed TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS transfer_method TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS user_note TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS amount_sent NUMERIC(12, 2);
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS amount_received NUMERIC(12, 2);
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_path TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_original_name TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_mime_type TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_size_bytes BIGINT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_hash TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS screenshot_uploaded_at TIMESTAMPTZ;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS evidence_status TEXT DEFAULT 'pending';
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS fraud_risk_score NUMERIC(5, 2) DEFAULT 0.00;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS fraud_risk_level TEXT DEFAULT 'low';
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS fraud_flags TEXT[] DEFAULT '{}'::TEXT[];
+
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS approved_by TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS rejected_by TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS reviewer_notes TEXT;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS valid_until TIMESTAMPTZ;
+ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
