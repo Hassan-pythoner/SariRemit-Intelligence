@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult } from '../types';
+import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress } from '../types';
 import { PROVIDERS, CORRIDORS } from './constants';
 
 // Interfaces for Supabase tables
@@ -32,9 +32,41 @@ export interface DbCommunitySubmission {
   submitted_by_email: string;
   submitted_at: string;
   screenshot_name?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  screenshot_url?: string;
+  screenshot_storage_path?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'draft' | 'submitted' | 'security_review' | 'pending_verification' | 'needs_more_evidence' | 'blocked' | 'expired' | 'withdrawn' | string;
   vat_amount?: number;
   other_costs?: number;
+
+  // CRVS & SAF Fields
+  destination_country?: string;
+  destination_currency?: string;
+  date_observed?: string;
+  time_observed?: string;
+  transfer_method?: string; // 'wallet' | 'cash' | 'bank' etc.
+  user_note?: string;
+  amount_sent?: number;
+  amount_received?: number;
+
+  screenshot_path?: string;
+  screenshot_original_name?: string;
+  screenshot_mime_type?: string;
+  screenshot_size_bytes?: number;
+  screenshot_hash?: string;
+  screenshot_uploaded_at?: string;
+  evidence_status?: string; // 'pending' | 'verified' | 'invalid' | 'needs_more_evidence' etc.
+
+  fraud_risk_score?: number;
+  fraud_risk_level?: string; // 'low' | 'moderate' | 'high' | 'critical'
+  fraud_flags?: string[];
+  approved_by?: string;
+  approved_at?: string;
+  rejected_by?: string;
+  rejected_at?: string;
+  rejection_reason?: string;
+  reviewer_notes?: string;
+  valid_until?: string;
+  updated_at?: string;
 }
 
 export interface ExtraCosts {
@@ -131,10 +163,25 @@ const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey && !supabaseUrl.includes('YOUR_'));
 
-let supabaseClient: SupabaseClient | null = null;
+export let supabaseClient: SupabaseClient | null = null;
 if (isSupabaseConfigured) {
   try {
-    supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+    // Log the Supabase project hostname in development mode only
+    if ((import.meta as any).env?.DEV) {
+      try {
+        const hostname = new URL(supabaseUrl).hostname;
+        console.log('[SariRemit Dev] Connected to Supabase Project Hostname:', hostname);
+      } catch (e) {
+        console.log('[SariRemit Dev] Connected to Supabase URL:', supabaseUrl);
+      }
+    }
   } catch (err) {
     console.error('Failed to initialize Supabase client:', err);
   }
@@ -454,6 +501,322 @@ export async function deleteOverrideRow(id: string): Promise<void> {
   saveLocalStorageItem<DbRateOverride[]>(OVERRIDES_KEY, updated);
 }
 
+// CRVS Configuration management
+export interface CrvsConfig {
+  anomaly_normal_threshold: number;
+  anomaly_review_threshold: number;
+  anomaly_critical_threshold: number;
+  max_submissions_24h: number;
+  max_submissions_same_channel_corridor_24h: number;
+  expiry_hours: number;
+}
+
+const CRVS_CONFIG_KEY = 'sr_crvs_config';
+const DEFAULT_CRVS_CONFIG: CrvsConfig = {
+  anomaly_normal_threshold: 2,
+  anomaly_review_threshold: 5,
+  anomaly_critical_threshold: 10,
+  max_submissions_24h: 5,
+  max_submissions_same_channel_corridor_24h: 2,
+  expiry_hours: 24,
+};
+
+export function fetchCrvsConfig(): CrvsConfig {
+  const data = localStorage.getItem(CRVS_CONFIG_KEY);
+  if (!data) return DEFAULT_CRVS_CONFIG;
+  try {
+    return JSON.parse(data);
+  } catch {
+    return DEFAULT_CRVS_CONFIG;
+  }
+}
+
+export function saveCrvsConfig(config: CrvsConfig): void {
+  localStorage.setItem(CRVS_CONFIG_KEY, JSON.stringify(config));
+}
+
+// Fraud & Integrity Events management
+export interface FraudIntegrityEvent {
+  id: string;
+  event_type: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  user_id?: string;
+  submission_id?: string;
+  channel_id?: string;
+  corridor_id?: string;
+  risk_score: number;
+  risk_flags: string[];
+  metadata: any;
+  status: 'open' | 'resolved';
+  reviewed_by?: string;
+  reviewed_at?: string;
+  resolution?: string;
+  created_at: string;
+}
+
+const FRAUD_EVENTS_KEY = 'sr_fraud_integrity_events';
+
+export async function fetchFraudIntegrityEvents(): Promise<FraudIntegrityEvent[]> {
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('fraud_integrity_events')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        return data as FraudIntegrityEvent[];
+      }
+    } catch (err) {
+      console.warn('Supabase fetch fraud events error, using emulated:', err);
+    }
+  }
+  return getLocalStorageItem<FraudIntegrityEvent[]>(FRAUD_EVENTS_KEY, []);
+}
+
+export async function logFraudIntegrityEvent(event: Omit<FraudIntegrityEvent, 'id' | 'created_at' | 'status'>): Promise<FraudIntegrityEvent> {
+  const newEvent: FraudIntegrityEvent = {
+    ...event,
+    id: `event-${Date.now()}`,
+    status: 'open',
+    created_at: new Date().toISOString()
+  };
+
+  if (supabaseClient) {
+    try {
+      await supabaseClient
+        .from('fraud_integrity_events')
+        .insert([{
+          event_type: newEvent.event_type,
+          severity: newEvent.severity,
+          user_id: newEvent.user_id,
+          submission_id: newEvent.submission_id,
+          channel_id: newEvent.channel_id,
+          corridor_id: newEvent.corridor_id,
+          risk_score: newEvent.risk_score,
+          risk_flags: newEvent.risk_flags,
+          metadata: newEvent.metadata,
+          status: newEvent.status,
+        }]);
+    } catch (err) {
+      console.warn('Supabase insert fraud event error, using emulated:', err);
+    }
+  }
+
+  const current = getLocalStorageItem<FraudIntegrityEvent[]>(FRAUD_EVENTS_KEY, []);
+  saveLocalStorageItem(FRAUD_EVENTS_KEY, [newEvent, ...current]);
+  return newEvent;
+}
+
+// SariRemit Anti-Fraud Framework (SAF) Risk Score Calculator
+export async function runAntiFraudChecks(
+  submission: Partial<DbCommunitySubmission>
+): Promise<{
+  riskScore: number;
+  riskLevel: 'low' | 'moderate' | 'high' | 'critical';
+  flags: string[];
+}> {
+  const config = fetchCrvsConfig();
+  const flags: string[] = [];
+  
+  let rateAnomalyRisk = 0;
+  let duplicateEvidenceRisk = 0;
+  let submissionFrequencyRisk = 0;
+  let accountRisk = 0;
+  let evidenceQualityRisk = 0;
+  let consistencyRisk = 0;
+
+  // 1. Rate Anomaly Check (30% weight)
+  const marketRates = await fetchMarketReferenceRates();
+  const marketRef = marketRates.find(m => m.corridor_id === submission.corridor_id);
+  if (marketRef && submission.exchange_rate) {
+    const deviationPercent = (Math.abs(submission.exchange_rate - marketRef.rate) / marketRef.rate) * 100;
+    if (deviationPercent <= config.anomaly_normal_threshold) {
+      rateAnomalyRisk = 10;
+    } else if (deviationPercent <= config.anomaly_review_threshold) {
+      rateAnomalyRisk = 45;
+      flags.push(`RATE_DEVIATION_ALERT: Rate is ${deviationPercent.toFixed(1)}% offset from market reference`);
+    } else if (deviationPercent <= config.anomaly_critical_threshold) {
+      rateAnomalyRisk = 75;
+      flags.push(`HIGH_RATE_DEVIATION: Rate is ${deviationPercent.toFixed(1)}% offset from market reference`);
+    } else {
+      rateAnomalyRisk = 100;
+      flags.push(`CRITICAL_RATE_ANOMALY: Rate is ${deviationPercent.toFixed(1)}% offset from market reference`);
+    }
+  } else {
+    rateAnomalyRisk = 20; // Default baseline risk if no market reference
+  }
+
+  // 2. Duplicate Evidence Check (20% weight)
+  const fileHash = submission.screenshot_hash;
+  const submissions = await fetchCommunitySubmissions();
+  if (fileHash) {
+    const dups = submissions.filter(s => s.screenshot_hash === fileHash && s.id !== submission.id);
+    if (dups.length > 0) {
+      const differentUser = dups.some(d => d.submitted_by_email?.toLowerCase() !== submission.submitted_by_email?.toLowerCase());
+      if (differentUser) {
+        duplicateEvidenceRisk = 100;
+        flags.push('DUPLICATE_SCREENSHOT_DIFFERENT_USER');
+      } else {
+        duplicateEvidenceRisk = 60;
+        flags.push('DUPLICATE_SCREENSHOT_SAME_USER');
+      }
+    }
+  }
+
+  // 3. Submission Frequency Check (15% weight)
+  if (submission.submitted_by_email) {
+    const userSubs = submissions.filter(s => {
+      const ageHours = (Date.now() - new Date(s.submitted_at).getTime()) / 3600000;
+      return s.submitted_by_email?.toLowerCase() === submission.submitted_by_email?.toLowerCase() && ageHours <= 24;
+    });
+
+    if (userSubs.length >= config.max_submissions_24h) {
+      submissionFrequencyRisk = 100;
+      flags.push('EXCESSIVE_SUBMISSIONS_24H');
+    } else if (userSubs.length >= 3) {
+      submissionFrequencyRisk = 50;
+      flags.push('HIGH_SUBMISSION_FREQUENCY');
+    }
+
+    const corridorChannelSubs = userSubs.filter(s => s.corridor_id === submission.corridor_id && s.provider_id === submission.provider_id);
+    if (corridorChannelSubs.length >= config.max_submissions_same_channel_corridor_24h) {
+      submissionFrequencyRisk = Math.max(submissionFrequencyRisk, 80);
+      flags.push('EXCESSIVE_SAME_ROUTE_SUBMISSIONS_24H');
+    }
+  }
+
+  // 4. Account Risk Check (15% weight)
+  if (submission.submitted_by_email) {
+    const allProfiles = await fetchAllUserProfiles();
+    const profile = allProfiles.find(u => u.email?.toLowerCase() === submission.submitted_by_email?.toLowerCase());
+    
+    // Check account history / rejections
+    const rejectedSubs = submissions.filter(s => s.submitted_by_email?.toLowerCase() === submission.submitted_by_email?.toLowerCase() && s.status === 'rejected');
+    if (rejectedSubs.length > 2) {
+      accountRisk = 80;
+      flags.push('ACCOUNT_HISTORY_REJECTIONS');
+    }
+
+    // Check account age (new account check)
+    if (profile && profile.created_at) {
+      const ageHours = (Date.now() - new Date(profile.created_at).getTime()) / 3600000;
+      if (ageHours <= 24) {
+        accountRisk = Math.max(accountRisk, 30);
+        flags.push('NEW_ACCOUNT_MONITORING');
+      }
+    }
+  }
+
+  // 5. Evidence Quality / Size Check (10% weight)
+  if (submission.screenshot_size_bytes) {
+    if (submission.screenshot_size_bytes < 20 * 1024) {
+      evidenceQualityRisk = 85;
+      flags.push('TINY_SCREENSHOT_SUSPICIOUS');
+    } else if (submission.screenshot_size_bytes > 8 * 1024 * 1024) {
+      evidenceQualityRisk = 30;
+      flags.push('LARGE_SCREENSHOT_SIZE');
+    }
+  }
+
+  // 6. Consistency Check (10% weight)
+  if (submission.transfer_fee !== undefined) {
+    if (submission.transfer_fee === 0) {
+      consistencyRisk = 30;
+      flags.push('ZERO_FEE_SUBMISSION');
+    } else if (submission.transfer_fee > 100) {
+      consistencyRisk = 70;
+      flags.push('EXCESSIVE_FEE_SUBMISSION');
+    }
+  }
+
+  // Calculate weighted score
+  const riskScore = Math.min(100, Math.round(
+    rateAnomalyRisk * 0.30
+    + duplicateEvidenceRisk * 0.20
+    + submissionFrequencyRisk * 0.15
+    + accountRisk * 0.15
+    + evidenceQualityRisk * 0.10
+    + consistencyRisk * 0.10
+  ));
+
+  let riskLevel: 'low' | 'moderate' | 'high' | 'critical' = 'low';
+  if (riskScore >= 75) riskLevel = 'critical';
+  else if (riskScore >= 50) riskLevel = 'high';
+  else if (riskScore >= 25) riskLevel = 'moderate';
+
+  return { riskScore, riskLevel, flags };
+}
+
+// Trust Confidence Engine Helper for Community Rates
+export function computeCommunityTrustConfidence(
+  submission: DbCommunitySubmission,
+  allApprovedSubmissions: DbCommunitySubmission[],
+  marketRate?: number
+): number {
+  let trustScore = 85; // Baseline for approved community rate
+
+  // 1. Evidence verification state
+  if (submission.evidence_status === 'verified') {
+    trustScore += 5;
+  } else {
+    trustScore -= 10;
+  }
+
+  // 2. Rate freshness
+  const ageHours = (Date.now() - new Date(submission.submitted_at).getTime()) / 3600000;
+  if (ageHours <= 2) trustScore += 5;
+  else if (ageHours > 12) trustScore -= 10;
+
+  // 3. Market deviation
+  if (marketRate) {
+    const deviation = Math.abs(submission.exchange_rate - marketRate) / marketRate * 100;
+    if (deviation <= 0.5) trustScore += 5;
+    else if (deviation > 2.0) trustScore -= 15;
+  }
+
+  // 4. Agreement among other approved submissions on the same route
+  const matchingRouteApproved = allApprovedSubmissions.filter(
+    s => s.corridor_id === submission.corridor_id && 
+         s.provider_id === submission.provider_id && 
+         s.id !== submission.id
+  );
+  if (matchingRouteApproved.length > 0) {
+    const ratesDiffs = matchingRouteApproved.map(s => Math.abs(s.exchange_rate - submission.exchange_rate) / submission.exchange_rate * 100);
+    const hasCloseAgreement = ratesDiffs.some(diff => diff <= 0.2);
+    if (hasCloseAgreement) {
+      trustScore += 5;
+    } else {
+      trustScore -= 5;
+    }
+  }
+
+  return Math.max(30, Math.min(100, trustScore));
+}
+
+// User submission restriction helper
+export async function toggleUserRateSubmissionRestriction(userId: string, restrict: boolean): Promise<void> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      await supabaseClient
+        .from('user_profiles')
+        .update({ rate_submissions_restricted: restrict })
+        .eq('id', userId);
+    } catch (err) {
+      console.warn('Supabase toggle restriction error:', err);
+    }
+  }
+
+  const allUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+  const updatedUsers = allUsers.map(u => u.id === userId ? { ...u, rate_submissions_restricted: restrict } : u);
+  saveLocalStorageItem('sr_supabase_registered_users', updatedUsers);
+
+  const currentSession = getAuthSession();
+  if (currentSession.user && currentSession.user.id === userId) {
+    currentSession.user.rate_submissions_restricted = restrict;
+    saveAuthSession(currentSession);
+  }
+}
+
 // Community Submissions
 export async function fetchCommunitySubmissions(): Promise<DbCommunitySubmission[]> {
   let rows: DbCommunitySubmission[] = [];
@@ -462,6 +825,7 @@ export async function fetchCommunitySubmissions(): Promise<DbCommunitySubmission
       .from('community_rate_submissions')
       .select('*')
       .order('created_at', { ascending: false });
+    
     if (!error && data) {
       rows = data.map((row: any) => ({
         id: row.id,
@@ -475,7 +839,37 @@ export async function fetchCommunitySubmissions(): Promise<DbCommunitySubmission
         submitted_by_name: row.submitted_by_name || (row.submitted_by_email ? row.submitted_by_email.split('@')[0] : 'Contributor'),
         submitted_by_email: row.submitted_by_email || '',
         submitted_at: row.created_at || new Date().toISOString(),
+        screenshot_name: row.screenshot_name,
+        screenshot_url: row.screenshot_url,
+        screenshot_storage_path: row.screenshot_storage_path,
         status: row.status,
+
+        destination_country: row.destination_country,
+        destination_currency: row.destination_currency,
+        date_observed: row.date_observed,
+        time_observed: row.time_observed,
+        transfer_method: row.transfer_method,
+        user_note: row.user_note,
+        amount_sent: row.amount_sent,
+        amount_received: row.amount_received,
+        screenshot_path: row.screenshot_path,
+        screenshot_original_name: row.screenshot_original_name,
+        screenshot_mime_type: row.screenshot_mime_type,
+        screenshot_size_bytes: row.screenshot_size_bytes ? parseInt(row.screenshot_size_bytes) : undefined,
+        screenshot_hash: row.screenshot_hash,
+        screenshot_uploaded_at: row.screenshot_uploaded_at,
+        evidence_status: row.evidence_status || 'pending',
+        fraud_risk_score: row.fraud_risk_score ? parseFloat(row.fraud_risk_score) : 0,
+        fraud_risk_level: row.fraud_risk_level || 'low',
+        fraud_flags: Array.isArray(row.fraud_flags) ? row.fraud_flags : (typeof row.fraud_flags === 'string' ? JSON.parse(row.fraud_flags) : []),
+        approved_by: row.approved_by,
+        approved_at: row.approved_at,
+        rejected_by: row.rejected_by,
+        rejected_at: row.rejected_at,
+        rejection_reason: row.rejection_reason,
+        reviewer_notes: row.reviewer_notes,
+        valid_until: row.valid_until,
+        updated_at: row.updated_at,
       })) as DbCommunitySubmission[];
     } else {
       console.error('Supabase fetch community submissions error details:', error);
@@ -491,18 +885,48 @@ export async function fetchCommunitySubmissions(): Promise<DbCommunitySubmission
     const extra = getExtraCosts(s.id);
     return {
       ...s,
-      vat_amount: extra.vat_amount,
-      other_costs: extra.other_costs
+      vat_amount: s.vat_amount !== undefined ? s.vat_amount : extra.vat_amount,
+      other_costs: s.other_costs !== undefined ? s.other_costs : extra.other_costs
     };
   });
 }
 
-export async function saveCommunitySubmission(submission: Omit<DbCommunitySubmission, 'id' | 'submitted_at' | 'status'> & { vat_amount?: number; other_costs?: number; }): Promise<DbCommunitySubmission> {
+export async function saveCommunitySubmission(
+  submission: Omit<DbCommunitySubmission, 'id' | 'submitted_at' | 'status'> & { 
+    vat_amount?: number; 
+    other_costs?: number;
+    status?: string;
+    screenshot_url?: string;
+    screenshot_storage_path?: string;
+  }
+): Promise<DbCommunitySubmission> {
+  const subId = `sub-${Date.now()}`;
+  
+  // Execute SAF Anti-Fraud Core Checks
+  const { riskScore, riskLevel, flags } = await runAntiFraudChecks(submission);
+  
+  // Status Routing based on Risk
+  let routedStatus: string = 'pending_verification';
+  if (riskScore >= 75) {
+    routedStatus = 'security_review';
+  } else if (riskScore >= 50) {
+    routedStatus = 'security_review';
+  } else {
+    routedStatus = 'pending_verification';
+  }
+
   const newRow: DbCommunitySubmission = {
     ...submission,
-    id: `sub-${Date.now()}`,
+    id: subId,
     submitted_at: new Date().toISOString(),
-    status: 'pending',
+    status: submission.status || routedStatus,
+    screenshot_url: submission.screenshot_url || '',
+    screenshot_storage_path: submission.screenshot_storage_path || '',
+    evidence_status: 'pending',
+    fraud_risk_score: riskScore,
+    fraud_risk_level: riskLevel,
+    fraud_flags: flags,
+    updated_at: new Date().toISOString()
   };
 
   if (supabaseClient) {
@@ -513,31 +937,92 @@ export async function saveCommunitySubmission(submission: Omit<DbCommunitySubmis
       provider_name: newRow.provider_name,
       exchange_rate: newRow.exchange_rate,
       transfer_fee: newRow.transfer_fee,
+      send_amount: newRow.send_amount,
+      receive_amount: newRow.receive_amount,
+      submitted_by_name: newRow.submitted_by_name,
       submitted_by_email: newRow.submitted_by_email,
+      screenshot_name: newRow.screenshot_name,
+      screenshot_url: newRow.screenshot_url,
+      screenshot_storage_path: newRow.screenshot_storage_path,
       status: newRow.status,
+      vat_amount: newRow.vat_amount,
+      other_costs: newRow.other_costs,
+
+      destination_country: newRow.destination_country,
+      destination_currency: newRow.destination_currency,
+      date_observed: newRow.date_observed,
+      time_observed: newRow.time_observed,
+      transfer_method: newRow.transfer_method,
+      user_note: newRow.user_note,
+      amount_sent: newRow.amount_sent,
+      amount_received: newRow.amount_received,
+      screenshot_path: newRow.screenshot_path || newRow.screenshot_storage_path,
+      screenshot_original_name: newRow.screenshot_original_name || newRow.screenshot_name,
+      screenshot_mime_type: newRow.screenshot_mime_type,
+      screenshot_size_bytes: newRow.screenshot_size_bytes,
+      screenshot_hash: newRow.screenshot_hash,
+      screenshot_uploaded_at: newRow.screenshot_uploaded_at || newRow.submitted_at,
+      evidence_status: newRow.evidence_status,
+      fraud_risk_score: newRow.fraud_risk_score,
+      fraud_risk_level: newRow.fraud_risk_level,
+      fraud_flags: newRow.fraud_flags,
+      updated_at: newRow.updated_at
     };
-    const { data, error } = await supabaseClient.from('community_rate_submissions').insert([supabaseRow]).select();
-    if (!error && data && data[0]) {
-      const savedRow = data[0];
-      if (submission.vat_amount !== undefined || submission.other_costs !== undefined) {
-        saveExtraCosts(savedRow.id, {
-          vat_amount: submission.vat_amount,
-          other_costs: submission.other_costs
-        });
+    
+    try {
+      const { data, error } = await supabaseClient.from('community_rate_submissions').insert([supabaseRow]).select();
+      
+      if (!error && data && data[0]) {
+        const savedRow = data[0];
+        
+        // Log fraud event if risk is moderate or high
+        if (riskScore >= 25) {
+          await logFraudIntegrityEvent({
+            event_type: riskScore >= 75 ? 'CRVS_CRITICAL_FRAUD_TRIGGER' : 'CRVS_MODERATE_FRAUD_TRIGGER',
+            severity: riskScore >= 75 ? 'critical' : (riskScore >= 50 ? 'high' : 'medium'),
+            submission_id: savedRow.id,
+            channel_id: savedRow.provider_id,
+            corridor_id: savedRow.corridor_id,
+            risk_score: riskScore,
+            risk_flags: flags,
+            metadata: { exchange_rate: savedRow.exchange_rate, original_name: savedRow.screenshot_name }
+          });
+        }
+
+        if (submission.vat_amount !== undefined || submission.other_costs !== undefined) {
+          saveExtraCosts(savedRow.id, {
+            vat_amount: submission.vat_amount,
+            other_costs: submission.other_costs
+          });
+        }
+        return {
+          ...newRow,
+          ...savedRow,
+          submitted_at: savedRow.submitted_at || savedRow.created_at || newRow.submitted_at,
+        } as DbCommunitySubmission;
       }
-      return {
-        ...newRow,
-        ...savedRow,
-        submitted_at: savedRow.created_at || newRow.submitted_at,
-      } as DbCommunitySubmission;
+      console.error('Supabase save submission error details:', error);
+    } catch (err) {
+      console.warn('Supabase save submission error, using emulated storage:', err);
     }
-    console.error('Supabase save submission error details:', error);
-    console.warn('Supabase save submission error, using emulated storage:', error);
   }
 
   const current = getLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, initialCommunitySubmissions);
   const updated = [newRow, ...current];
   saveLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, updated);
+
+  if (riskScore >= 25) {
+    await logFraudIntegrityEvent({
+      event_type: riskScore >= 75 ? 'CRVS_CRITICAL_FRAUD_TRIGGER' : 'CRVS_MODERATE_FRAUD_TRIGGER',
+      severity: riskScore >= 75 ? 'critical' : (riskScore >= 50 ? 'high' : 'medium'),
+      submission_id: newRow.id,
+      channel_id: newRow.provider_id,
+      corridor_id: newRow.corridor_id,
+      risk_score: riskScore,
+      risk_flags: flags,
+      metadata: { exchange_rate: newRow.exchange_rate, original_name: newRow.screenshot_name }
+    });
+  }
 
   if (submission.vat_amount !== undefined || submission.other_costs !== undefined) {
     saveExtraCosts(newRow.id, {
@@ -548,20 +1033,72 @@ export async function saveCommunitySubmission(submission: Omit<DbCommunitySubmis
   return newRow;
 }
 
-export async function updateSubmissionStatus(id: string, status: 'approved' | 'rejected'): Promise<void> {
-  const current = getLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, initialCommunitySubmissions);
-  const updated = current.map(s => s.id === id ? { ...s, status } : s);
-  saveLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, updated);
+// Extended updateSubmissionStatus support for CRVS Admin features
+export async function updateSubmissionStatusEx(
+  id: string,
+  status: string,
+  adminUser?: { id: string; email: string },
+  reviewerNotes?: string,
+  rejectionReason?: string,
+  evidenceStatus?: string
+): Promise<void> {
+  const nowStr = new Date().toISOString();
+  const config = fetchCrvsConfig();
+  const validUntilStr = status === 'approved' 
+    ? new Date(Date.now() + config.expiry_hours * 60 * 60 * 1000).toISOString()
+    : undefined;
 
-  if (supabaseClient) {
-    const { error } = await supabaseClient
-      .from('community_rate_submissions')
-      .update({ status })
-      .eq('id', id);
-    if (error) {
-      console.error('Supabase update submission status error details:', error);
+  // Anti-self approval validation check
+  const submissions = await fetchCommunitySubmissions();
+  const targetSub = submissions.find(s => s.id === id);
+  if (targetSub && adminUser) {
+    if (targetSub.submitted_by_email?.toLowerCase() === adminUser.email.toLowerCase() && status === 'approved') {
+      throw new Error("Admins are strictly forbidden from approving their own submissions.");
     }
   }
+
+  const updates: any = {
+    status,
+    updated_at: nowStr,
+    reviewer_notes: reviewerNotes,
+    evidence_status: evidenceStatus || (status === 'approved' ? 'verified' : (status === 'rejected' ? 'invalid' : 'pending'))
+  };
+
+  if (status === 'approved') {
+    updates.approved_by = adminUser?.id || null;
+    updates.approved_at = nowStr;
+    updates.valid_until = validUntilStr;
+  } else if (status === 'rejected') {
+    updates.rejected_by = adminUser?.id || null;
+    updates.rejected_at = nowStr;
+    updates.rejection_reason = rejectionReason;
+  }
+
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient
+        .from('community_rate_submissions')
+        .update(updates)
+        .eq('id', id);
+      if (!error) {
+        const current = getLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, initialCommunitySubmissions);
+        const updated = current.map(s => s.id === id ? { ...s, ...updates } : s);
+        saveLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, updated);
+        return;
+      }
+      console.warn('Supabase updateSubmissionStatusEx failed, falling back:', error);
+    } catch (err) {
+      console.warn('Supabase updateSubmissionStatusEx error:', err);
+    }
+  }
+
+  const current = getLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, initialCommunitySubmissions);
+  const updated = current.map(s => s.id === id ? { ...s, ...updates } : s);
+  saveLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, updated);
+}
+
+export async function updateSubmissionStatus(id: string, status: 'approved' | 'rejected'): Promise<void> {
+  await updateSubmissionStatusEx(id, status);
 }
 
 // Market Reference Rates
@@ -707,14 +1244,24 @@ export async function resolveRatesWithRRE(
       lastUpdated = activeOverride.created_at;
       reason = 'Active admin override configured by SRCMC. Highest priority selection.';
     } else {
-      // 2. Approved Community Verified Rate (within 24 hours of submission)
-      const freshnessThresholdMs = 24 * 60 * 60 * 1000;
+      // 2. Approved Community Verified Rate (verified & within custom validity hours)
       const approvedCommunity = communitySubmissions
          .filter(s => {
-           const isApproved = s.status === 'approved';
+           const isApprovedAndEligible = s.status === 'approved';
+           const isVerified = s.evidence_status === 'verified';
+           
+           // Expiration validation check
+           let isNotExpired = false;
+           if (s.valid_until) {
+             isNotExpired = new Date(s.valid_until).getTime() > Date.now();
+           } else {
+             const ageMs = Date.now() - new Date(s.submitted_at).getTime();
+             isNotExpired = ageMs <= 24 * 60 * 60 * 1000; // default 24h fallback
+           }
+           
+           const isNotBlocked = s.status !== 'blocked';
            const isMatching = s.provider_id === provider.id && s.corridor_id === corridorId;
-           const ageMs = Date.now() - new Date(s.submitted_at).getTime();
-           return isApproved && isMatching && ageMs <= freshnessThresholdMs;
+           return isApprovedAndEligible && isVerified && isNotExpired && isNotBlocked && isMatching;
          })
          .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())[0];
 
@@ -725,9 +1272,14 @@ export async function resolveRatesWithRRE(
         customOtherCosts = approvedCommunity.other_costs;
         sourceType = 'community_verified';
         sourceLabel = 'Community Verified Rate';
-        confidence = 'medium';
+        
+        // Calculate dynamic trust confidence via Trust Engine
+        const marketRef = marketRates.find(m => m.corridor_id === corridorId);
+        const trustScore = computeCommunityTrustConfidence(approvedCommunity, communitySubmissions, marketRef?.rate);
+        confidence = trustScore >= 90 ? 'high' : (trustScore >= 70 ? 'medium' : 'low');
+        
         lastUpdated = approvedCommunity.submitted_at;
-        reason = 'No active admin override exists; utilizing live approved community verified submission.';
+        reason = `Verified by CRVS (Trust score: ${trustScore}/100) from ${approvedCommunity.submitted_by_name || 'Expats'}.`;
       } else if (coverage && coverage.exchange_rate !== null && coverage.exchange_rate !== undefined && coverage.exchange_rate > 0) {
         // 3. Manual Channel Coverage Rate
         resolvedRate = coverage.exchange_rate;
@@ -1460,6 +2012,11 @@ export interface AuthSession {
     primary_destination_currency?: string;
     preferred_channels?: string[];
     estimated_monthly_send_amount?: number;
+    rate_submissions_restricted?: boolean;
+    first_transfer_recorded_at?: string;
+    first_transfer_experience_prompt_shown_at?: string;
+    first_transfer_experience_completed_at?: string;
+    engagement_notifications_enabled?: boolean;
   } | null;
 }
 
@@ -1467,6 +2024,7 @@ const initialRegisteredUsers = [
   {
     id: 'user-init-1',
     email: 'ahmed.hassan@saudi-expats.com',
+    password: 'ahmed_hassan_remit_secure_9238',
     name: 'Ahmed Hassan',
     phone: '+966 50 123 4567',
     preferred_corridor_id: 'sa-pk',
@@ -1476,6 +2034,7 @@ const initialRegisteredUsers = [
   {
     id: 'user-init-2',
     email: 'gaturuhassan@gmail.com',
+    password: 'gaturu_hassan_remit_secure_8174',
     name: 'Hassan Gaturu',
     phone: '+966 55 987 6543',
     preferred_corridor_id: 'sa-in',
@@ -1485,6 +2044,7 @@ const initialRegisteredUsers = [
   {
     id: 'user-init-3',
     email: 'john.doe@gmail.com',
+    password: 'john_doe_remit_secure_5742',
     name: 'John Doe',
     phone: '+966 53 111 2222',
     preferred_corridor_id: 'sa-ph',
@@ -1501,15 +2061,20 @@ export function saveAuthSession(session: AuthSession): void {
   saveLocalStorageItem<AuthSession>(USER_SESSION_KEY, session);
 }
 
+export interface SignUpResponse {
+  user: any | null;
+  session: AuthSession | null;
+  confirmationRequired: boolean;
+}
+
 export async function signUpWithSupabase(
   email: string,
   name: string,
   phone: string,
   preferredCorridorId: string,
-  password?: string
-): Promise<AuthSession> {
+  password: string
+): Promise<SignUpResponse> {
   const normalizedEmail = email.trim().toLowerCase();
-  const signupPassword = password || 'password123';
   let authUserId = `user-${Date.now()}`;
   
   const newUser = {
@@ -1539,7 +2104,7 @@ export async function signUpWithSupabase(
     // 2. Perform Supabase Auth SignUp
     const { data: authData, error: authError } = await supabaseClient.auth.signUp({
       email: normalizedEmail,
-      password: signupPassword,
+      password: password,
       options: {
         data: {
           name: name,
@@ -1558,23 +2123,58 @@ export async function signUpWithSupabase(
       authUserId = authData.user.id;
       newUser.id = authUserId;
 
-      // 3. Create the database profile (Use ID from auth.users.id)
-      const { error: profileError } = await supabaseClient.from('user_profiles').insert({
-        id: authUserId,
-        email: normalizedEmail,
-        name: name,
-        phone: phone,
-        preferred_corridor_id: preferredCorridorId,
-        language: 'en',
-        onboarding_completed: false,
-        created_at: new Date().toISOString()
-      });
+      // 3. Create the database profile (Use ID from auth.users.id) only if not already exists (safe trigger / fallback)
+      const { data: existingProfile } = await supabaseClient
+        .from('user_profiles')
+        .select('id')
+        .eq('id', authUserId)
+        .maybeSingle();
 
-      if (profileError) {
-        console.error('[SariRemit Auth] Failed to create user profile during signup:', profileError);
-        throw profileError;
+      if (!existingProfile) {
+        const { error: profileError } = await supabaseClient.from('user_profiles').insert({
+          id: authUserId,
+          email: normalizedEmail,
+          name: name,
+          phone: phone,
+          preferred_corridor_id: preferredCorridorId,
+          language: 'en',
+          onboarding_completed: false,
+          created_at: new Date().toISOString()
+        });
+
+        if (profileError && !profileError.message.includes('duplicate key')) {
+          console.error('[SariRemit Auth] Failed to create user profile during signup:', profileError);
+          throw profileError;
+        }
       }
     }
+
+    // If session is null, email confirmation is required! Do NOT log them in automatically.
+    if (!authData.session) {
+      return {
+        user: authData.user,
+        session: null,
+        confirmationRequired: true
+      };
+    }
+
+    const session = {
+      user: {
+        id: authUserId,
+        email: normalizedEmail,
+        name,
+        phone,
+        preferredCorridorId,
+        language: 'en' as const,
+        onboarding_completed: false
+      }
+    };
+    saveAuthSession(session);
+    return {
+      user: authData.user,
+      session,
+      confirmationRequired: false
+    };
   } else {
     // Local emulation fallback mode
     const allUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
@@ -1588,6 +2188,7 @@ export async function signUpWithSupabase(
     const emulatedUser = {
       id: newUser.id,
       email: newUser.email,
+      password: password,
       name: newUser.name,
       phone: newUser.phone,
       preferred_corridor_id: newUser.preferredCorridorId,
@@ -1597,22 +2198,25 @@ export async function signUpWithSupabase(
     };
     allUsers.push(emulatedUser);
     saveLocalStorageItem('sr_supabase_registered_users', allUsers);
-  }
 
-  const session = { user: newUser };
-  saveAuthSession(session);
-  return session;
+    const session = { user: newUser };
+    saveAuthSession(session);
+    return {
+      user: newUser,
+      session,
+      confirmationRequired: false
+    };
+  }
 }
 
-export async function signInWithSupabase(email: string, password?: string): Promise<AuthSession> {
+export async function signInWithSupabase(email: string, password: string): Promise<AuthSession> {
   const normalizedEmail = email.trim().toLowerCase();
-  const signinPassword = password || 'password123';
 
   if (isSupabaseConfigured && supabaseClient) {
     // 1. Perform authentic Supabase signIn
     const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
       email: normalizedEmail,
-      password: signinPassword,
+      password: password,
     });
 
     if (authError) {
@@ -1689,6 +2293,11 @@ export async function signInWithSupabase(email: string, password?: string): Prom
       throw new Error("No account found or invalid login details");
     }
 
+    const expectedPassword = matchedLocalUser.password;
+    if (!expectedPassword || expectedPassword !== password) {
+      throw new Error("Incorrect email or password");
+    }
+
     const session = {
       user: {
         id: matchedLocalUser.id,
@@ -1710,13 +2319,215 @@ export async function signInWithSupabase(email: string, password?: string): Prom
   }
 }
 
+export async function signInWithGoogle(): Promise<void> {
+  if (isSupabaseConfigured && supabaseClient) {
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
+    });
+    if (error) {
+      throw error;
+    }
+  } else {
+    // Emulated local redirect to /auth/callback for local testing
+    console.log('[SariRemit Auth] Google Sign-In: emulated redirecting to /auth/callback...');
+    window.location.href = `${window.location.origin}/auth/callback?mock=google`;
+  }
+}
+
+export async function handleGoogleCallback(): Promise<AuthSession> {
+  if (isSupabaseConfigured && supabaseClient) {
+    // 1. Wait until Supabase restores a valid session (poll/timeout check)
+    let session = null;
+    for (let i = 0; i < 20; i++) {
+      const { data: { session: currentSession } } = await supabaseClient.auth.getSession();
+      if (currentSession) {
+        session = currentSession;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    if (!session) {
+      // Secondary fallback wait via onAuthStateChange
+      session = await new Promise((resolve) => {
+        const { data: { subscription } } = supabaseClient!.auth.onAuthStateChange((event, currentSession) => {
+          if (currentSession) {
+            subscription.unsubscribe();
+            resolve(currentSession);
+          }
+        });
+        setTimeout(() => {
+          subscription.unsubscribe();
+          resolve(null);
+        }, 3000);
+      });
+    }
+
+    if (!session) {
+      throw new Error("Unable to restore valid Supabase session. Google login failed or was cancelled.");
+    }
+
+    // 2. Get the authenticated user using supabase.auth.getUser()
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      throw new Error(userError?.message || "Failed to retrieve authenticated user details from Supabase.");
+    }
+
+    // 3. Require both a valid session and user (completed by checks above)
+    const normalizedEmail = user.email?.trim().toLowerCase() || '';
+
+    // 4 & 5. Fetch existing profile using profile.id = user.id. Do not fetch only by email.
+    let { data: profile, error: profileError } = await supabaseClient
+      .from('user_profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('[Google Callback] Error fetching profile by ID:', profileError);
+    }
+
+    // 6. Do not create another Auth account.
+    
+    // 7. Create a profile only when no profile exists for the authenticated user ID.
+    // 8. Never generate a separate profile UUID.
+    if (!profile) {
+      console.log('[Google Callback] No profile found for ID:', user.id, '. Checking if existing email/password profile exists to link identity...');
+      
+      // Preserve the Supabase-linked identity behavior: if profile by email exists, link it
+      const { data: profileByEmail } = await supabaseClient
+        .from('user_profiles')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (profileByEmail) {
+        console.log('[Google Callback] Found existing profile with same email but different ID. Linking ID...', user.id);
+        const { data: updatedProfile, error: updateError } = await supabaseClient
+          .from('user_profiles')
+          .update({ id: user.id })
+          .eq('email', normalizedEmail)
+          .select()
+          .maybeSingle();
+        
+        if (!updateError && updatedProfile) {
+          profile = updatedProfile;
+        } else {
+          console.warn('[Google Callback] Linking profile ID failed:', updateError);
+          profile = profileByEmail;
+        }
+      } else {
+        console.log('[Google Callback] Creating new profile with user ID:', user.id);
+        const name = user.user_metadata?.name || user.user_metadata?.full_name || normalizedEmail.split('@')[0].toUpperCase();
+        const phone = user.user_metadata?.phone || '+966 50 123 4567';
+
+        const { data: newProfile, error: createError } = await supabaseClient
+          .from('user_profiles')
+          .insert({
+            id: user.id,
+            email: normalizedEmail,
+            name: name,
+            phone: phone,
+            preferred_corridor_id: 'sa-pk',
+            language: 'en',
+            onboarding_completed: false, // new Google user sees onboarding once
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .maybeSingle();
+
+        if (createError) {
+          console.error('[Google Callback] Failed to create new user profile:', createError);
+          throw createError;
+        }
+        profile = newProfile;
+      }
+    }
+
+    if (!profile) {
+      throw new Error("Failed to load or initialize profile for the authenticated Google user.");
+    }
+
+    // 9. Never reset onboarding_completed.
+    // 12. Do not redirect until auth and profile loading have completed.
+    const resolvedSession = {
+      user: {
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        phone: profile.phone,
+        preferredCorridorId: profile.preferred_corridor_id,
+        language: profile.language || 'en',
+        onboarding_completed: profile.onboarding_completed || false,
+        primary_destination_country: profile.primary_destination_country,
+        primary_destination_currency: profile.primary_destination_currency,
+        preferred_channels: profile.preferred_channels || [],
+        estimated_monthly_send_amount: profile.estimated_monthly_send_amount ? parseFloat(profile.estimated_monthly_send_amount) : undefined,
+      }
+    };
+
+    saveAuthSession(resolvedSession);
+    return resolvedSession;
+  } else {
+    // Local emulation mock Google callback behavior
+    console.log('[Google Callback] Emulation mode handling mock login...');
+    const mockEmail = 'mock.google.user@gmail.com';
+    const emulatedUserId = 'user-mock-google-id';
+
+    const allUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+    let matchedUser = allUsers.find(u => u.email.toLowerCase() === mockEmail.toLowerCase() || u.id === emulatedUserId);
+
+    if (!matchedUser) {
+      matchedUser = {
+        id: emulatedUserId,
+        email: mockEmail,
+        password: 'google-emulated-pass',
+        name: 'MOCK GOOGLE USER',
+        phone: '+966 50 000 0000',
+        preferred_corridor_id: 'sa-pk',
+        language: 'en',
+        onboarding_completed: false,
+        created_at: new Date().toISOString()
+      };
+      allUsers.push(matchedUser);
+      saveLocalStorageItem('sr_supabase_registered_users', allUsers);
+    }
+
+    const session = {
+      user: {
+        id: matchedUser.id,
+        email: matchedUser.email,
+        name: matchedUser.name,
+        phone: matchedUser.phone,
+        preferredCorridorId: matchedUser.preferred_corridor_id || 'sa-pk',
+        language: matchedUser.language || 'en',
+        onboarding_completed: matchedUser.onboarding_completed || false,
+      }
+    };
+
+    saveAuthSession(session);
+    return session;
+  }
+}
+
 export async function getCurrentSessionProfile(): Promise<AuthSession> {
   if (isSupabaseConfigured && supabaseClient) {
     try {
       const { data: { session: sbSession }, error: sbError } = await supabaseClient.auth.getSession();
 
       if (!sbError && sbSession?.user) {
-        const authUser = sbSession.user;
+        // Securely confirm the user using getUser()
+        const { data: { user: secureUser }, error: getUserError } = await supabaseClient.auth.getUser();
+        if (getUserError || !secureUser) {
+          console.warn('[SariRemit Auth] Secure getUser check failed, clearing session.');
+          saveAuthSession({ user: null });
+          return { user: null };
+        }
+
+        const authUser = secureUser;
         const normalizedEmail = authUser.email?.trim().toLowerCase() || '';
 
         console.log('[SariRemit Auth] Fetching session profile on mount for ID:', authUser.id);
@@ -1760,6 +2571,11 @@ export async function getCurrentSessionProfile(): Promise<AuthSession> {
               primary_destination_currency: profile.primary_destination_currency,
               preferred_channels: profile.preferred_channels || [],
               estimated_monthly_send_amount: profile.estimated_monthly_send_amount ? parseFloat(profile.estimated_monthly_send_amount) : undefined,
+              rate_submissions_restricted: profile.rate_submissions_restricted || false,
+              first_transfer_recorded_at: profile.first_transfer_recorded_at || undefined,
+              first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || undefined,
+              first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || undefined,
+              engagement_notifications_enabled: profile.engagement_notifications_enabled !== false,
             }
           };
           saveAuthSession(session);
@@ -1793,6 +2609,11 @@ export async function updateUserProfileInDb(profile: {
   primary_destination_currency?: string;
   preferred_channels?: string[];
   estimated_monthly_send_amount?: number;
+  rate_submissions_restricted?: boolean;
+  first_transfer_recorded_at?: string;
+  first_transfer_experience_prompt_shown_at?: string;
+  first_transfer_experience_completed_at?: string;
+  engagement_notifications_enabled?: boolean;
 }): Promise<void> {
   const targetId = profile.id;
   const userEmail = (profile.email || getAuthSession().user?.email || '').trim().toLowerCase();
@@ -1811,6 +2632,11 @@ export async function updateUserProfileInDb(profile: {
         primary_destination_currency: profile.primary_destination_currency || null,
         preferred_channels: profile.preferred_channels || [],
         estimated_monthly_send_amount: profile.estimated_monthly_send_amount !== undefined && !isNaN(Number(profile.estimated_monthly_send_amount)) ? Number(profile.estimated_monthly_send_amount) : null,
+        rate_submissions_restricted: profile.rate_submissions_restricted !== undefined ? profile.rate_submissions_restricted : false,
+        first_transfer_recorded_at: profile.first_transfer_recorded_at || null,
+        first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || null,
+        first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || null,
+        engagement_notifications_enabled: profile.engagement_notifications_enabled !== undefined ? profile.engagement_notifications_enabled : true,
         updated_at: new Date().toISOString()
       };
 
@@ -1852,6 +2678,11 @@ export async function updateUserProfileInDb(profile: {
           primary_destination_currency: profile.primary_destination_currency,
           preferred_channels: profile.preferred_channels || [],
           estimated_monthly_send_amount: profile.estimated_monthly_send_amount,
+          rate_submissions_restricted: profile.rate_submissions_restricted,
+          first_transfer_recorded_at: profile.first_transfer_recorded_at || u.first_transfer_recorded_at,
+          first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || u.first_transfer_experience_prompt_shown_at,
+          first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || u.first_transfer_experience_completed_at,
+          engagement_notifications_enabled: profile.engagement_notifications_enabled !== undefined ? profile.engagement_notifications_enabled : u.engagement_notifications_enabled,
           updated_at: new Date().toISOString()
         }
       : u
@@ -1874,6 +2705,11 @@ export async function updateUserProfileInDb(profile: {
       primary_destination_currency: profile.primary_destination_currency,
       preferred_channels: profile.preferred_channels || [],
       estimated_monthly_send_amount: profile.estimated_monthly_send_amount,
+      rate_submissions_restricted: profile.rate_submissions_restricted,
+      first_transfer_recorded_at: profile.first_transfer_recorded_at || currentSession.user.first_transfer_recorded_at,
+      first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || currentSession.user.first_transfer_experience_prompt_shown_at,
+      first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || currentSession.user.first_transfer_experience_completed_at,
+      engagement_notifications_enabled: profile.engagement_notifications_enabled !== undefined ? profile.engagement_notifications_enabled : currentSession.user.engagement_notifications_enabled,
     };
     saveAuthSession(currentSession);
   }
@@ -1897,6 +2733,614 @@ export function signOutSession(): void {
   if (isSupabaseConfigured && supabaseClient) {
     supabaseClient.auth.signOut().catch(() => {});
   }
+}
+
+// =========================================================================
+// SARIREMIT ENGAGEMENT & PROGRESS SYSTEM (SEPS) ENGINE
+// =========================================================================
+
+export const ACHIEVEMENT_DEFINITIONS: AchievementDefinition[] = [
+  {
+    id: 'ach-1',
+    code: 'first_transfer',
+    title: 'First Transfer Recorded',
+    description: 'You recorded your first transfer on SariRemit.',
+    category: 'transfer',
+    iconKey: 'first-step',
+    sortOrder: 1,
+    status: 'active'
+  },
+  {
+    id: 'ach-2',
+    code: 'smart_sender',
+    title: 'Smart Sender',
+    description: 'You recorded three transfers with optimal comparison options.',
+    category: 'transfer',
+    iconKey: 'arrow-path',
+    sortOrder: 2,
+    status: 'active'
+  },
+  {
+    id: 'ach-3',
+    code: 'regular_comparator',
+    title: 'Regular Comparator',
+    description: 'You recorded five transfers after comparing the best rates.',
+    category: 'transfer',
+    iconKey: 'arrow-path',
+    sortOrder: 3,
+    status: 'active'
+  },
+  {
+    id: 'ach-4',
+    code: 'experienced_sender',
+    title: 'Experienced Sender',
+    description: 'You recorded ten transfers with SariRemit.',
+    category: 'transfer',
+    iconKey: 'arrow-path',
+    sortOrder: 4,
+    status: 'active'
+  },
+  {
+    id: 'ach-5',
+    code: 'savings_starter',
+    title: 'Savings Starter',
+    description: 'Saved your first SAR using smart recommendations.',
+    category: 'savings',
+    iconKey: 'savings-jar',
+    sortOrder: 5,
+    status: 'active'
+  },
+  {
+    id: 'ach-6',
+    code: 'savings_builder',
+    title: 'Savings Builder',
+    description: 'Reached a cumulative estimated savings of 100 SAR or more.',
+    category: 'savings',
+    iconKey: 'savings-jar',
+    sortOrder: 6,
+    status: 'active'
+  },
+  {
+    id: 'ach-7',
+    code: 'first_verified',
+    title: 'First Verified Rate',
+    description: 'Your first community rate submission has been verified and approved.',
+    category: 'contribution',
+    iconKey: 'shield-check',
+    sortOrder: 7,
+    status: 'active'
+  },
+  {
+    id: 'ach-8',
+    code: 'trusted_contributor',
+    title: 'Trusted Contributor',
+    description: 'You contributed three approved community rate reports.',
+    category: 'contribution',
+    iconKey: 'shield-check',
+    sortOrder: 8,
+    status: 'active'
+  },
+  {
+    id: 'ach-9',
+    code: 'community_helper',
+    title: 'Community Helper',
+    description: 'You contributed five approved community rate reports.',
+    category: 'contribution',
+    iconKey: 'shield-check',
+    sortOrder: 9,
+    status: 'active'
+  }
+];
+
+// 1. Fetch recorded transfers
+export async function fetchRecordedTransfers(userId: string): Promise<RecordedTransfer[]> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('recorded_transfers')
+        .select('*')
+        .eq('user_id', userId)
+        .order('recorded_at', { ascending: false });
+      if (!error && data) {
+        return data.map(item => ({
+          id: item.id,
+          userId: item.user_id,
+          channelId: item.channel_id,
+          corridorId: item.corridor_id,
+          sendAmountSAR: parseFloat(item.send_amount_sar),
+          destinationCurrency: item.destination_currency,
+          estimatedRecipientAmount: parseFloat(item.estimated_recipient_amount),
+          actualRecipientAmount: item.actual_recipient_amount ? parseFloat(item.actual_recipient_amount) : null,
+          resolvedRate: parseFloat(item.resolved_rate),
+          rateSource: item.rate_source,
+          transferFeeSAR: parseFloat(item.transfer_fee_sar),
+          vatAmountSAR: parseFloat(item.vat_amount_sar),
+          otherChargesSAR: parseFloat(item.other_charges_sar),
+          estimatedSavingsDestination: item.estimated_savings_destination ? parseFloat(item.estimated_savings_destination) : null,
+          estimatedSavingsSAR: item.estimated_savings_sar ? parseFloat(item.estimated_savings_sar) : null,
+          savingsComparisonType: item.savings_comparison_type,
+          comparisonChannelId: item.comparison_channel_id,
+          idempotencyKey: item.idempotency_key,
+          recordedAt: item.recorded_at,
+          createdAt: item.created_at
+        }));
+      }
+      console.warn('Supabase fetch recorded transfers failed:', error);
+    } catch (err) {
+      console.warn('Supabase fetch recorded transfers error:', err);
+    }
+  }
+
+  // Fallback
+  const list = getLocalStorageItem<RecordedTransfer[]>('sr_recorded_transfers', []);
+  return list.filter(item => item.userId === userId).sort((a,b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime());
+}
+
+// 2. Save recorded transfer and return newly earned achievements
+export async function saveRecordedTransfer(transfer: RecordedTransfer): Promise<{ success: boolean; newAchievements: UserAchievement[]; firstTime: boolean }> {
+  // Prevent duplicate records via idempotencyKey
+  const existingTransfers = await fetchRecordedTransfers(transfer.userId);
+  if (transfer.idempotencyKey && existingTransfers.some(t => t.idempotencyKey === transfer.idempotencyKey)) {
+    console.warn('[SEPS] Ignored duplicate recorded transfer with idempotencyKey:', transfer.idempotencyKey);
+    return { success: true, newAchievements: [], firstTime: false };
+  }
+
+  // Insert to recorded_transfers
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const dbPayload = {
+        id: transfer.id,
+        user_id: transfer.userId,
+        channel_id: transfer.channelId || null,
+        corridor_id: transfer.corridorId || null,
+        send_amount_sar: transfer.sendAmountSAR,
+        destination_currency: transfer.destinationCurrency,
+        estimated_recipient_amount: transfer.estimatedRecipientAmount,
+        actual_recipient_amount: transfer.actualRecipientAmount || null,
+        resolved_rate: transfer.resolvedRate,
+        rate_source: transfer.rateSource || null,
+        transfer_fee_sar: transfer.transferFeeSAR,
+        vat_amount_sar: transfer.vatAmountSAR,
+        other_charges_sar: transfer.otherChargesSAR,
+        estimated_savings_destination: transfer.estimatedSavingsDestination || null,
+        estimated_savings_sar: transfer.estimatedSavingsSAR || null,
+        savings_comparison_type: transfer.savingsComparisonType,
+        comparison_channel_id: transfer.comparisonChannelId || null,
+        idempotency_key: transfer.idempotencyKey || null,
+        recorded_at: transfer.recordedAt,
+        created_at: transfer.createdAt,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabaseClient.from('recorded_transfers').insert(dbPayload);
+      if (error) {
+        console.error('Failed to save recorded transfer in Supabase:', error);
+      }
+    } catch (err) {
+      console.warn('Supabase save recorded transfer error:', err);
+    }
+  }
+
+  // Save to Local Storage anyway
+  const list = getLocalStorageItem<RecordedTransfer[]>('sr_recorded_transfers', []);
+  list.push(transfer);
+  saveLocalStorageItem('sr_recorded_transfers', list);
+
+  // SECTION 15 Integration: Also save to old user_transfer_savings so existing savings widgets remain perfectly in sync
+  const savingsRecord: UserTransferSavings = {
+    id: transfer.id,
+    user_id: transfer.userId,
+    corridor_id: transfer.corridorId,
+    send_amount: transfer.sendAmountSAR,
+    exchange_rate: transfer.resolvedRate,
+    transfer_fee: transfer.transferFeeSAR,
+    computed_savings: transfer.estimatedSavingsSAR || 0,
+    recipient_amount: transfer.estimatedRecipientAmount,
+    transfer_status: 'completed',
+    recorded_at: transfer.recordedAt
+  };
+  await saveUserTransfer(savingsRecord);
+
+  // Update profile first_transfer_recorded_at if null
+  const profile = getAuthSession().user;
+  const isFirstTime = !profile?.first_transfer_recorded_at;
+  if (profile && isFirstTime) {
+    const updatedFields = {
+      ...profile,
+      first_transfer_recorded_at: transfer.recordedAt
+    };
+    await updateUserProfileInDb(updatedFields);
+  }
+
+  // Recalculate progress & award achievements
+  const progress = await recalculateUserProgress(transfer.userId);
+  
+  // Return new achievements awarded during this recalculation (we can compare before and after)
+  const prevAchievements = getLocalStorageItem<UserAchievement[]>('sr_user_achievements', []);
+  // Recalculate will have already saved new achievements
+  const allAchievements = await fetchUserAchievements(transfer.userId);
+  const newlyAwarded = allAchievements.filter(ach => !prevAchievements.some(p => p.achievementId === ach.achievementId));
+
+  return { success: true, newAchievements: newlyAwarded, firstTime: isFirstTime };
+}
+
+// 3. Delete recorded transfer
+export async function deleteRecordedTransfer(id: string, userId: string): Promise<void> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      await supabaseClient.from('recorded_transfers').delete().eq('id', id).eq('user_id', userId);
+      await supabaseClient.from('user_transfer_savings').delete().eq('id', id).eq('user_id', userId);
+    } catch (err) {
+      console.warn('Supabase delete transfer error:', err);
+    }
+  }
+
+  // Local storage recorded_transfers
+  const list = getLocalStorageItem<RecordedTransfer[]>('sr_recorded_transfers', []);
+  const updatedList = list.filter(t => !(t.id === id && t.userId === userId));
+  saveLocalStorageItem('sr_recorded_transfers', updatedList);
+
+  // Local storage user_transfer_savings
+  const savingsList = getLocalStorageItem<UserTransferSavings[]>('sr_user_transfer_savings', []);
+  const updatedSavings = savingsList.filter(t => !(t.id === id && t.user_id === userId));
+  saveLocalStorageItem('sr_user_transfer_savings', updatedSavings);
+
+  // Recalculate progress
+  await recalculateUserProgress(userId);
+}
+
+// 4. Update recorded transfer actual recipient amount
+export async function updateRecordedTransferActualAmount(id: string, actualAmount: number, userId: string): Promise<void> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      await supabaseClient
+        .from('recorded_transfers')
+        .update({ actual_recipient_amount: actualAmount, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', userId);
+    } catch (err) {
+      console.warn('Supabase update actual amount error:', err);
+    }
+  }
+
+  const list = getLocalStorageItem<RecordedTransfer[]>('sr_recorded_transfers', []);
+  const updatedList = list.map(t => (t.id === id && t.userId === userId) ? { ...t, actualRecipientAmount: actualAmount } : t);
+  saveLocalStorageItem('sr_recorded_transfers', updatedList);
+}
+
+// 5. Submit user experience feedback
+export async function submitUserExperienceFeedback(feedback: UserExperienceFeedback): Promise<void> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const dbPayload = {
+        id: feedback.id,
+        user_id: feedback.userId,
+        feedback_type: feedback.feedbackType,
+        rating: feedback.rating || null,
+        selected_reasons: feedback.selectedReasons,
+        comment: feedback.comment || null,
+        related_transfer_id: feedback.relatedTransferId || null,
+        skipped: feedback.skipped,
+        source_screen: feedback.sourceScreen || null,
+        submitted_at: feedback.submittedAt,
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await supabaseClient.from('user_experience_feedback').insert(dbPayload);
+      if (error) {
+        console.error('Failed to insert user experience feedback in Supabase:', error);
+      }
+    } catch (err) {
+      console.warn('Supabase insert feedback error:', err);
+    }
+  }
+
+  // Local
+  const list = getLocalStorageItem<UserExperienceFeedback[]>('sr_user_experience_feedback', []);
+  list.push(feedback);
+  saveLocalStorageItem('sr_user_experience_feedback', list);
+
+  // Update profile experience dates
+  const profile = getAuthSession().user;
+  if (profile) {
+    if (feedback.feedbackType === 'first_transfer_experience') {
+      const updatedFields = {
+        ...profile,
+        first_transfer_experience_completed_at: feedback.skipped ? undefined : feedback.submittedAt,
+        first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || feedback.submittedAt
+      };
+      await updateUserProfileInDb(updatedFields);
+    }
+  }
+
+  // Recalculate progress for feedback points
+  await recalculateUserProgress(feedback.userId);
+}
+
+// 6. Fetch user experience feedback
+export async function fetchUserExperienceFeedback(userId: string): Promise<UserExperienceFeedback[]> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('user_experience_feedback')
+        .select('*')
+        .eq('user_id', userId);
+      if (!error && data) {
+        return data.map(item => ({
+          id: item.id,
+          userId: item.user_id,
+          feedbackType: item.feedback_type,
+          rating: item.rating,
+          selectedReasons: item.selected_reasons || [],
+          comment: item.comment,
+          relatedTransferId: item.related_transfer_id,
+          skipped: item.skipped,
+          sourceScreen: item.source_screen,
+          submittedAt: item.submitted_at
+        }));
+      }
+    } catch (err) {
+      console.warn('Supabase fetch feedback error:', err);
+    }
+  }
+
+  const list = getLocalStorageItem<UserExperienceFeedback[]>('sr_user_experience_feedback', []);
+  return list.filter(item => item.userId === userId);
+}
+
+// 7. Fetch user achievements
+export async function fetchUserAchievements(userId: string): Promise<UserAchievement[]> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('user_achievements')
+        .select('*')
+        .eq('user_id', userId);
+      if (!error && data) {
+        return data.map(item => ({
+          id: item.id,
+          userId: item.user_id,
+          achievementId: item.achievement_id,
+          sourceType: item.source_type,
+          sourceId: item.source_id,
+          awardedAt: item.awarded_at,
+          metadata: item.metadata || {}
+        }));
+      }
+    } catch (err) {
+      console.warn('Supabase fetch achievements error:', err);
+    }
+  }
+
+  const list = getLocalStorageItem<UserAchievement[]>('sr_user_achievements', []);
+  return list.filter(item => item.userId === userId);
+}
+
+// 8. Fetch user progress
+export async function fetchUserProgress(userId: string): Promise<UserProgress> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('user_progress')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!error && data) {
+        return {
+          userId: data.user_id,
+          recordedTransferCount: data.recorded_transfer_count,
+          approvedRateContributionCount: data.approved_rate_contribution_count,
+          lifetimeEstimatedSavingsSar: parseFloat(data.lifetime_estimated_savings_sar),
+          currentLevel: data.current_level,
+          progressPoints: data.progress_points,
+          latestAchievementCode: data.latest_achievement_code,
+          updatedAt: data.updated_at
+        };
+      }
+    } catch (err) {
+      console.warn('Supabase fetch progress error:', err);
+    }
+  }
+
+  const progressList = getLocalStorageItem<UserProgress[]>('sr_user_progress', []);
+  const found = progressList.find(p => p.userId === userId);
+  if (found) return found;
+
+  // Otherwise calculate on demand
+  return recalculateUserProgress(userId);
+}
+
+// 9. Recalculate user progress & award achievements
+export async function recalculateUserProgress(userId: string): Promise<UserProgress> {
+  const transfers = await fetchRecordedTransfers(userId);
+  const transferCount = transfers.length;
+
+  // Calculate savings
+  const lifetimeSavings = transfers.reduce((acc, t) => acc + (t.estimatedSavingsSAR || 0), 0);
+
+  // Calculate approved community submissions
+  let approvedContributions = 0;
+  const session = getAuthSession();
+  if (session.user) {
+    const submissions = await fetchCommunitySubmissions();
+    const userSubmissions = submissions.filter(s => 
+      (s.submitted_by_email?.toLowerCase() === session.user?.email?.toLowerCase()) && 
+      s.status === 'approved'
+    );
+    approvedContributions = userSubmissions.length;
+  }
+
+  // Check feedback
+  const feedback = await fetchUserExperienceFeedback(userId);
+  const hasFeedback = feedback.some(f => !f.skipped);
+
+  // Compute Points
+  let points = 0;
+  points += transferCount * 10;
+  points += approvedContributions * 25;
+  points += hasFeedback ? 5 : 0;
+  points += lifetimeSavings > 0 ? 10 : 0;
+
+  // Determine Level
+  let level = 'new_member';
+  if (points >= 200) {
+    level = 'community_champion';
+  } else if (points >= 100) {
+    level = 'trusted_contributor';
+  } else if (points >= 50) {
+    level = 'confident_sender';
+  } else if (points >= 20) {
+    level = 'smart_sender';
+  }
+
+  // Evaluate achievements to award
+  const newlyAwarded: UserAchievement[] = [];
+  const currentAchievements = await fetchUserAchievements(userId);
+
+  const checkAndAward = async (code: string, isEligible: boolean) => {
+    const def = ACHIEVEMENT_DEFINITIONS.find(a => a.code === code);
+    if (def && isEligible) {
+      const alreadyEarned = currentAchievements.some(a => a.achievementId === def.id);
+      if (!alreadyEarned) {
+        const newAward: UserAchievement = {
+          id: `award-${code}-${Date.now()}`,
+          userId,
+          achievementId: def.id,
+          awardedAt: new Date().toISOString(),
+          metadata: { code }
+        };
+
+        // Persist to Supabase if configured
+        if (isSupabaseConfigured && supabaseClient) {
+          try {
+            await supabaseClient.from('user_achievements').insert({
+              id: newAward.id,
+              user_id: newAward.userId,
+              achievement_id: newAward.achievementId,
+              awarded_at: newAward.awardedAt,
+              metadata: newAward.metadata
+            });
+          } catch (err) {
+            console.warn('Failed to insert achievement in Supabase:', err);
+          }
+        }
+
+        // Add to local storage achievements
+        const achList = getLocalStorageItem<UserAchievement[]>('sr_user_achievements', []);
+        achList.push(newAward);
+        saveLocalStorageItem('sr_user_achievements', achList);
+
+        newlyAwarded.push(newAward);
+        currentAchievements.push(newAward);
+      }
+    }
+  };
+
+  // Perform checks
+  await checkAndAward('first_transfer', transferCount >= 1);
+  await checkAndAward('smart_sender', transferCount >= 3);
+  await checkAndAward('regular_comparator', transferCount >= 5);
+  await checkAndAward('experienced_sender', transferCount >= 10);
+  await checkAndAward('savings_starter', lifetimeSavings > 0);
+  await checkAndAward('savings_builder', lifetimeSavings >= 100);
+  await checkAndAward('first_verified', approvedContributions >= 1);
+  await checkAndAward('trusted_contributor', approvedContributions >= 3);
+  await checkAndAward('community_helper', approvedContributions >= 5);
+
+  const latestAchievementCode = currentAchievements.length > 0 
+    ? ACHIEVEMENT_DEFINITIONS.find(def => def.id === currentAchievements[currentAchievements.length - 1].achievementId)?.code 
+    : null;
+
+  const progress: UserProgress = {
+    userId,
+    recordedTransferCount: transferCount,
+    approvedRateContributionCount: approvedContributions,
+    lifetimeEstimatedSavingsSar: lifetimeSavings,
+    currentLevel: level,
+    progressPoints: points,
+    latestAchievementCode,
+    updatedAt: new Date().toISOString()
+  };
+
+  // Persist progress to Supabase
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const dbPayload = {
+        user_id: progress.userId,
+        recorded_transfer_count: progress.recordedTransferCount,
+        approved_rate_contribution_count: progress.approvedRateContributionCount,
+        lifetime_estimated_savings_sar: progress.lifetimeEstimatedSavingsSar,
+        current_level: progress.currentLevel,
+        progress_points: progress.progressPoints,
+        latest_achievement_code: progress.latestAchievementCode,
+        updated_at: progress.updatedAt
+      };
+      await supabaseClient.from('user_progress').upsert(dbPayload);
+    } catch (err) {
+      console.warn('Failed to upsert progress in Supabase:', err);
+    }
+  }
+
+  // Save to local storage progress
+  const progressList = getLocalStorageItem<UserProgress[]>('sr_user_progress', []);
+  const updatedProgressList = progressList.filter(p => p.userId !== userId);
+  updatedProgressList.push(progress);
+  saveLocalStorageItem('sr_user_progress', updatedProgressList);
+
+  return progress;
+}
+
+// 10. Award achievement if eligible (manual or admin triggered)
+export async function awardAchievementIfEligible(userId: string, code: string, metadata?: Record<string, any>): Promise<UserAchievement | null> {
+  const def = ACHIEVEMENT_DEFINITIONS.find(a => a.code === code);
+  if (!def) return null;
+
+  const currentAchievements = await fetchUserAchievements(userId);
+  const alreadyEarned = currentAchievements.some(a => a.achievementId === def.id);
+  if (alreadyEarned) return null;
+
+  const newAward: UserAchievement = {
+    id: `award-${code}-${Date.now()}`,
+    userId,
+    achievementId: def.id,
+    awardedAt: new Date().toISOString(),
+    metadata: metadata || {}
+  };
+
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      await supabaseClient.from('user_achievements').insert({
+        id: newAward.id,
+        user_id: newAward.userId,
+        achievement_id: newAward.achievementId,
+        awarded_at: newAward.awardedAt,
+        metadata: newAward.metadata
+      });
+    } catch (err) {
+      console.warn('Failed to insert achievement in Supabase:', err);
+    }
+  }
+
+  const achList = getLocalStorageItem<UserAchievement[]>('sr_user_achievements', []);
+  achList.push(newAward);
+  saveLocalStorageItem('sr_user_achievements', achList);
+
+  await recalculateUserProgress(userId);
+  return newAward;
+}
+
+// 11. Fetch SRCMC Feedback Analytics
+export async function fetchFeedbackAnalytics(): Promise<any> {
+  // Return list of all experience feedbacks for administrative dashboard summary
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.from('user_experience_feedback').select('*');
+      if (!error && data) return data;
+    } catch (err) {
+      console.warn('Supabase fetch feedback analytics error:', err);
+    }
+  }
+  return getLocalStorageItem<UserExperienceFeedback[]>('sr_user_experience_feedback', []);
 }
 
 // --- USER SAVINGS AND TRANSFERS MANAGEMENT ---
@@ -1975,6 +3419,7 @@ export async function saveUserTransfer(transfer: UserTransferSavings): Promise<v
 
 export interface SRCMCAdminAccess {
   id: string;
+  user_id?: string | null;
   email: string;
   role: 'main_admin' | 'rate_monitor' | 'override_manager' | 'community_verifier' | 'channel_manager' | 'corridor_manager' | 'viewer';
   permissions: string[];
@@ -1983,6 +3428,191 @@ export interface SRCMCAdminAccess {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export async function getAndRepairUserSrcmcAccess(userId: string, email: string): Promise<SRCMCAdminAccess | null> {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  if (supabaseClient) {
+    try {
+      // 1. Query directly by authenticated user_id
+      const { data: directAccess, error: directError } = await supabaseClient
+        .from('srcmc_admin_access')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!directError && directAccess) {
+        return directAccess as SRCMCAdminAccess;
+      }
+
+      // 2. Query by email where user_id is null or needs to be set
+      const { data: emailAccess, error: emailError } = await supabaseClient
+        .from('srcmc_admin_access')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!emailError && emailAccess) {
+        // Safe update: associate user_id with the record
+        const { data: repairedAccess, error: repairError } = await supabaseClient
+          .from('srcmc_admin_access')
+          .update({
+            user_id: userId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', emailAccess.id)
+          .select()
+          .maybeSingle();
+
+        if (!repairError && repairedAccess) {
+          console.log(`[SRCMC Auth Repair] Successfully set user_id for: ${normalizedEmail}`);
+          return repairedAccess as SRCMCAdminAccess;
+        }
+        return emailAccess as SRCMCAdminAccess;
+      }
+    } catch (err) {
+      console.warn('[SRCMC Auth Repair] Failed to repair admin access:', err);
+    }
+  }
+
+  // Fallback / Local Emulation
+  const admins = getLocalStorageItem<SRCMCAdminAccess[]>(ADMIN_ACCESS_KEY, initialAdmins);
+  const matchIdx = admins.findIndex(
+    a => (a.user_id === userId || a.id === userId || a.email.toLowerCase().trim() === normalizedEmail) && a.is_active
+  );
+
+  if (matchIdx !== -1) {
+    if (!admins[matchIdx].user_id) {
+      admins[matchIdx] = {
+        ...admins[matchIdx],
+        user_id: userId,
+        updated_at: new Date().toISOString()
+      };
+      saveLocalStorageItem(ADMIN_ACCESS_KEY, admins);
+    }
+    return admins[matchIdx];
+  }
+
+  return null;
+}
+
+export async function assignAdminAccess(params: {
+  email: string;
+  role: 'main_admin' | 'rate_monitor' | 'override_manager' | 'community_verifier' | 'channel_manager' | 'corridor_manager' | 'viewer';
+  permissions: string[];
+  createdBy: string;
+}): Promise<{ success: boolean; message: string; pin?: string }> {
+  const normalizedEmail = params.email.trim().toLowerCase();
+  
+  if (supabaseClient) {
+    try {
+      // 1. Validate against existing profile in user_profiles
+      const { data: profile, error: profileError } = await supabaseClient
+        .from('user_profiles')
+        .select('id')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (profileError || !profile) {
+        return {
+          success: false,
+          message: 'No registered SariRemit account found for this email address. Users must first register/onboard before administrative access can be assigned.'
+        };
+      }
+
+      const targetUserId = profile.id;
+      const pin = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Check if there is an existing access record (avoid duplicates)
+      const { data: existingRecord } = await supabaseClient
+        .from('srcmc_admin_access')
+        .select('*')
+        .or(`user_id.eq.${targetUserId},email.eq.${normalizedEmail}`)
+        .maybeSingle();
+
+      const recordId = existingRecord?.id || `admin-${Date.now()}`;
+      const recordPin = existingRecord?.pin_code || pin;
+
+      const { error: upsertError } = await supabaseClient
+        .from('srcmc_admin_access')
+        .upsert({
+          id: recordId,
+          user_id: targetUserId,
+          email: normalizedEmail,
+          role: params.role,
+          permissions: params.permissions,
+          pin_code: recordPin,
+          pin_generated_at: existingRecord?.pin_generated_at || new Date().toISOString(),
+          is_active: true,
+          updated_at: new Date().toISOString()
+        });
+
+      if (upsertError) throw upsertError;
+
+      return {
+        success: true,
+        message: `Successfully assigned access for ${normalizedEmail}.`,
+        pin: recordPin
+      };
+    } catch (err: any) {
+      console.error('[assignAdminAccess] Error:', err);
+      return {
+        success: false,
+        message: err.message || 'Failed to assign admin access in Supabase.'
+      };
+    }
+  }
+
+  // Local Emulation Fallback
+  const registeredUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+  const matchedUser = registeredUsers.find(u => u.email.toLowerCase().trim() === normalizedEmail);
+
+  if (!matchedUser) {
+    return {
+      success: false,
+      message: 'No registered SariRemit account found for this email address. Users must first register/onboard before administrative access can be assigned.'
+    };
+  }
+
+  const targetUserId = matchedUser.id;
+  const pin = Math.floor(100000 + Math.random() * 900000).toString();
+  const admins = getLocalStorageItem<SRCMCAdminAccess[]>(ADMIN_ACCESS_KEY, initialAdmins);
+
+  const existingIdx = admins.findIndex(a => a.user_id === targetUserId || a.email.toLowerCase().trim() === normalizedEmail);
+  if (existingIdx !== -1) {
+    admins[existingIdx] = {
+      ...admins[existingIdx],
+      user_id: targetUserId,
+      email: normalizedEmail,
+      role: params.role,
+      permissions: params.permissions,
+      is_active: true,
+      updated_at: new Date().toISOString()
+    };
+  } else {
+    admins.push({
+      id: `admin-${Date.now()}`,
+      user_id: targetUserId,
+      email: normalizedEmail,
+      role: params.role,
+      permissions: params.permissions,
+      pin_code: pin,
+      pin_generated_at: new Date().toISOString(),
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  saveLocalStorageItem(ADMIN_ACCESS_KEY, admins);
+  return {
+    success: true,
+    message: `Successfully assigned access for ${normalizedEmail}.`,
+    pin: pin
+  };
 }
 
 export interface CorridorSetting {

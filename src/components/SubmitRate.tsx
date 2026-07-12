@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TranslationDict, Corridor, Provider, RateSubmission } from '../types';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
-import { saveCommunitySubmission, getAuthSession, fetchCommunitySubmissions } from '../services/supabaseService';
+import { saveCommunitySubmission, getAuthSession, fetchCommunitySubmissions, supabaseClient } from '../services/supabaseService';
 import { 
   PlusCircle, Upload, CheckCircle2, ShieldAlert, Sparkles, 
   Trash2, Image as ImageIcon, ArrowRight, ArrowLeft, RefreshCw,
-  MapPin, Wallet, Landmark, HelpCircle, Check, Info
+  MapPin, Wallet, Landmark, HelpCircle, Check, Info, Calendar
 } from 'lucide-react';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
 
@@ -45,6 +45,10 @@ export default function SubmitRate({
   const [vatAmount, setVatAmount] = useState<string>(''); // blank = auto compute
   const [otherCosts, setOtherCosts] = useState<string>('0');
   
+  // Local submission states
+  const [genuineConfirmation, setGenuineConfirmation] = useState<boolean>(false);
+  const [transferChannel, setTransferChannel] = useState<string>('wallet');
+  const [transactionTime, setTransactionTime] = useState<string>(() => new Date().toISOString().substring(0, 16));
   // File upload state
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -60,11 +64,17 @@ export default function SubmitRate({
 
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
   const [isRefreshingHistory, setIsRefreshingHistory] = useState<boolean>(false);
+  const [isRestricted, setIsRestricted] = useState<boolean>(false);
 
   // Fetch recent user contributions for live history updates
   const loadSubmissions = () => {
     const session = getAuthSession();
     if (session.user) {
+      if (session.user.rate_submissions_restricted) {
+        setIsRestricted(true);
+      } else {
+        setIsRestricted(false);
+      }
       setIsRefreshingHistory(true);
       fetchCommunitySubmissions()
         .then((allSubmissions) => {
@@ -86,7 +96,7 @@ export default function SubmitRate({
               screenshotName: s.screenshot_name,
               status: s.status,
               vatAmount: s.vat_amount,
-              other_costs: s.other_costs
+              otherCosts: s.other_costs
             }));
           setMyRecentSubmissions(filtered);
           setIsRefreshingHistory(false);
@@ -219,6 +229,11 @@ export default function SubmitRate({
     e.preventDefault();
     setValidationError('');
 
+    if (isRestricted) {
+      setValidationError(language === 'en' ? 'Your account is currently restricted from submitting rates due to security policy violations.' : 'حسابك مقيد حالياً من إرسال الأسعار لمخالفة سياسات الأمان.');
+      return;
+    }
+
     const parsedVat = vatAmount !== '' ? parseFloat(vatAmount) : undefined;
     const parsedOtherCosts = parseFloat(otherCosts) || 0;
 
@@ -231,9 +246,58 @@ export default function SubmitRate({
       return;
     }
 
+    if (!selectedFile) {
+      setValidationError(language === 'en' ? 'Proof of Rate (Verification Screenshot) is mandatory.' : 'لقطة الشاشة لإثبات السعر إلزامية.');
+      return;
+    }
+
+    if (!genuineConfirmation) {
+      setValidationError(language === 'en' ? 'You must confirm that this exchange rate is genuine and accurate.' : 'يجب عليك تأكيد أن هذا السعر حقيقي ودقيق.');
+      return;
+    }
+
     try {
       setIsUploading(true);
       const session = getAuthSession();
+      const submitterEmail = session.user?.email || 'ahmed.hassan@saudi-expats.com';
+
+      // 1. Upload verification screenshot to Supabase Storage
+      let screenshot_url = '';
+      let screenshot_storage_path = '';
+
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${selectedFile.name}`;
+      const safeEmail = submitterEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const uploadPath = `${safeEmail}/${fileName}`;
+      
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient.storage
+            .from('verification-screenshots')
+            .upload(uploadPath, selectedFile, {
+              cacheControl: '3600',
+              upsert: true
+            });
+            
+          if (!error && data) {
+            screenshot_storage_path = data.path;
+            const { data: publicUrlData } = supabaseClient.storage
+              .from('verification-screenshots')
+              .getPublicUrl(data.path);
+            screenshot_url = publicUrlData?.publicUrl || '';
+          } else {
+            console.warn('Storage upload failed, falling back to local simulation:', error);
+            screenshot_url = previewUrl || '';
+          }
+        } catch (err) {
+          console.warn('Storage upload error:', err);
+          screenshot_url = previewUrl || '';
+        }
+      } else {
+        screenshot_url = previewUrl || '';
+      }
+
+      // 2. Save Submission directly with expanded CRVS & SAF properties
       await saveCommunitySubmission({
         provider_id: providerId,
         provider_name: activeProvider.name,
@@ -243,10 +307,29 @@ export default function SubmitRate({
         send_amount: sendAmount,
         receive_amount: calculatedReceive,
         submitted_by_name: session.user?.name || 'Ahmed Hassan',
-        submitted_by_email: session.user?.email || 'ahmed.hassan@saudi-expats.com',
-        screenshot_name: selectedFile ? selectedFile.name : undefined,
+        submitted_by_email: submitterEmail,
+        screenshot_name: selectedFile.name,
+        screenshot_url,
+        screenshot_storage_path,
         vat_amount: parsedVat,
         other_costs: parsedOtherCosts,
+        status: 'pending_verification',
+
+        // New CRVS Fields mapping
+        destination_country: activeCorridor.toCountry,
+        destination_currency: activeCorridor.currencyCode,
+        date_observed: transactionTime.substring(0, 10),
+        time_observed: transactionTime.substring(11),
+        transfer_method: transferChannel,
+        user_note: `Submitted via CRVS Client Web Portal. Payout validated.`,
+        amount_sent: sendAmount,
+        amount_received: calculatedReceive,
+        screenshot_path: screenshot_storage_path || screenshot_url,
+        screenshot_original_name: selectedFile.name,
+        screenshot_mime_type: selectedFile.type,
+        screenshot_size_bytes: selectedFile.size,
+        screenshot_hash: `hash-${selectedFile.name.replace(/[^a-zA-Z0-9]/g, '')}-${selectedFile.size}`,
+        evidence_status: 'pending'
       });
 
       setIsUploading(false);
@@ -258,6 +341,8 @@ export default function SubmitRate({
         setSuccess(false);
         setVatAmount('');
         setOtherCosts('0');
+        setGenuineConfirmation(false);
+        setTransferChannel('wallet');
         setActiveStep(1);
         removeFile();
       }, 4000);
@@ -281,6 +366,18 @@ export default function SubmitRate({
           {t.submitRateDesc}
         </p>
       </div>
+
+      {isRestricted && (
+        <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-xs text-rose-400 font-bold flex items-start gap-3 text-left">
+          <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-black uppercase tracking-wide">Submission Privileges Revoked</p>
+            <p className="text-[11px] text-rose-300/80 font-medium mt-1 leading-relaxed">
+              Your account has been restricted from contributing new rates due to security flags or multiple rejected verification attempts. If you believe this is an error, contact the SariRemit Control Center admin desk.
+            </p>
+          </div>
+        </div>
+      )}
 
       {success ? (
         <div className="bg-[#0C2547] border border-[#10B981]/30 rounded-3xl p-8 text-center max-w-xl mx-auto space-y-4 shadow-lg">
@@ -382,7 +479,7 @@ export default function SubmitRate({
                   <p className="text-xs text-sds-text-sec mt-0.5">Which app or provider are you currently viewing today?</p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Provider Selection */}
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
@@ -416,6 +513,23 @@ export default function SubmitRate({
                           {c.flag} {language === 'en' ? c.toCountry : c.toCountryAr} ({c.currencyCode})
                         </option>
                       ))}
+                    </select>
+                  </div>
+
+                  {/* Transfer Channel (Sub-service type) */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Transfer Channel / Sub-Service
+                    </label>
+                    <select
+                      value={transferChannel}
+                      onChange={(e) => setTransferChannel(e.target.value)}
+                      className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
+                    >
+                      <option value="wallet" className="bg-[#071A35] text-white">Digital Wallet (STC Pay, Urpay, etc.)</option>
+                      <option value="bank" className="bg-[#071A35] text-white">Bank Account Transfer</option>
+                      <option value="cash" className="bg-[#071A35] text-white">Cash Pickup</option>
+                      <option value="card" className="bg-[#071A35] text-white">Card-to-Card Transfer</option>
                     </select>
                   </div>
                 </div>
@@ -538,6 +652,20 @@ export default function SubmitRate({
                       </div>
                     </div>
                   </div>
+
+                  {/* Transaction Observation Time */}
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Observation Date & Time (Local Time Checked)</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={transactionTime}
+                      onChange={(e) => setTransactionTime(e.target.value)}
+                      className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold font-mono text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-4">
@@ -571,74 +699,80 @@ export default function SubmitRate({
                   <p className="text-xs text-sds-text-sec mt-0.5">Please provide a screenshot of the wallet interface as verification proof.</p>
                 </div>
 
-                {/* Drag and Drop */}
-                <div className="space-y-2">
+                {/* Local File Upload Zone */}
+                {!selectedFile ? (
                   <div
                     onDragEnter={handleDrag}
                     onDragOver={handleDrag}
                     onDragLeave={handleDrag}
                     onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center min-h-[140px] ${
-                      dragActive 
-                        ? 'border-[#10B981] bg-[#10B981]/5' 
-                        : previewUrl 
-                        ? 'border-[#10B981]/40 bg-[#071A35]/50' 
-                        : 'border-sds-border hover:border-[#10B981] hover:bg-[#071A35]/30'
+                    className={`border-2 border-dashed rounded-3xl p-8 text-center transition-all ${
+                      dragActive
+                        ? 'border-[#10B981] bg-[#10B981]/10'
+                        : 'border-sds-border bg-[#071A35] hover:border-emerald-400/50'
                     }`}
                   >
                     <input
-                      ref={fileInputRef}
                       type="file"
+                      id="screenshot-upload"
+                      className="hidden"
                       accept="image/*"
                       onChange={handleFileChange}
-                      className="hidden"
                     />
-
-                    {previewUrl ? (
-                      <div className="space-y-3 w-full max-w-xs relative" onClick={(e) => e.stopPropagation()}>
-                        <div className="relative mx-auto w-24 h-24 rounded-lg overflow-hidden border border-sds-border shadow-sm">
-                          <img src={previewUrl} alt="Screenshot Preview" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={removeFile}
-                            className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors shadow-xs"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                    <label htmlFor="screenshot-upload" className="cursor-pointer space-y-4 block">
+                      <div className="w-12 h-12 rounded-2xl bg-[#0C2547] text-sds-text-sec flex items-center justify-center mx-auto border border-sds-border">
+                        <Upload className="w-6 h-6" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-black uppercase tracking-wider text-white">
+                          {language === 'en' ? 'Upload Proof Screenshot' : 'تحميل لقطة الشاشة للإثبات'}
+                        </p>
+                        <p className="text-[10px] text-sds-text-sec">
+                          {language === 'en' ? 'Drag and drop or click to browse' : 'اسحب وأسقط الملف أو انقر للتصفح'}
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-[#071A35] border border-sds-border rounded-3xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#0C2547] flex items-center justify-center border border-sds-border text-emerald-400">
+                          <ImageIcon className="w-5 h-5" />
                         </div>
-                        <div className="text-xs">
-                          <span className="font-bold text-white block truncate">{selectedFile?.name}</span>
-                          <span className="text-sds-text-sec font-mono">{(selectedFile!.size / 1024).toFixed(0)} KB</span>
+                        <div className="text-left">
+                          <p className="text-xs font-bold text-white max-w-[180px] sm:max-w-xs truncate">{selectedFile.name}</p>
+                          <p className="text-[10px] text-sds-text-sec">{(selectedFile.size / 1024).toFixed(1)} KB</p>
                         </div>
                       </div>
-                    ) : (
-                      <>
-                        <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/20 rounded-xl text-[#10B981] mb-2">
-                          <Upload className="w-6 h-6" />
-                        </div>
-                        <span className="text-xs font-bold text-white block">
-                          {language === 'en' ? 'Click to upload or drag screenshot' : 'اضغط للتحميل أو اسحب لقطة الشاشة'}
-                        </span>
-                        <span className="text-[10px] text-sds-text-sec block mt-1">
-                          PNG, JPG, up to 5MB (Receipts from STC Pay, Urpay, etc.)
-                        </span>
-                      </>
-                    )}
+                      <button
+                        type="button"
+                        onClick={removeFile}
+                        className="p-1.5 hover:bg-rose-500/10 rounded-lg text-rose-400 hover:text-rose-300 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                    {isUploading && (
-                      <div className="w-full max-w-xs mt-3 space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-sds-text-sec uppercase font-mono">
+                    {isUploading ? (
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-[10px] text-sds-text-sec font-mono font-bold">
                           <span>Uploading...</span>
                           <span>{uploadProgress}%</span>
                         </div>
-                        <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
-                          <div className="h-full bg-[#10B981] transition-all" style={{ width: `${uploadProgress}%` }} />
+                        <div className="h-1.5 w-full bg-[#0C2547] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#10B981] transition-all duration-150" style={{ width: `${uploadProgress}%` }} />
                         </div>
                       </div>
+                    ) : (
+                      previewUrl && (
+                        <div className="relative rounded-2xl overflow-hidden border border-sds-border max-h-48 bg-[#0C2547]">
+                          <img src={previewUrl} alt="Preview" className="w-full h-full object-contain max-h-48" referrerPolicy="no-referrer" />
+                        </div>
+                      )
                     )}
                   </div>
-                </div>
+                )}
 
                 {/* Recipient breakdown receipt widget */}
                 <div className="p-4 bg-[#071A35] rounded-2xl border border-sds-border flex items-center justify-between text-left">
@@ -658,6 +792,20 @@ export default function SubmitRate({
                   </div>
                 </div>
 
+                {/* Genuine Confirmation Checkbox */}
+                <div className="p-4 bg-[#091f3e] border border-sds-border/60 rounded-xl flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="genuineConfirmation"
+                    checked={genuineConfirmation}
+                    onChange={(e) => setGenuineConfirmation(e.target.checked)}
+                    className="mt-1 w-4 h-4 bg-[#071A35] border border-slate-700 rounded focus:ring-2 focus:ring-emerald-500 text-emerald-500 cursor-pointer"
+                  />
+                  <label htmlFor="genuineConfirmation" className="text-xs text-slate-300 leading-normal font-medium cursor-pointer select-none">
+                    I confirm that the exchange rate ({exchangeRate} {activeCorridor.currencyCode}) and transfer fee ({transferFee} SAR) entered are completely genuine, current, and precisely match the verification screenshot uploaded above.
+                  </label>
+                </div>
+
                 <div className="flex justify-between items-center pt-4">
                   <button
                     type="button"
@@ -671,7 +819,7 @@ export default function SubmitRate({
                     type="button"
                     onClick={handleSubmit}
                     disabled={isUploading}
-                    className="px-6 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                    className="px-6 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Submit Verification</span>

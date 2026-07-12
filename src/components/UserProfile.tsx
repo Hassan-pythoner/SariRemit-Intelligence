@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { TranslationDict, UserProfile as UserProfileType, RateSubmission } from '../types';
+import { TranslationDict, UserProfile as UserProfileType, RateSubmission, UserProgress, UserAchievement } from '../types';
 import { CORRIDORS } from '../services/ratesService';
 import { 
   getAuthSession, signInWithSupabase, signUpWithSupabase, 
-  signOutSession, updateUserProfileInDb, fetchCommunitySubmissions 
+  signOutSession, updateUserProfileInDb, fetchCommunitySubmissions,
+  fetchUserProgress, fetchUserAchievements, ACHIEVEMENT_DEFINITIONS,
+  signInWithGoogle
 } from '../services/supabaseService';
 import { 
   User, Mail, Phone, Globe, Shield, Trophy, MapPin, 
@@ -42,7 +44,7 @@ export default function UserProfile({
     }
   }, [initialAuthTab]);
   const [authEmail, setAuthEmail] = useState<string>('');
-  const [authPassword, setAuthPassword] = useState<string>('password123'); // Pre-filled demo credentials
+  const [authPassword, setAuthPassword] = useState<string>(''); // No pre-filled credentials for safety
   const [authName, setAuthName] = useState<string>('');
   const [authPhone, setAuthPhone] = useState<string>('');
   const [authCorridor, setAuthCorridor] = useState<string>('sa-pk');
@@ -59,6 +61,25 @@ export default function UserProfile({
   const [success, setSuccess] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [mySubmissions, setMySubmissions] = useState<RateSubmission[]>([]);
+  const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
+  const [userAchievements, setUserAchievements] = useState<UserAchievement[]>([]);
+
+  // Load user progress and achievements
+  useEffect(() => {
+    const activeSession = getAuthSession();
+    if (activeSession.user) {
+      fetchUserProgress(activeSession.user.id)
+        .then(progress => setUserProgress(progress))
+        .catch(err => console.error('[UserProfile] Failed to load user progress:', err));
+
+      fetchUserAchievements(activeSession.user.id)
+        .then(ach => setUserAchievements(ach))
+        .catch(err => console.error('[UserProfile] Failed to load achievements:', err));
+    } else {
+      setUserProgress(null);
+      setUserAchievements([]);
+    }
+  }, [isAuthenticated, success]);
 
   // Keep preference inputs in sync with session updates
   useEffect(() => {
@@ -108,6 +129,19 @@ export default function UserProfile({
     }
   }, [success, isAuthenticated]);
 
+  // Handle Google Sign In
+  const handleGoogleSignIn = async () => {
+    setAuthError('');
+    setAuthSuccess('');
+    setIsLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (err: any) {
+      setAuthError(err.message || 'Google Sign-In failed');
+      setIsLoading(false);
+    }
+  };
+
   // Handle Authentication submit
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,10 +152,14 @@ export default function UserProfile({
       setAuthError(isRtl ? 'الرجاء إدخال البريد الإلكتروني' : 'Please enter your email address');
       return;
     }
+    if (!authPassword) {
+      setAuthError(isRtl ? 'الرجاء إدخال كلمة المرور' : 'Please enter your password');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const res = await signInWithSupabase(authEmail);
+      const res = await signInWithSupabase(authEmail, authPassword);
       if (res.user) {
         setAuthSuccess(isRtl ? 'تم تسجيل الدخول بنجاح!' : 'Authenticated successfully! Welcome back.');
         setProfile({
@@ -154,23 +192,29 @@ export default function UserProfile({
       setAuthError(isRtl ? 'الرجاء ملء جميع الحقول المطلوبة' : 'Please fill in all required fields');
       return;
     }
+    if (!authPassword) {
+      setAuthError(isRtl ? 'الرجاء إدخال كلمة المرور المطلوبة' : 'Please choose a password');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const res = await signUpWithSupabase(authEmail, authName, authPhone, authCorridor);
-      if (res.user) {
+      const res = await signUpWithSupabase(authEmail, authName, authPhone, authCorridor, authPassword);
+      if (res.confirmationRequired) {
+        setAuthSuccess(isRtl ? 'Check your email to confirm your account.' : 'Check your email to confirm your account.');
+      } else if (res.session && res.session.user) {
         setAuthSuccess(isRtl ? 'تم إنشاء الحساب بنجاح!' : 'Account created successfully! Welcome to SariRemit.');
         setProfile({
-          name: res.user.name,
-          email: res.user.email,
-          phone: res.user.phone,
-          preferredCorridorId: res.user.preferredCorridorId,
-          language: res.user.language,
-          onboarding_completed: res.user.onboarding_completed,
-          primary_destination_country: res.user.primary_destination_country,
-          primary_destination_currency: res.user.primary_destination_currency,
-          preferred_channels: res.user.preferred_channels,
-          estimated_monthly_send_amount: res.user.estimated_monthly_send_amount,
+          name: res.session.user.name,
+          email: res.session.user.email,
+          phone: res.session.user.phone,
+          preferredCorridorId: res.session.user.preferredCorridorId,
+          language: res.session.user.language,
+          onboarding_completed: res.session.user.onboarding_completed,
+          primary_destination_country: res.session.user.primary_destination_country,
+          primary_destination_currency: res.session.user.primary_destination_currency,
+          preferred_channels: res.session.user.preferred_channels,
+          estimated_monthly_send_amount: res.session.user.estimated_monthly_send_amount,
         });
         onSessionSync();
       }
@@ -339,133 +383,188 @@ export default function UserProfile({
 
             {/* Forms */}
             {activeAuthTab === 'signin' ? (
-              <form onSubmit={handleSignIn} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      required
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      placeholder="e.g., ahmed@gmail.com"
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
-                    />
-                    <Mail className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={handleGoogleSignIn}
+                  className="w-full py-2.5 bg-white hover:bg-slate-50 disabled:opacity-55 text-slate-900 font-extrabold text-xs tracking-wider rounded-xl transition-all shadow-sm border border-slate-200 flex items-center justify-center gap-2.5 cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" width="16" height="16">
+                    <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l3.245-3.117C18.29 1.156 15.54 0 12.24 0 5.58 0 0 5.37 0 12s5.58 12 12.24 12c6.96 0 11.57-4.81 11.57-11.79 0-.79-.085-1.39-.193-1.925H12.24z"/>
+                  </svg>
+                  <span>Continue with Google</span>
+                </button>
+
+                <div className="relative flex items-center justify-center py-1">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-sds-border/40" />
                   </div>
+                  <span className="relative bg-[#0C2547] px-3 text-[9px] font-black text-sds-text-sec uppercase tracking-widest font-mono">or</span>
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
+                <form onSubmit={handleSignIn} className="space-y-4">
+                  <div className="space-y-1.5">
                     <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                      Password (Preset)
+                      Email Address
                     </label>
-                    <span className="text-[9px] text-[#F59E0B] font-mono font-bold uppercase">Demo: password123</span>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        required
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="e.g., ahmed@gmail.com"
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <Mail className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    </div>
                   </div>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      required
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
-                    />
-                    <Shield className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 bg-[#10B981] hover:bg-[#10B981]/90 disabled:opacity-55 text-[#071A35] font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-                  <span>Sign In to SariRemit</span>
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleSignUp} className="space-y-4 text-left">
-                
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={authName}
-                      onChange={(e) => setAuthName(e.target.value)}
-                      placeholder="Ahmed Hassan"
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
-                    />
-                    <User className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        required
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <Shield className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      required
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      placeholder="ahmed.hassan@example.com"
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
-                    />
-                    <Mail className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Phone (KSA Mobile number)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={authPhone}
-                      onChange={(e) => setAuthPhone(e.target.value)}
-                      placeholder="+966 50 123 4567"
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
-                    />
-                    <Phone className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Default Destination Country
-                  </label>
-                  <select
-                    value={authCorridor}
-                    onChange={(e) => setAuthCorridor(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full py-3 bg-[#10B981] hover:bg-[#10B981]/90 disabled:opacity-55 text-[#071A35] font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    {CORRIDORS.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-[#071A35]">
-                        {c.flag} {c.toCountry} ({c.currencyCode})
-                      </option>
-                    ))}
-                  </select>
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
+                    <span>Sign In to SariRemit</span>
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="space-y-4 text-left">
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={handleGoogleSignIn}
+                  className="w-full py-2.5 bg-white hover:bg-slate-50 disabled:opacity-55 text-slate-900 font-extrabold text-xs tracking-wider rounded-xl transition-all shadow-sm border border-slate-200 flex items-center justify-center gap-2.5 cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" width="16" height="16">
+                    <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l3.245-3.117C18.29 1.156 15.54 0 12.24 0 5.58 0 0 5.37 0 12s5.58 12 12.24 12c6.96 0 11.57-4.81 11.57-11.79 0-.79-.085-1.39-.193-1.925H12.24z"/>
+                  </svg>
+                  <span>Continue with Google</span>
+                </button>
+
+                <div className="relative flex items-center justify-center py-1">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-sds-border/40" />
+                  </div>
+                  <span className="relative bg-[#0C2547] px-3 text-[9px] font-black text-sds-text-sec uppercase tracking-widest font-mono">or</span>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 bg-[#10B981] hover:bg-[#10B981]/90 disabled:opacity-55 text-[#071A35] font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                  <span>Register & Authenticate</span>
-                </button>
-              </form>
+                <form onSubmit={handleSignUp} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={authName}
+                        onChange={(e) => setAuthName(e.target.value)}
+                        placeholder="Ahmed Hassan"
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <User className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        required
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="ahmed.hassan@example.com"
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <Mail className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Phone (KSA Mobile number)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={authPhone}
+                        onChange={(e) => setAuthPhone(e.target.value)}
+                        placeholder="+966 50 123 4567"
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <Phone className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        required
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                      <Shield className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
+                      Default Destination Country
+                    </label>
+                    <select
+                      value={authCorridor}
+                      onChange={(e) => setAuthCorridor(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
+                    >
+                      {CORRIDORS.map((c) => (
+                        <option key={c.id} value={c.id} className="bg-[#071A35]">
+                          {c.flag} {c.toCountry} ({c.currencyCode})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full py-3 bg-[#10B981] hover:bg-[#10B981]/90 disabled:opacity-55 text-[#071A35] font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                    <span>Register & Authenticate</span>
+                  </button>
+                </form>
+              </div>
             )}
 
             <p className="text-[10px] text-sds-text-sec text-center leading-normal">
@@ -638,37 +737,101 @@ export default function UserProfile({
           {/* Right: Contributor Profile Rank and Contribution History (Col span 5) */}
           <div className="lg:col-span-5 space-y-6">
             
-            {/* Rank Badge Card */}
-            <div className="bg-gradient-to-br from-[#0C2547] to-[#071A35] text-white p-6 rounded-3xl shadow-sds-md space-y-4 border border-sds-border relative overflow-hidden">
+            {/* Dynamic Level & Progress Card */}
+            <div className="bg-gradient-to-br from-[#0C2547] to-[#071A35] text-white p-6 rounded-3xl shadow-sds-md space-y-4 border border-sds-border relative overflow-hidden text-left animate-fadeIn">
               <div className="absolute top-0 right-0 w-24 h-24 bg-[#F59E0B]/5 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-full bg-[#F59E0B]/10 text-[#F59E0B] flex items-center justify-center border border-[#F59E0B]/20 shrink-0 shadow-inner">
                   <Trophy className="w-7 h-7" />
                 </div>
-                <div className="text-left">
+                <div className="text-left flex-1">
                   <span className="text-[9px] bg-[#10B981]/15 text-[#10B981] font-black tracking-widest px-2 py-0.5 rounded-md uppercase font-mono border border-[#10B981]/10">
-                    {approvedCount >= 3 ? 'Elite Contributor' : 'Active Contributor'}
+                    {userProgress?.currentLevel || (approvedCount >= 3 ? 'Elite Contributor' : 'Active Contributor')}
                   </span>
-                  <h3 className="text-sm font-black mt-1.5 uppercase tracking-wide">
-                    {approvedCount >= 3 ? 'SariRemit Champion' : 'Verified Expat'}
-                  </h3>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <h3 className="text-sm font-black uppercase tracking-wide">
+                      {userProgress?.currentLevel ? `Level: ${userProgress.currentLevel}` : (approvedCount >= 3 ? 'SariRemit Champion' : 'Verified Expat')}
+                    </h3>
+                    <span className="text-xs font-bold text-sds-text-sec font-mono">
+                      {userProgress?.progressPoints || 0} XP
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-3 border-t border-sds-border/60 text-left font-mono">
+              {/* Progress Bar */}
+              {userProgress && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex justify-between text-[10px] font-bold text-sds-text-sec uppercase font-mono">
+                    <span>Next Rank Milestone</span>
+                    <span>{userProgress.progressPoints % 100}/100 XP</span>
+                  </div>
+                  <div className="w-full bg-[#071A35] rounded-full h-2 overflow-hidden border border-sds-border/40">
+                    <div 
+                      className="bg-[#10B981] h-full transition-all duration-500 rounded-full" 
+                      style={{ width: `${Math.min(100, userProgress.progressPoints % 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-3 pt-3 border-t border-sds-border/60 text-left font-mono">
                 <div>
-                  <span className="text-[10px] text-sds-text-sec block uppercase font-sans tracking-wider font-black">Verified Rates</span>
-                  <span className="text-lg font-black text-white">{approvedCount}</span>
+                  <span className="text-[9px] text-sds-text-sec block uppercase font-sans tracking-wider font-bold">Transfers</span>
+                  <span className="text-base font-black text-white">
+                    {userProgress ? userProgress.recordedTransferCount : 0}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-sds-text-sec block uppercase font-sans tracking-wider font-black">Remittance Impact</span>
-                  <span className="text-lg font-black text-[#10B981]">+{Math.max(125, approvedCount * 125)} Expats</span>
+                  <span className="text-[9px] text-sds-text-sec block uppercase font-sans tracking-wider font-bold">Contributions</span>
+                  <span className="text-base font-black text-white">
+                    {userProgress ? userProgress.approvedRateContributionCount : approvedCount}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-sds-text-sec block uppercase font-sans tracking-wider font-bold">Savings (SAR)</span>
+                  <span className="text-base font-black text-[#10B981]">
+                    +{userProgress ? Math.round(userProgress.lifetimeEstimatedSavingsSar) : 0}
+                  </span>
                 </div>
               </div>
-              
-              <p className="text-[11px] text-sds-text-sec leading-relaxed text-left">
-                Your profile details form the basis of your trust score. Each verified rate you contribute helps fellow expats escape high-fee remittance traps.
-              </p>
+            </div>
+
+            {/* Smart Remittance Badge Grid */}
+            <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border shadow-sds-md space-y-4 text-left">
+              <div className="flex items-center justify-between border-b border-sds-border/60 pb-2">
+                <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono">
+                  SariRemit Badges
+                </h3>
+                <span className="text-[10px] font-bold text-[#F59E0B] font-mono">
+                  {userAchievements.length}/{ACHIEVEMENT_DEFINITIONS.length} Unlocked
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                {ACHIEVEMENT_DEFINITIONS.map(def => {
+                  const isUnlocked = userAchievements.some(a => a.achievementId === def.id);
+                  return (
+                    <div 
+                      key={def.id} 
+                      className={`p-2.5 rounded-2xl border transition-all flex flex-col items-center text-center space-y-1.5 ${isUnlocked ? 'bg-[#071A35] border-[#F59E0B]/30' : 'bg-[#071A35]/40 border-sds-border/40 opacity-50'}`}
+                      title={def.description}
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${isUnlocked ? 'bg-[#F59E0B]/15 border-[#F59E0B]/35 text-[#F59E0B]' : 'bg-[#0C2547]/50 border-sds-border text-sds-text-sec'}`}>
+                        <Trophy className="w-4 h-4" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className={`text-[10px] font-extrabold line-clamp-1 leading-tight ${isUnlocked ? 'text-white' : 'text-sds-text-sec'}`}>
+                          {def.title}
+                        </span>
+                        <span className="text-[8px] text-sds-text-sec leading-none block line-clamp-2">
+                          {def.description}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Past Submissions list */}

@@ -60,6 +60,8 @@ export default function App() {
 
   const [profile, setProfile] = useState<UserProfileType>(getInitialProfile());
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
+  const [srcmcAccess, setSrcmcAccess] = useState<any | null>(null);
+  const [srcmcAccessLoading, setSrcmcAccessLoading] = useState<boolean>(true);
   const isLoggedIn = !!profile.email;
 
   // Verify and fetch authentic Supabase session/profile on mount
@@ -67,7 +69,61 @@ export default function App() {
     async function checkSessionOnMount() {
       try {
         console.log('[SariRemit Mount Check] Checking for active Supabase session...');
-        const { getCurrentSessionProfile } = await import('./services/supabaseService');
+        setSrcmcAccessLoading(true);
+        
+        // Check if we are handling a Google OAuth redirect callback
+        const isCallback = window.location.pathname.startsWith('/auth/callback');
+        if (isCallback) {
+          console.log('[SariRemit Auth Callback] Detected auth callback path. Handling Google OAuth...');
+          try {
+            const { handleGoogleCallback, getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
+            const session = await handleGoogleCallback();
+            
+            if (session && session.user) {
+              console.log('[SariRemit Auth Callback] Google login successful. User ID:', session.user.id);
+              const resolvedProfile = {
+                name: session.user.name,
+                email: session.user.email,
+                phone: session.user.phone,
+                preferredCorridorId: session.user.preferredCorridorId,
+                language: session.user.language,
+                onboarding_completed: session.user.onboarding_completed,
+                primary_destination_country: session.user.primary_destination_country,
+                primary_destination_currency: session.user.primary_destination_currency,
+                preferred_channels: session.user.preferred_channels,
+                estimated_monthly_send_amount: session.user.estimated_monthly_send_amount,
+              };
+              setProfile(resolvedProfile);
+              if (resolvedProfile.language) {
+                setLanguage(resolvedProfile.language);
+              }
+
+              const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
+              setSrcmcAccess(access);
+
+              // 10. If onboarding_completed is true, redirect to /dashboard.
+              // 11. If onboarding_completed is false, redirect to /onboarding (onboarding handles this automatically when logged in)
+              setActiveTab('dashboard');
+              triggerToast(language === 'en' ? "Signed in with Google successfully!" : "تم تسجيل الدخول باستخدام Google بنجاح!");
+            }
+          } catch (err: any) {
+            console.error('[SariRemit Auth Callback] Google authentication error:', err);
+            triggerToast(language === 'en' ? `Google login failed: ${err.message}` : `فشل تسجيل الدخول باستخدام Google: ${err.message}`);
+            setActiveTab('sign-in');
+          } finally {
+            // Clean up url so that refreshing the page doesn't run the callback again!
+            try {
+              window.history.replaceState(null, '', '/');
+            } catch (e) {
+              console.warn('Failed to clean up URL:', e);
+            }
+            setSrcmcAccessLoading(false);
+            setAppLoading(false);
+          }
+          return;
+        }
+
+        const { getCurrentSessionProfile, getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
         const session = await getCurrentSessionProfile();
         
         if (session && session.user) {
@@ -91,22 +147,32 @@ export default function App() {
           if (resolvedProfile.language) {
             setLanguage(resolvedProfile.language);
           }
+          
+          // Fetch SRCMC access record using user.id
+          const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
+          console.log('[SariRemit Mount Check] SRCMC Access result:', access);
+          setSrcmcAccess(access);
+
           // Redirect to dashboard (renders onboarding if incomplete, else home dashboard)
           setActiveTab('dashboard');
           console.log('[SariRemit Mount Check] Redirect destination:', resolvedProfile.onboarding_completed ? 'dashboard' : 'onboarding');
         } else {
           console.log('[SariRemit Mount Check] No active session found.');
-          // If user was previously logged in but session was cleared or is empty, force landing or dashboard
-          const currentLocalSession = getAuthSession();
-          if (currentLocalSession.user) {
-            setActiveTab('dashboard');
-          } else {
-            setActiveTab('landing');
-          }
+          setSrcmcAccess(null);
+          setProfile({
+            name: '',
+            email: '',
+            phone: '',
+            preferredCorridorId: 'sa-pk',
+            language: 'en',
+            onboarding_completed: false
+          });
+          setActiveTab('landing');
         }
       } catch (err) {
         console.error('[SariRemit Mount Check] Error during session validation:', err);
       } finally {
+        setSrcmcAccessLoading(false);
         setAppLoading(false);
       }
     }
@@ -115,12 +181,28 @@ export default function App() {
   }, []);
 
   // Sync profile when session state updates
-  const syncProfileWithSession = () => {
+  const syncProfileWithSession = async () => {
+    setSrcmcAccessLoading(true);
     const updated = getInitialProfile();
     setProfile(updated);
     if (updated.language) {
       setLanguage(updated.language);
     }
+
+    const session = getAuthSession();
+    if (session.user) {
+      try {
+        const { getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
+        const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
+        setSrcmcAccess(access);
+      } catch (err) {
+        console.error('Error syncing SRCMC access during session sync:', err);
+      }
+    } else {
+      setSrcmcAccess(null);
+    }
+    setSrcmcAccessLoading(false);
+
     // Handle tab redirection on login/logout
     if (updated.email) {
       setActiveTab('dashboard');
@@ -154,11 +236,16 @@ export default function App() {
     if (!isLoggedIn && restrictedTabs.includes(activeTab)) {
       setActiveTab('sign-in');
       triggerToast(language === 'en' ? "Please sign in or sign up to access S." : "يرجى تسجيل الدخول أو إنشاء حساب للوصول.");
-    } else if (isLoggedIn && activeTab === 'srcmc' && !checkIsAdminSync(profile.email)) {
-      setActiveTab('dashboard');
-      triggerToast(language === 'en' ? "Access denied. Admins only." : "تم رفض الوصول. للمسؤولين فقط.");
+    } else if (isLoggedIn && activeTab === 'srcmc') {
+      if (srcmcAccessLoading) {
+        return; // wait for check to complete
+      }
+      if (!srcmcAccess || srcmcAccess.is_active !== true) {
+        setActiveTab('dashboard');
+        triggerToast(language === 'en' ? "Access denied. Admins only." : "تم رفض الوصول. للمسؤولين فقط.");
+      }
     }
-  }, [activeTab, isLoggedIn, profile.email, language]);
+  }, [activeTab, isLoggedIn, srcmcAccess, srcmcAccessLoading, language]);
 
   const toggleLanguage = () => {
     const nextLang = language === 'en' ? 'ar' : 'en';
@@ -194,7 +281,7 @@ export default function App() {
   const isRtl = language === 'ar';
   const isOnboardingRequired = isLoggedIn && !profile.onboarding_completed;
 
-  if (appLoading) {
+  if (appLoading || (isLoggedIn && srcmcAccessLoading)) {
     return (
       <div className="min-h-screen bg-sds-bg flex flex-col items-center justify-center font-sans">
         <div className="flex flex-col items-center gap-4">
@@ -206,7 +293,7 @@ export default function App() {
           />
           <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest">
             <div className="w-2 h-2 rounded-full bg-sds-secondary animate-ping" />
-            Checking Session & Profile...
+            Loading App Session & Access Control...
           </div>
         </div>
       </div>
@@ -227,6 +314,8 @@ export default function App() {
         toggleLanguage={toggleLanguage}
         t={t}
         profile={profile}
+        srcmcAccess={srcmcAccess}
+        srcmcAccessLoading={srcmcAccessLoading}
       />
 
       {/* Main Content Area */}
@@ -428,13 +517,29 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'srcmc' && checkIsAdminSync(profile.email) && (
-                    <SrcmcControl
-                      language={language}
-                      t={t}
-                      profile={profile}
-                      onSessionSync={syncProfileWithSession}
-                    />
+                  {activeTab === 'srcmc' && (
+                    srcmcAccessLoading ? (
+                      <div className="min-h-[400px] flex flex-col items-center justify-center font-sans">
+                        <div className="flex flex-col items-center gap-4">
+                          <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest animate-pulse">
+                            <div className="w-2 h-2 rounded-full bg-sds-secondary animate-ping" />
+                            Loading SRCMC Access Configuration...
+                          </div>
+                        </div>
+                      </div>
+                    ) : srcmcAccess?.is_active ? (
+                      <SrcmcControl
+                        language={language}
+                        t={t}
+                        profile={profile}
+                        onSessionSync={syncProfileWithSession}
+                        srcmcAccess={srcmcAccess}
+                      />
+                    ) : (
+                      <div className="text-center py-12 text-rose-400 font-bold uppercase tracking-wider font-mono">
+                        Access Denied.
+                      </div>
+                    )
                   )}
                 </>
               )}

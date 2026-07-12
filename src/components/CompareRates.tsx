@@ -10,6 +10,9 @@ import {
   CheckCircle2, Clock, ThumbsUp, DollarSign, Wallet, MapPin, Landmark, ArrowUpDown, Award,
   ChevronDown, ChevronUp, Check, ShieldCheck, X, Zap
 } from 'lucide-react';
+import { RecordTransferModal } from './RecordTransferModal';
+import { SEPSCelebration } from './SEPSCelebration';
+import { FirstTransferFeedback } from './FirstTransferFeedback';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect, SDSSisGauge } from './Sds';
 
 interface CompareRatesProps {
@@ -43,6 +46,16 @@ export default function CompareRates({
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [expandedSisId, setExpandedSisId] = useState<string | null>(null);
   const [comparisonTargetId, setComparisonTargetId] = useState<string | null>(null);
+
+  // SEPS states
+  const [recordTransferOption, setRecordTransferOption] = useState<any>(null);
+  const [celebrationOpen, setCelebrationOpen] = useState<boolean>(false);
+  const [newlyEarnedAchievements, setNewlyEarnedAchievements] = useState<any[]>([]);
+  const [feedbackOpen, setFeedbackOpen] = useState<boolean>(false);
+  const [feedbackTransferId, setFeedbackTransferId] = useState<string>('');
+
+  const session = getAuthSession();
+  const user = session.user;
 
   // Load user's preferred country when logged in and no quickSearch is active
   useEffect(() => {
@@ -647,21 +660,36 @@ export default function CompareRates({
                         </div>
 
                         {/* Footer Buttons */}
-                        <div className="pt-3 border-t border-sds-border/60 flex items-center justify-between gap-2.5">
-                          <button
-                            onClick={() => setComparisonTargetId(opt.resolved.provider_id)}
-                            className="flex-1 py-2 bg-[#071A35] hover:bg-[#091f3e] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
-                          >
-                            Compare
-                          </button>
+                        <div className="pt-3 border-t border-sds-border/60 flex flex-col gap-2">
+                          <div className="flex items-center justify-between gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setComparisonTargetId(opt.resolved.provider_id)}
+                              className="flex-1 py-2 bg-[#071A35] hover:bg-[#091f3e] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
+                            >
+                              Compare
+                            </button>
 
-                          <button
-                            onClick={() => setExpandedSisId(isExpanded ? null : opt.resolved.id)}
-                            className="flex-1 py-2 bg-[#10B981] text-[#071A35] font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1"
-                          >
-                            <span>{isExpanded ? 'Hide Details' : 'More Details'}</span>
-                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedSisId(isExpanded ? null : opt.resolved.id)}
+                              className="flex-1 py-2 bg-[#071A35] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1"
+                            >
+                              <span>{isExpanded ? 'Hide Details' : 'More Details'}</span>
+                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+
+                          {user && (
+                            <button
+                              type="button"
+                              onClick={() => setRecordTransferOption(opt)}
+                              className="w-full py-2.5 bg-[#10B981] text-[#071A35] font-black text-[10px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              <span>{isRtl ? 'تسجيل التحويل المالي' : 'Record Transfer'}</span>
+                            </button>
+                          )}
                         </div>
 
                         {/* Expanded detail accordion panel */}
@@ -804,7 +832,7 @@ export default function CompareRates({
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="lg:col-span-3 flex flex-col gap-2 shrink-0">
+                            <div className="lg:col-span-3 flex flex-col gap-1.5 shrink-0">
                               <button
                                 onClick={() => setComparisonTargetId(opt.resolved.provider_id)}
                                 className="w-full py-2 bg-[#071A35] hover:bg-[#091f3e] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
@@ -814,11 +842,22 @@ export default function CompareRates({
 
                               <button
                                 onClick={() => setExpandedSisId(isExpanded ? null : opt.resolved.id)}
-                                className="w-full py-2 bg-[#10B981] text-[#071A35] font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1"
+                                className="w-full py-2 bg-[#071A35] hover:bg-[#091f3e] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1"
                               >
                                 <span>{isExpanded ? 'Hide Details' : 'Show Details'}</span>
                                 {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                               </button>
+
+                              {user && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRecordTransferOption(opt)}
+                                  className="w-full py-2 bg-[#10B981] hover:bg-[#0ea271] text-[#071A35] font-black text-[10px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                                >
+                                  <Award className="w-3.5 h-3.5" />
+                                  <span>{isRtl ? 'تسجيل التحويل' : 'Record Transfer'}</span>
+                                </button>
+                              )}
                             </div>
 
                           </div>
@@ -1042,6 +1081,60 @@ export default function CompareRates({
           SariRemit is not an exchange service. We help expats compare and optimize rates. The numbers listed are approximate averages resolved by our Rate Resolution Engine and may fluctuate slightly based on real-time forex updates. Always confirm rates inside your provider's wallet before executing money transfers.
         </p>
       </div>
+
+      {/* SEPS Core Modals integration */}
+      {recordTransferOption && user && (
+        <RecordTransferModal
+          isOpen={recordTransferOption !== null}
+          onClose={() => setRecordTransferOption(null)}
+          option={recordTransferOption}
+          sendAmount={sendAmount}
+          corridor={activeCorridor}
+          otherOptions={options}
+          userId={user.id}
+          comparisonTargetId={comparisonTargetId}
+          onSuccess={(newAch, isFirst) => {
+            if (newAch && newAch.length > 0) {
+              setNewlyEarnedAchievements(newAch);
+              setCelebrationOpen(true);
+              if (isFirst) {
+                setFeedbackTransferId(`rec-trans-feedback-${Date.now()}`);
+              }
+            } else if (isFirst) {
+              setFeedbackTransferId(`rec-trans-feedback-${Date.now()}`);
+              setFeedbackOpen(true);
+            }
+          }}
+          isRtl={isRtl}
+        />
+      )}
+
+      {celebrationOpen && (
+        <SEPSCelebration
+          isOpen={celebrationOpen}
+          onClose={() => {
+            setCelebrationOpen(false);
+            if (feedbackTransferId) {
+              setFeedbackOpen(true);
+            }
+          }}
+          newAchievements={newlyEarnedAchievements}
+          isRtl={isRtl}
+        />
+      )}
+
+      {feedbackOpen && user && (
+        <FirstTransferFeedback
+          isOpen={feedbackOpen}
+          onClose={() => setFeedbackOpen(false)}
+          userId={user.id}
+          relatedTransferId={feedbackTransferId}
+          onCompleted={() => {
+            setFeedbackTransferId('');
+          }}
+          isRtl={isRtl}
+        />
+      )}
 
     </div>
   );

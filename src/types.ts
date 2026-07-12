@@ -45,11 +45,39 @@ export interface RateSubmission {
   submittedAt: string;
   screenshotUrl?: string;
   screenshotName?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'draft' | 'submitted' | 'security_review' | 'pending_verification' | 'needs_more_evidence' | 'blocked' | 'expired' | 'withdrawn' | string;
   submittedBy?: string;
   submittedByEmail?: string;
   vatAmount?: number;
   otherCosts?: number;
+  
+  // CRVS and SAF Fields
+  destinationCountry?: string;
+  destinationCurrency?: string;
+  dateObserved?: string;
+  timeObserved?: string;
+  transferMethod?: string;
+  userNote?: string;
+  amountSent?: number;
+  amountReceived?: number;
+  screenshotPath?: string;
+  screenshotOriginalName?: string;
+  screenshotMimeType?: string;
+  screenshotSizeBytes?: number;
+  screenshotHash?: string;
+  screenshotUploadedAt?: string;
+  evidenceStatus?: string;
+  fraudRiskScore?: number;
+  fraudRiskLevel?: string;
+  fraudFlags?: string[];
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  reviewerNotes?: string;
+  validUntil?: string;
+  updatedAt?: string;
 }
 
 export interface RateAlert {
@@ -64,6 +92,7 @@ export interface RateAlert {
 }
 
 export interface UserProfile {
+  id?: string; // added to match supabase profile key
   name: string;
   email: string;
   phone: string;
@@ -74,6 +103,11 @@ export interface UserProfile {
   primary_destination_currency?: string;
   preferred_channels?: string[];
   estimated_monthly_send_amount?: number;
+  rate_submissions_restricted?: boolean;
+  first_transfer_recorded_at?: string;
+  first_transfer_experience_prompt_shown_at?: string;
+  first_transfer_experience_completed_at?: string;
+  engagement_notifications_enabled?: boolean;
 }
 
 export interface TranslationDict {
@@ -292,5 +326,80 @@ export type OverrideStatus =
   | "expired"
   | "replaced"
   | "cancelled";
+
+// --- SEPS TYPES ---
+export interface RecordedTransfer {
+  id: string;
+  userId: string;
+  channelId: string;
+  corridorId: string;
+  sendAmountSAR: number;
+  destinationCurrency: string;
+  estimatedRecipientAmount: number;
+  actualRecipientAmount?: number | null;
+  resolvedRate: number;
+  rateSource?: string | null;
+  transferFeeSAR: number;
+  vatAmountSAR: number;
+  otherChargesSAR: number;
+  estimatedSavingsDestination?: number | null;
+  estimatedSavingsSAR?: number | null;
+  savingsComparisonType:
+    | "preferred_provider"
+    | "selected_provider"
+    | "market_average"
+    | "none";
+  comparisonChannelId?: string | null;
+  idempotencyKey?: string | null;
+  recordedAt: string;
+  createdAt: string;
+}
+
+export interface UserExperienceFeedback {
+  id: string;
+  userId: string;
+  feedbackType: string;
+  rating?: string | null;
+  selectedReasons: string[];
+  comment?: string | null;
+  relatedTransferId?: string | null;
+  skipped: boolean;
+  sourceScreen?: string | null;
+  submittedAt: string;
+}
+
+export interface AchievementDefinition {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  category: string;
+  iconKey: string;
+  thresholdValue?: number;
+  status: 'active' | 'inactive';
+  sortOrder: number;
+}
+
+export interface UserAchievement {
+  id: string;
+  userId: string;
+  achievementId: string;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  awardedAt: string;
+  metadata: Record<string, any>;
+}
+
+export interface UserProgress {
+  userId: string;
+  recordedTransferCount: number;
+  approvedRateContributionCount: number;
+  lifetimeEstimatedSavingsSar: number;
+  currentLevel: string;
+  progressPoints: number;
+  latestAchievementCode?: string | null;
+  updatedAt: string;
+}
+
 
 

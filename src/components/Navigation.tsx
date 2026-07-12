@@ -4,7 +4,6 @@ import {
   ArrowLeftRight, Bell, Compass, PlusCircle, User, UserPlus, Globe2, Sparkles, 
   LayoutDashboard, PiggyBank, Info, CheckCircle2, Home, Plus, Menu, X, ArrowRight, ShieldCheck
 } from 'lucide-react';
-import { checkIsAdminSync } from '../services/supabaseService';
 import logoImg from '../assets/images/sariremit_logo_1783671155763.jpg';
 
 interface NavigationProps {
@@ -14,6 +13,8 @@ interface NavigationProps {
   toggleLanguage: () => void;
   t: TranslationDict;
   profile: UserProfile;
+  srcmcAccess?: any;
+  srcmcAccessLoading?: boolean;
 }
 
 export default function Navigation({
@@ -23,10 +24,12 @@ export default function Navigation({
   toggleLanguage,
   t,
   profile,
+  srcmcAccess,
+  srcmcAccessLoading
 }: NavigationProps) {
   const isRtl = language === 'ar';
   const isLoggedIn = !!profile.email;
-  const isAdmin = checkIsAdminSync(profile.email);
+  const canSeeSrcmcNav = srcmcAccess?.is_active === true;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Prevent background scrolling when mobile menu drawer is open
@@ -87,7 +90,7 @@ export default function Navigation({
     navItems.push({ id: 'compare', label: isRtl ? 'مقارنة الأسعار' : 'Compare', icon: ArrowLeftRight });
     navItems.push({ id: 'submit', label: isRtl ? 'توثيق الحوالات' : 'Verify', icon: PlusCircle });
     navItems.push({ id: 'savings', label: isRtl ? 'المدخرات' : 'Savings', icon: PiggyBank });
-    if (isAdmin) {
+    if (canSeeSrcmcNav) {
       navItems.push({ id: 'srcmc', label: isRtl ? 'لوحة التحكم' : 'SRCMC', icon: ShieldCheck });
     }
     navItems.push({ id: 'profile', label: isRtl ? 'الملف الشخصي' : 'Profile', icon: User });
@@ -280,12 +283,13 @@ export default function Navigation({
       {/* 5. USER-SIDE MOBILE BOTTOM NAVIGATION (Only for logged-in users to preserve full-app screen flow) */}
       {isLoggedIn && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#051326] border-t border-slate-800 shadow-xl px-2 pb-safe">
-          <div className="grid grid-cols-5 h-16 max-w-lg mx-auto items-center">
+          <div className={`grid ${canSeeSrcmcNav ? 'grid-cols-6' : 'grid-cols-5'} h-16 max-w-lg mx-auto items-center`}>
             {[
               { id: 'dashboard', label: isRtl ? 'الرئيسية' : 'Home', icon: Home },
               { id: 'compare', label: isRtl ? 'المقارنة' : 'Compare', icon: ArrowLeftRight },
               { id: 'submit', label: isRtl ? 'مشاركة' : 'Submit', icon: Plus, isFab: true },
               { id: 'savings', label: isRtl ? 'المدخرات' : 'Savings', icon: PiggyBank },
+              ...(canSeeSrcmcNav ? [{ id: 'srcmc', label: isRtl ? 'لوحة التحكم' : 'SRCMC', icon: ShieldCheck }] : []),
               { id: 'profile', label: isRtl ? 'الحساب' : 'Profile', icon: User }
             ].map((item) => {
               const IconComponent = item.icon;

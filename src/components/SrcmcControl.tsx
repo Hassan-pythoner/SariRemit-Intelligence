@@ -7,6 +7,12 @@ import {
   deleteOverrideRow, 
   fetchCommunitySubmissions, 
   updateSubmissionStatus, 
+  updateSubmissionStatusEx,
+  toggleUserRateSubmissionRestriction,
+  fetchCrvsConfig,
+  saveCrvsConfig,
+  fetchFraudIntegrityEvents,
+  logFraudIntegrityEvent,
   getSisWeights, 
   saveSisWeights, 
   calculateSIS,
@@ -17,6 +23,7 @@ import {
   getSariRemitIntelligence,
   fetchAdminAccess,
   saveAdminAccess,
+  assignAdminAccess,
   generatePinCode,
   revokeAdminAccess,
   fetchCorridorSettings,
@@ -46,9 +53,10 @@ interface SrcmcControlProps {
   t: TranslationDict;
   profile: UserProfile;
   onSessionSync: () => void;
+  srcmcAccess?: any;
 }
 
-export default function SrcmcControl({ language, t, profile, onSessionSync }: SrcmcControlProps) {
+export default function SrcmcControl({ language, t, profile, onSessionSync, srcmcAccess }: SrcmcControlProps) {
   const isRtl = language === 'ar';
 
   // Sub-tabs in the Control Center
@@ -151,6 +159,24 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
   const [covError, setCovError] = useState<string>('');
   const [covSuccess, setCovSuccess] = useState<string>('');
 
+  // CRVS Administration expanded states
+  const [expandedSubId, setExpandedSubId] = useState<string | null>(null);
+  const [adminReviewerNotes, setAdminReviewerNotes] = useState<string>('');
+  const [adminRejectionReason, setAdminRejectionReason] = useState<string>('');
+  const [adminEvidenceStatus, setAdminEvidenceStatus] = useState<string>('pending');
+  const [crvsConfig, setCrvsConfig] = useState<any>({
+    anomaly_normal_threshold: 2,
+    anomaly_review_threshold: 5,
+    anomaly_critical_threshold: 10,
+    max_submissions_24h: 5,
+    max_submissions_same_channel_corridor_24h: 2,
+    expiry_hours: 24,
+  });
+  const [fraudEvents, setFraudEvents] = useState<any[]>([]);
+  const [loadingFraudEvents, setLoadingFraudEvents] = useState<boolean>(false);
+  const [crvsSaveSuccess, setCrvsSaveSuccess] = useState<string>('');
+  const [crvsSaveError, setCrvsSaveError] = useState<string>('');
+
   // PIN Verification Modal states
   const [showPinModal, setShowPinModal] = useState<boolean>(false);
   const [pinInput, setPinInput] = useState<string>('');
@@ -169,9 +195,43 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
   const loggedInEmail = activeSession.user?.email || '';
 
   // Retrieve matching admin record
-  const currentAdmin = admins.find(a => a.email.toLowerCase() === loggedInEmail.toLowerCase() && a.is_active);
-  const isAdmin = loggedInEmail.toLowerCase() === 'hassan.gaturu20@gmail.com' || loggedInEmail.toLowerCase() === 'gaturuhassan@gmail.com' || loggedInEmail.toLowerCase() === 'hassan.dev26@gmail.com' || !!currentAdmin;
-  const isMainAdmin = loggedInEmail.toLowerCase() === 'gaturuhassan@gmail.com' || loggedInEmail.toLowerCase() === 'hassan.gaturu20@gmail.com' || loggedInEmail.toLowerCase() === 'hassan.dev26@gmail.com' || currentAdmin?.role === 'main_admin';
+  const currentAdmin = srcmcAccess || admins.find(a => a.email.toLowerCase() === loggedInEmail.toLowerCase() && a.is_active);
+  const isAdmin = currentAdmin?.is_active === true;
+  const isMainAdmin = currentAdmin?.role === 'main_admin';
+
+  const hasPermission = (permission: string) => {
+    if (isMainAdmin) return true;
+    const permissions = Array.isArray(currentAdmin?.permissions)
+      ? currentAdmin.permissions
+      : [];
+    return permissions.includes('*') || permissions.includes(permission);
+  };
+
+  const subtabs = [
+    { key: 'overrides', label: 'Admin Overrides', permission: 'manage_overrides' },
+    { key: 'submissions', label: 'Community Feed', permission: 'approve_community_rates' },
+    { key: 'crvs_settings', label: 'CRVS Setup', permission: 'approve_community_rates' },
+    { key: 'fraud_logs', label: 'Fraud & Security Alerts', permission: 'approve_community_rates' },
+    { key: 'channels', label: 'Remittance Channels', permission: 'manage_channels' },
+    { key: 'corridors', label: 'Corridor Control', permission: 'manage_corridors' },
+    { key: 'admins', label: 'Admin Access Control', permission: 'manage_admins' },
+    { key: 'resolved', label: 'RRE Resolution Inspect', permission: 'monitor_rates' },
+    { key: 'weights', label: 'SIS Formula Weights', permission: 'view_sic' },
+    { key: 'audit_logs', label: 'Audit Logs Feed', permission: 'view_audit_logs' },
+    { key: 'users', label: 'Registered Users', permission: 'manage_admins' }
+  ];
+
+  const allowedSubtabs = subtabs.filter(tab => hasPermission(tab.permission));
+
+  // Redirect to first allowed subtab if active one is restricted
+  useEffect(() => {
+    if (!loading && allowedSubtabs.length > 0) {
+      const isAllowed = allowedSubtabs.some(t => t.key === activeSubTab);
+      if (!isAllowed) {
+        setActiveSubTab(allowedSubtabs[0].key as any);
+      }
+    }
+  }, [activeSubTab, currentAdmin, loading, allowedSubtabs]);
 
   // Load everything
   useEffect(() => {
@@ -187,10 +247,11 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
       fetchCorridorSettings(),
       fetchRemittanceChannels(),
       fetchChannelCoverage(),
-      fetchAuditLogs()
+      fetchAuditLogs(),
+      fetchFraudIntegrityEvents()
     ]).then(([
       overridesData, submissionsData, weightsData, usersData, 
-      adminsData, corridorsData, channelsData, coveragesData, auditData
+      adminsData, corridorsData, channelsData, coveragesData, auditData, fraudData
     ]) => {
       if (isMounted) {
         setOverrides(overridesData);
@@ -201,6 +262,11 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
         setChannels(channelsData);
         setCoverages(coveragesData);
         setAuditLogs(auditData);
+        setFraudEvents(fraudData);
+
+        // Fetch and load CRVS Setup config parameters
+        const crvsData = fetchCrvsConfig();
+        setCrvsConfig(crvsData);
 
         // Pre-select dynamic provider if channels are available
         const activeCh = channelsData.filter(c => c.status === 'active');
@@ -320,7 +386,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
         'hassan.gaturu20@gmail.com',
         'Hassan Gaturu',
         '+966 50 789 2026',
-        'sa-pk'
+        'sa-pk',
+        'SariRemitAdmin2026Secure!'
       );
       if (res.user) {
         onSessionSync();
@@ -339,23 +406,29 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
       setAdminError('Access Denied. Only the Primary Main Admin can provision access.');
       return;
     }
-    const pin = Math.floor(100000 + Math.random() * 900000).toString();
-    const newAdmin: SRCMCAdminAccess = {
-      id: `admin-${Date.now()}`,
-      email: userEmail.toLowerCase().trim(),
-      role: newAdminRole,
-      permissions: newAdminPermissions,
-      pin_code: pin,
-      pin_generated_at: new Date().toISOString(),
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+    setAdminError('');
+    setAdminSuccess('');
 
     const action = async () => {
-      await saveAdminAccess(newAdmin);
+      const result = await assignAdminAccess({
+        email: userEmail.toLowerCase().trim(),
+        role: newAdminRole,
+        permissions: newAdminPermissions,
+        createdBy: loggedInEmail
+      });
+
+      if (!result.success) {
+        setAdminError(result.message);
+        throw new Error(result.message);
+      }
+
       await logAuditAction(loggedInEmail, `PROVISION_ADMIN_ACCESS`, 'ADMIN_ACCESS', userEmail, { role: newAdminRole, permissions: newAdminPermissions });
-      setAdminSuccess(`Access control successfully assigned for ${userEmail}. PIN Generated: ${pin}`);
+      
+      // Refresh admins list
+      const updatedAdmins = await fetchAdminAccess();
+      setAdmins(updatedAdmins);
+
+      setAdminSuccess(`Access control successfully assigned for ${userEmail}. PIN Generated: ${result.pin}`);
       setSearchAdminEmail('');
     };
 
@@ -650,19 +723,19 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
   };
 
   // Approve community submission
-  const handleApproveSubmission = async (id: string) => {
+  const handleApproveSubmission = async (id: string, reviewerNotes = '', evidenceStatus = 'verified') => {
     const action = async () => {
-      await updateSubmissionStatus(id, 'approved');
-      await logAuditAction(loggedInEmail, `APPROVE_COMMUNITY_SUBMISSION`, 'COMMUNITY_SUBMISSION', id, {});
+      await updateSubmissionStatusEx(id, 'approved', { id: currentAdmin?.id || 'admin', email: loggedInEmail }, reviewerNotes, '', evidenceStatus);
+      await logAuditAction(loggedInEmail, `APPROVE_COMMUNITY_SUBMISSION`, 'COMMUNITY_SUBMISSION', id, { reviewerNotes, evidenceStatus });
     };
     dispatchAction(`Approve Submission ${id}`, action);
   };
 
   // Reject community submission
-  const handleRejectSubmission = async (id: string) => {
+  const handleRejectSubmission = async (id: string, reviewerNotes = '', rejectionReason = '', evidenceStatus = 'invalid') => {
     const action = async () => {
-      await updateSubmissionStatus(id, 'rejected');
-      await logAuditAction(loggedInEmail, `REJECT_COMMUNITY_SUBMISSION`, 'COMMUNITY_SUBMISSION', id, {});
+      await updateSubmissionStatusEx(id, 'rejected', { id: currentAdmin?.id || 'admin', email: loggedInEmail }, reviewerNotes, rejectionReason, evidenceStatus);
+      await logAuditAction(loggedInEmail, `REJECT_COMMUNITY_SUBMISSION`, 'COMMUNITY_SUBMISSION', id, { reviewerNotes, rejectionReason, evidenceStatus });
     };
     dispatchAction(`Reject Submission ${id}`, action);
   };
@@ -952,17 +1025,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
 
       {/* Navigation Subtabs */}
       <div className="flex flex-wrap border-b border-slate-200 gap-1 sm:gap-0">
-        {[
-          { key: 'overrides', label: 'Admin Overrides' },
-          { key: 'submissions', label: 'Community Feed' },
-          { key: 'channels', label: 'Remittance Channels' },
-          { key: 'corridors', label: 'Corridor Control' },
-          { key: 'admins', label: 'Admin Access Control' },
-          { key: 'resolved', label: 'RRE Resolution Inspect' },
-          { key: 'weights', label: 'SIS Formula Weights' },
-          { key: 'audit_logs', label: 'Audit Logs Feed' },
-          { key: 'users', label: 'Registered Users' }
-        ].map((tab) => (
+        {allowedSubtabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveSubTab(tab.key as any)}
@@ -1324,64 +1387,309 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
                     ) : (
                       submissions.map((row) => {
                         const corr = CORRIDORS.find(c => c.id === row.corridor_id);
+                        const isExpanded = expandedSubId === row.id;
+                        
+                        // Check if author of report matches the logged in admin
+                        const isSelfSubmission = loggedInEmail.toLowerCase() === (row.submitted_by_email || '').toLowerCase();
+                        
+                        // Get submitter profile to see if they are restricted
+                        const submitterProfile = registeredUsers.find(u => u.email?.toLowerCase() === (row.submitted_by_email || '').toLowerCase());
+                        const isSubmitterRestricted = submitterProfile?.rate_submissions_restricted === true;
+
                         return (
-                          <tr key={row.id} className="hover:bg-slate-50/40 transition-colors">
-                            <td className="py-4 px-5">
-                              <span className="font-bold text-slate-800 block">{row.submitted_by_name || 'Contributor'}</span>
-                              <span className="text-[10px] text-slate-400 block font-mono mt-0.5">{row.submitted_by_email}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              {corr ? (
-                                <span className="inline-flex items-center gap-1 font-bold">
-                                  <span>{corr.flag}</span>
-                                  <span>{corr.toCountry} ({corr.currencyCode})</span>
+                          <React.Fragment key={row.id}>
+                            <tr className={`hover:bg-slate-50/40 transition-colors ${isExpanded ? 'bg-indigo-50/10' : ''}`}>
+                              <td className="py-4 px-5">
+                                <span className="font-bold text-slate-800 block">{row.submitted_by_name || 'Contributor'}</span>
+                                <span className="text-[10px] text-slate-400 block font-mono mt-0.5">{row.submitted_by_email}</span>
+                                {isSubmitterRestricted && (
+                                  <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-rose-50 text-rose-600 rounded text-[9px] font-bold mt-1 border border-rose-100">
+                                    <ShieldAlert className="w-2.5 h-2.5" /> Restricted
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-4 px-5">
+                                {corr ? (
+                                  <span className="inline-flex items-center gap-1 font-bold">
+                                    <span>{corr.flag}</span>
+                                    <span>{corr.toCountry} ({corr.currencyCode})</span>
+                                  </span>
+                                ) : row.corridor_id.toUpperCase()}
+                              </td>
+                              <td className="py-4 px-5">
+                                <span className="font-bold text-slate-800 font-mono">{row.exchange_rate.toFixed(4)}</span>
+                                <span className="text-[10px] text-slate-400 font-mono block mt-0.5">{row.provider_name}</span>
+                              </td>
+                              <td className="py-4 px-5 font-mono text-[10px] text-slate-600">
+                                <div>Fee: <span className="font-bold text-slate-800">{row.transfer_fee} SAR</span></div>
+                                <div>VAT: <span className="font-bold text-slate-800">{row.vat_amount ?? 0} SAR</span></div>
+                                <div>Other: <span className="font-bold text-slate-800">{row.other_costs ?? 0} SAR</span></div>
+                              </td>
+                              <td className="py-4 px-5 text-slate-400 font-mono text-[10px]">
+                                {new Date(row.submitted_at).toLocaleString()}
+                              </td>
+                              <td className="py-4 px-5">
+                                <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase border ${
+                                  row.status === 'approved' 
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                                    : row.status === 'rejected' 
+                                    ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                                    : 'bg-amber-50 text-amber-700 border-amber-100 animate-pulse'
+                                }`}>
+                                  {row.status}
                                 </span>
-                              ) : row.corridor_id.toUpperCase()}
-                            </td>
-                            <td className="py-4 px-5">
-                              <span className="font-bold text-slate-800 font-mono">{row.exchange_rate.toFixed(4)}</span>
-                              <span className="text-[10px] text-slate-400 font-mono block mt-0.5">{row.provider_name}</span>
-                            </td>
-                            <td className="py-4 px-5 font-mono text-[10px] text-slate-600">
-                              <div>Fee: <span className="font-bold text-slate-800">{row.transfer_fee} SAR</span></div>
-                              <div>VAT: <span className="font-bold text-slate-800">{row.vat_amount ?? 0} SAR</span></div>
-                              <div>Other: <span className="font-bold text-slate-800">{row.other_costs ?? 0} SAR</span></div>
-                            </td>
-                            <td className="py-4 px-5 text-slate-400 font-mono text-[10px]">
-                              {new Date(row.submitted_at).toLocaleString()}
-                            </td>
-                            <td className="py-4 px-5">
-                              <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase border ${
-                                row.status === 'approved' 
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                                  : row.status === 'rejected' 
-                                  ? 'bg-rose-50 text-rose-700 border-rose-100' 
-                                  : 'bg-amber-50 text-amber-700 border-amber-100 animate-pulse'
-                              }`}>
-                                {row.status}
-                              </span>
-                            </td>
-                            <td className="py-4 px-5 text-right space-x-1.5">
-                              {row.status === 'pending' ? (
-                                <div className="inline-flex gap-1.5">
-                                  <button
-                                    onClick={() => handleApproveSubmission(row.id)}
-                                    className="px-2.5 py-1 text-[10px] bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded cursor-pointer uppercase shadow-xs transition-colors"
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    onClick={() => handleRejectSubmission(row.id)}
-                                    className="px-2.5 py-1 text-[10px] bg-rose-600 hover:bg-rose-700 text-white font-black rounded cursor-pointer uppercase shadow-xs transition-colors"
-                                  >
-                                    Reject
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-[10px] font-bold text-slate-400 italic">Moderated</span>
-                              )}
-                            </td>
-                          </tr>
+                              </td>
+                              <td className="py-4 px-5 text-right">
+                                <button
+                                  onClick={() => {
+                                    if (isExpanded) {
+                                      setExpandedSubId(null);
+                                    } else {
+                                      setExpandedSubId(row.id);
+                                      setAdminReviewerNotes(row.reviewer_notes || '');
+                                      setAdminRejectionReason(row.rejection_reason || '');
+                                      setAdminEvidenceStatus(row.evidence_status || 'pending');
+                                    }
+                                  }}
+                                  className={`px-3 py-1.5 text-[10px] font-black rounded uppercase tracking-wider transition-all cursor-pointer ${
+                                    isExpanded 
+                                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                                      : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                                  }`}
+                                >
+                                  {isExpanded ? 'Collapse' : 'Review & Verify'}
+                                </button>
+                              </td>
+                            </tr>
+
+                            {/* EXPANDED MODERATION PANEL */}
+                            {isExpanded && (
+                              <tr className="bg-slate-50/60 border-t border-b border-slate-200">
+                                <td colSpan={7} className="p-6">
+                                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-left text-xs">
+                                    
+                                    {/* Left Column: Security Score & Fraud Flags */}
+                                    <div className="lg:col-span-5 space-y-4">
+                                      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                                        <h4 className="font-extrabold uppercase text-[10px] tracking-wider text-slate-500">Security & Fraud Analysis (SAF)</h4>
+                                        
+                                        {/* Score Badge */}
+                                        <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                                          <span className="font-semibold text-slate-600">Integrity Score</span>
+                                          <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono border ${
+                                              (row.fraud_risk_score || 0) >= 70 
+                                                ? 'bg-red-50 text-red-700 border-red-100' 
+                                                : (row.fraud_risk_score || 0) >= 40 
+                                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                                                : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                            }`}>
+                                              Score: {row.fraud_risk_score || 0}%
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                                              row.fraud_risk_level === 'CRITICAL' 
+                                                ? 'bg-red-100 text-red-800 border-red-200' 
+                                                : row.fraud_risk_level === 'HIGH' 
+                                                ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                                                : row.fraud_risk_level === 'MODERATE' 
+                                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                                                : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                            }`}>
+                                              {row.fraud_risk_level || 'LOW'} RISK
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Fraud Flags */}
+                                        {row.fraud_flags && row.fraud_flags.length > 0 ? (
+                                          <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wide block">Triggered Risk Indicators:</span>
+                                            <div className="flex flex-wrap gap-1">
+                                              {row.fraud_flags.map((f, fi) => (
+                                                <span key={fi} className="px-2 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-semibold border border-rose-100">
+                                                  ⚠️ {f}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1.5">
+                                            <CheckSquare className="w-3.5 h-3.5 text-emerald-500" />
+                                            No abnormal security markers or frequency alerts detected.
+                                          </div>
+                                        )}
+
+                                        {/* CRVS Metadata Details */}
+                                        <div className="border-t border-slate-100 pt-3 space-y-1.5 text-[11px] font-medium text-slate-600">
+                                          <div className="flex justify-between">
+                                            <span>Transfer Method:</span>
+                                            <span className="font-mono text-slate-800 uppercase">{row.transfer_method || 'Wallet'}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span>Observed On:</span>
+                                            <span className="font-mono text-slate-800">{row.date_observed || row.submitted_at?.split('T')[0]} @ {row.time_observed || 'N/A'}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span>File Original Name:</span>
+                                            <span className="font-mono text-slate-800 truncate max-w-[160px]">{row.screenshot_original_name || row.screenshot_name || 'N/A'}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span>File Dimensions/Size:</span>
+                                            <span className="font-mono text-slate-800">{row.screenshot_size_bytes ? ((row.screenshot_size_bytes) / 1024).toFixed(1) : 'N/A'} KB</span>
+                                          </div>
+                                        </div>
+
+                                      </div>
+
+                                      {/* Submitter Restriction Controls */}
+                                      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                                        <h4 className="font-extrabold uppercase text-[10px] tracking-wider text-slate-500">Submitter Security Privileges</h4>
+                                        <div className="flex items-center justify-between gap-4">
+                                          <div>
+                                            <p className="font-bold text-slate-800 text-[11px]">{row.submitted_by_name || 'Contributor'}</p>
+                                            <p className="text-[10px] text-slate-400 font-mono">{row.submitted_by_email}</p>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={async () => {
+                                              await toggleUserRateSubmissionRestriction(submitterProfile?.id || row.submitted_by_email || '', !isSubmitterRestricted);
+                                              setRefreshTrigger(prev => prev + 1);
+                                              await logAuditAction(loggedInEmail, isSubmitterRestricted ? 'RESTORE_RATE_SUBMISSION_PRIVILEGES' : 'RESTRICT_RATE_SUBMISSION_PRIVILEGES', 'USER_PROFILE', row.submitted_by_email, {});
+                                            }}
+                                            className={`px-3 py-1.5 rounded font-black uppercase text-[10px] tracking-wider transition-colors cursor-pointer ${
+                                              isSubmitterRestricted 
+                                                ? 'bg-emerald-500 hover:bg-emerald-600 text-white' 
+                                                : 'bg-rose-500 hover:bg-rose-600 text-white'
+                                            }`}
+                                          >
+                                            {isSubmitterRestricted ? 'Restore Privileges' : 'Restrict Submitter'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Middle Column: Screenshot Evidence Viewer */}
+                                    <div className="lg:col-span-3 space-y-2">
+                                      <span className="font-extrabold uppercase text-[10px] tracking-wider text-slate-500 block">Screenshot Evidence</span>
+                                      {row.screenshot_url ? (
+                                        <div className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-100 max-h-56 shadow-xs flex items-center justify-center">
+                                          <img 
+                                            src={row.screenshot_url} 
+                                            alt="Evidence Screenshot" 
+                                            className="max-h-52 w-full object-contain cursor-pointer hover:scale-105 transition-transform duration-250"
+                                            onClick={() => window.open(row.screenshot_url, '_blank')}
+                                            referrerPolicy="no-referrer"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50 font-mono text-[10px]">
+                                          No Screenshot URL Available
+                                        </div>
+                                      )}
+                                      <p className="text-[9px] text-slate-400 text-center italic">Click the screenshot image to open in new tab</p>
+                                    </div>
+
+                                    {/* Right Column: Moderation Input & Finalization */}
+                                    <div className="lg:col-span-4 space-y-4">
+                                      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                                        <h4 className="font-extrabold uppercase text-[10px] tracking-wider text-slate-500">Moderator Control Panel</h4>
+                                        
+                                        {/* Self-approval Guard */}
+                                        {isSelfSubmission ? (
+                                          <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded-lg text-[11px] leading-relaxed font-bold">
+                                            ❌ <strong>Self-Approval Blocked:</strong> As the creator of this rate submission, you are strictly forbidden by platform integrity rules from approving your own report.
+                                          </div>
+                                        ) : (
+                                          <div className="space-y-3.5">
+                                            
+                                            {/* Evidence Status */}
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Evidence Status Selection</label>
+                                              <select
+                                                value={adminEvidenceStatus}
+                                                onChange={(e) => setAdminEvidenceStatus(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                              >
+                                                <option value="pending">Pending Review</option>
+                                                <option value="verified">Verified (Perfect Screenshot Match)</option>
+                                                <option value="duplicate">Duplicate (Same rate screenshot recycled)</option>
+                                                <option value="redacted">Partially Redacted / Blurred</option>
+                                                <option value="invalid">Invalid / Fake Screenshot</option>
+                                                <option value="fraud_blocked">Fraud Flagged (Blacklisted)</option>
+                                              </select>
+                                            </div>
+
+                                            {/* Reviewer Notes */}
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Moderator Verification Notes</label>
+                                              <textarea
+                                                rows={2}
+                                                placeholder="Write any evidence match findings, or notes for audit trail..."
+                                                value={adminReviewerNotes}
+                                                onChange={(e) => setAdminReviewerNotes(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                                              />
+                                            </div>
+
+                                            {/* Rejection Reason */}
+                                            <div className="space-y-1">
+                                              <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Rejection Reason (Mandatory if Rejecting)</label>
+                                              <textarea
+                                                rows={2}
+                                                placeholder="Required if rejecting. e.g. Screenshot mismatch, rate expired, blur..."
+                                                value={adminRejectionReason}
+                                                onChange={(e) => setAdminRejectionReason(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                                              />
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            {row.status === 'pending_verification' || row.status === 'pending' || row.status === 'security_review' ? (
+                                              <div className="flex gap-2 pt-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={async () => {
+                                                    await handleApproveSubmission(row.id, adminReviewerNotes, adminEvidenceStatus);
+                                                    setExpandedSubId(null);
+                                                    setRefreshTrigger(prev => prev + 1);
+                                                  }}
+                                                  className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase text-[10px] tracking-wider rounded-lg cursor-pointer transition-colors"
+                                                >
+                                                  Approve Rate
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={async () => {
+                                                    if (!adminRejectionReason.trim()) {
+                                                      alert('Rejection reason is mandatory.');
+                                                      return;
+                                                    }
+                                                    await handleRejectSubmission(row.id, adminReviewerNotes, adminRejectionReason, adminEvidenceStatus);
+                                                    setExpandedSubId(null);
+                                                    setRefreshTrigger(prev => prev + 1);
+                                                  }}
+                                                  className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black uppercase text-[10px] tracking-wider rounded-lg cursor-pointer transition-colors"
+                                                >
+                                                  Reject Rate
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <div className="p-2.5 bg-slate-100 rounded-lg text-center text-[10px] font-black text-slate-400 uppercase tracking-wide">
+                                                This report is already {row.status}
+                                              </div>
+                                            )}
+
+                                          </div>
+                                        )}
+
+                                      </div>
+                                    </div>
+
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })
                     )}
@@ -2453,6 +2761,203 @@ export default function SrcmcControl({ language, t, profile, onSessionSync }: Sr
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* TAB: CRVS SETTINGS */}
+          {activeSubTab === 'crvs_settings' && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-sm">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                  <Settings className="w-5 h-5 text-indigo-600" />
+                  Community Rate Verification System (CRVS) Config
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Manage live risk thresholds, sub-threshold trigger flags, speed limitations, and rate anomaly parameters.
+                </p>
+              </div>
+
+              {crvsSaveSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-150 text-emerald-700 rounded-lg text-xs font-bold">
+                  {crvsSaveSuccess}
+                </div>
+              )}
+              {crvsSaveError && (
+                <div className="p-3 bg-rose-50 border border-rose-150 text-rose-700 rounded-lg text-xs font-bold">
+                  {crvsSaveError}
+                </div>
+              )}
+
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setCrvsSaveSuccess('');
+                setCrvsSaveError('');
+                try {
+                  saveCrvsConfig(crvsConfig);
+                  await logAuditAction(loggedInEmail, 'UPDATE_CRVS_CONFIG', 'CRVS_CONFIG', 'GLOBAL', crvsConfig);
+                  setCrvsSaveSuccess('CRVS system configuration parameters updated live!');
+                } catch (err: any) {
+                  setCrvsSaveError('Failed to save CRVS configuration.');
+                }
+              }} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 col-gap-6 text-left">
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Anomaly Normal Threshold (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={crvsConfig.anomaly_normal_threshold}
+                      onChange={(e) => setCrvsConfig({ ...crvsConfig, anomaly_normal_threshold: parseFloat(e.target.value) || 0 })}
+                    />
+                    <p className="text-[9px] text-slate-400">Rate deviation below this % is considered normal and auto-approved if evidence is perfect.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Anomaly Review Threshold (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={crvsConfig.anomaly_review_threshold}
+                      onChange={(e) => setCrvsConfig({ ...crvsConfig, anomaly_review_threshold: parseFloat(e.target.value) || 0 })}
+                    />
+                    <p className="text-[9px] text-slate-400">Rate deviation above this % triggers manual verification review by community verifiers.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Anomaly Critical Threshold (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={crvsConfig.anomaly_critical_threshold}
+                      onChange={(e) => setCrvsConfig({ ...crvsConfig, anomaly_critical_threshold: parseFloat(e.target.value) || 0 })}
+                    />
+                    <p className="text-[9px] text-slate-400">Rate deviation above this % is automatically rejected as critical outlier fraud.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Max Submissions per User (24h)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={crvsConfig.max_submissions_24h}
+                      onChange={(e) => setCrvsConfig({ ...crvsConfig, max_submissions_24h: parseInt(e.target.value) || 0 })}
+                    />
+                    <p className="text-[9px] text-slate-400">Absolute maximum rate reports a single user can submit within a rolling 24-hour window.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Max Submissions per Channel & Route (24h)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={crvsConfig.max_submissions_same_channel_corridor_24h}
+                      onChange={(e) => setCrvsConfig({ ...crvsConfig, max_submissions_same_channel_corridor_24h: parseInt(e.target.value) || 0 })}
+                    />
+                    <p className="text-[9px] text-slate-400">Prevents speed spams of the exact same route and provider by a single account.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Rate Expiry Window (Hours)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={crvsConfig.expiry_hours}
+                      onChange={(e) => setCrvsConfig({ ...crvsConfig, expiry_hours: parseInt(e.target.value) || 0 })}
+                    />
+                    <p className="text-[9px] text-slate-400">Number of hours before a verified community rate is deemed stale and ineligible in the RRE.</p>
+                  </div>
+
+                </div>
+
+                <div className="flex justify-end pt-4 border-t border-slate-100">
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase rounded-lg shadow-sm transition-colors cursor-pointer"
+                  >
+                    Save CRVS Parameters
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* TAB: FRAUD LOGS */}
+          {activeSubTab === 'fraud_logs' && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-sm">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                  <ShieldAlert className="w-5 h-5 text-rose-600" />
+                  SariRemit SAF Fraud & Security Incidents
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Real-time audit log tracking rate manipulation indicators, automated speed spams, duplicate evidence recycling, and block events.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-550 font-extrabold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Timestamp</th>
+                      <th className="py-3 px-4">Incident Level</th>
+                      <th className="py-3 px-4">User Details</th>
+                      <th className="py-3 px-4">Event Description</th>
+                      <th className="py-3 px-4">Risk Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-750">
+                    {fraudEvents.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-slate-400 font-black uppercase tracking-widest bg-slate-50/20">
+                          No security threat vectors or fraud incidents detected yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      fraudEvents.map((ev) => (
+                        <tr key={ev.id} className="hover:bg-slate-50/20 transition-colors">
+                          <td className="py-3.5 px-4 font-mono text-[10px] text-slate-400">
+                            {new Date(ev.timestamp).toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase border ${
+                              ev.risk_level === 'CRITICAL' 
+                                ? 'bg-red-100 text-red-800 border-red-200 animate-pulse' 
+                                : ev.risk_level === 'HIGH' 
+                                ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                                : ev.risk_level === 'MODERATE' 
+                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                            }`}>
+                              {ev.risk_level}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono">
+                            <span className="font-bold text-slate-800 block text-xs">{ev.user_email}</span>
+                            <span className="text-[10px] text-slate-400">Score: {ev.risk_score}%</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600 leading-normal max-w-sm">
+                            <strong>{ev.event_type}</strong>
+                            <p className="text-[10px] text-slate-400 mt-0.5">{ev.details}</p>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {Array.isArray(ev.metadata?.flags) ? ev.metadata.flags.map((fl: string, flIdx: number) => (
+                                <span key={flIdx} className="px-1.5 py-0.5 bg-rose-50 border border-rose-100 text-[9px] font-bold text-rose-600 rounded">
+                                  {fl}
+                                </span>
+                              )) : <span className="text-slate-400 italic text-[10px]">None</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
