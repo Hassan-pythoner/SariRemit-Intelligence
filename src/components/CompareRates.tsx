@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { TranslationDict, Corridor, TrueCostResult } from '../types';
+import { TranslationDict, Corridor, TrueCostResult, BrandAsset } from '../types';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
 import { slf } from '../services/slfService';
 import { 
-  getRecommendations, DbResolvedRate, DbSisScore, DbRecommendationResult, getAuthSession
+  getRecommendations, DbResolvedRate, DbSisScore, DbRecommendationResult, getAuthSession,
+  resolveProviderBranding, fetchBrandAssets
 } from '../services/supabaseService';
 import { 
   ArrowLeftRight, HelpCircle, ShieldAlert, Sparkles, TrendingUp, Info, 
@@ -14,6 +15,7 @@ import { RecordTransferModal } from './RecordTransferModal';
 import { SEPSCelebration } from './SEPSCelebration';
 import { FirstTransferFeedback } from './FirstTransferFeedback';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect, SDSSisGauge } from './Sds';
+import { ProviderLogo, CountryFlag } from './SdsBamComponents';
 
 interface CompareRatesProps {
   language: 'en' | 'ar';
@@ -40,7 +42,12 @@ export default function CompareRates({
   });
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'received' | 'rate' | 'fee'>('received');
+  const [sortBy, setSortBy] = useState<'value' | 'received' | 'rate' | 'fee' | 'trusted'>('value');
+  const [brandAssets, setBrandAssets] = useState<BrandAsset[]>([]);
+
+  useEffect(() => {
+    fetchBrandAssets().then(data => setBrandAssets(data || []));
+  }, []);
 
   // Interactive UI states
   const [isMobile, setIsMobile] = useState<boolean>(false);
@@ -141,12 +148,14 @@ export default function CompareRates({
 
   // Sort filtered options based on selection
   const sortedOptions = [...filteredOptions].sort((a, b) => {
-    if (sortBy === 'received') {
+    if (sortBy === 'value' || sortBy === 'received') {
       return b.netAmount - a.netAmount;
     } else if (sortBy === 'rate') {
       return b.resolved.resolved_rate - a.resolved.resolved_rate;
     } else if (sortBy === 'fee') {
       return a.resolved.transfer_fee - b.resolved.transfer_fee;
+    } else if (sortBy === 'trusted') {
+      return b.sis.sis_score - a.sis.sis_score;
     }
     return 0;
   });
@@ -154,6 +163,7 @@ export default function CompareRates({
   // For Mobile view: make sure recommended provider is always at the absolute top of the deck!
   const getMobileOrderedOptions = () => {
     const list = [...sortedOptions];
+    if (sortBy !== 'value' && sortBy !== 'received') return list; // let deliberate custom sorting override
     if (!recommendation) return list;
     const bestIdx = list.findIndex(opt => opt.resolved.provider_id === recommendation.best_provider_id);
     if (bestIdx > 0) {
@@ -188,19 +198,6 @@ export default function CompareRates({
         return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       default:
         return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-    }
-  };
-
-  const getSourceLabelHuman = (sourceType: string) => {
-    switch (sourceType) {
-      case 'admin_override':
-        return language === 'en' ? 'Management Verified Rate' : 'سعر صرف معتمد رسمياً';
-      case 'community_verified':
-        return language === 'en' ? 'Community Verified Rate' : 'سعر صرف مؤكد مجتمعياً';
-      case 'market_reference':
-        return language === 'en' ? "Today's Market Rate" : 'سعر السوق اليوم';
-      default:
-        return language === 'en' ? 'Last Known Valid Rate (Emergency)' : 'آخر سعر صرف مسجل';
     }
   };
 
@@ -373,6 +370,124 @@ export default function CompareRates({
     );
   };
 
+  const getConfidenceLevel = (score: number) => {
+    if (score >= 90) return { label: isRtl ? 'ثقة عالية جداً' : 'Very High', color: 'text-emerald-400' };
+    if (score >= 75) return { label: isRtl ? 'ثقة عالية' : 'High', color: 'text-emerald-500' };
+    if (score >= 60) return { label: isRtl ? 'ثقة متوسطة' : 'Moderate', color: 'text-amber-500' };
+    if (score >= 40) return { label: isRtl ? 'ثقة محدودة' : 'Limited', color: 'text-orange-500' };
+    return { label: isRtl ? 'ثقة منخفضة' : 'Low', color: 'text-rose-500' };
+  };
+
+  const getWhyThisOption = (opt: any, isBestValue: boolean) => {
+    const reasons: string[] = [];
+    if (isBestValue) {
+      reasons.push(isRtl ? 'أعلى عائد متوقع اليوم' : 'Highest estimated payout');
+    }
+    if (opt.resolved.transfer_fee <= 5) {
+      reasons.push(isRtl ? 'رسوم تحويل منخفضة' : 'Low transfer fee');
+    }
+    const mins = Math.floor((Date.now() - new Date(opt.resolved.last_updated).getTime()) / 60000);
+    if (mins < 60) {
+      reasons.push(isRtl ? 'تحديث فوري' : 'Updated recently');
+    } else if (opt.resolved.source_type === 'community_verified' || opt.resolved.source_type === 'admin_override') {
+      reasons.push(isRtl ? 'سعر صرف مؤكد' : 'Verified rate');
+    }
+    if (opt.sis.sis_score >= 80) {
+      reasons.push(isRtl ? 'ثقة سوقية قوية' : 'Strong market confidence');
+    }
+    if (reasons.length < 2) {
+      reasons.push(isRtl ? 'قناة تحويل موثوقة' : 'Reliable channel');
+    }
+    return reasons.slice(0, 3);
+  };
+
+  const getValueLabel = (opt: any, bestAmount: number) => {
+    if (opt.resolved.provider_id === recommendation?.best_provider_id) {
+      return isRtl ? 'القيمة: الأفضل' : 'Value: Best';
+    }
+    const pct = opt.netAmount / bestAmount;
+    if (pct >= 0.99) return isRtl ? 'القيمة: ممتازة' : 'Value: Strong';
+    if (pct >= 0.96) return isRtl ? 'القيمة: جيدة' : 'Value: Good';
+    if (pct >= 0.92) return isRtl ? 'القيمة: مقبولة' : 'Value: Fair';
+    return isRtl ? 'القيمة: محدودة' : 'Value: Limited';
+  };
+
+  const getFreshnessLabel = (opt: any) => {
+    const relativeTime = getRelativeTimeText(opt.resolved.last_updated);
+    if (opt.resolved.source_type === 'community_verified' || opt.resolved.source_type === 'admin_override') {
+      return isRtl ? `تم التأكيد ${relativeTime}` : `Verified ${relativeTime}`;
+    }
+    if (opt.resolved.source_type === 'market_reference') {
+      return isRtl ? `تقدير السوق ${relativeTime}` : `Market estimate updated ${relativeTime}`;
+    }
+    return isRtl ? `تم التحديث ${relativeTime}` : `Updated ${relativeTime}`;
+  };
+
+  const getSourceLabelHuman = (sourceType: string) => {
+    switch (sourceType) {
+      case 'admin_override':
+        return isRtl ? 'معتمد رسمياً' : 'Management Verified';
+      case 'community_verified':
+        return isRtl ? 'مؤكد مجتمعياً' : 'Community Verified';
+      case 'market_reference':
+        return isRtl ? 'تقدير السوق' : 'Market Estimate';
+      case 'verified_channel_rate':
+        return isRtl ? 'سعر صرف معتمد' : 'Verified Provider Rate';
+      case 'last_known_valid':
+        return isRtl ? 'آخر تقدير متوفر' : 'Latest Available Estimate';
+      default:
+        return isRtl ? 'تقدير ساري اليوم' : 'Sari Estimate';
+    }
+  };
+
+  const renderSavingsInsight = () => {
+    if (loading || !recommendation || !options.length) return null;
+    
+    // Find current best provider's name
+    const bestProvName = recommendation.best_provider_name;
+    const bestSavings = recommendation.estimated_savings;
+    const currency = activeCorridor.currencyCode;
+    
+    // Annual projection calculation
+    const annualProjection = bestSavings * 12;
+    
+    return (
+      <div className="bg-gradient-to-r from-emerald-950/40 via-[#0C2547] to-emerald-950/40 border border-[#10B981]/25 p-4 rounded-2xl shadow-sm text-left relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-16 h-16 bg-[#10B981]/5 rounded-full blur-xl pointer-events-none" />
+        <div className="flex items-start gap-3">
+          <span className="text-lg mt-0.5">💡</span>
+          <div className="space-y-1">
+            <h4 className="text-[10px] font-black text-[#10B981] uppercase tracking-wider">
+              {isRtl ? 'رؤية التوفير اليوم' : "Today's Savings Insight"}
+            </h4>
+            <p className="text-xs text-white font-medium leading-relaxed">
+              {isRtl ? (
+                <>
+                  يمكن لـ <span className="text-[#10B981] font-bold">{bestProvName}</span> أن يوفر لك حوالي <span className="text-[#10B981] font-extrabold">{bestSavings.toLocaleString(undefined, { maximumFractionDigits: 1 })} {currency}</span> أكثر من متوسط السوق اليوم عند تحويل {sendAmount} ريال سعودي.
+                </>
+              ) : (
+                <>
+                  <span className="text-[#10B981] font-bold">{bestProvName}</span> could deliver about <span className="text-[#10B981] font-extrabold">{bestSavings.toLocaleString(undefined, { maximumFractionDigits: 1 })} {currency}</span> more than the current average for a {sendAmount} SAR transfer.
+                </>
+              )}
+            </p>
+            <p className="text-[10px] text-sds-text-sec font-semibold mt-1">
+              {isRtl ? (
+                <>
+                  * بناءً على حجم التحويل المعتاد، يمكن أن يصل هذا التوفير إلى حوالي <span className="text-[#10B981] font-bold">{annualProjection.toLocaleString(undefined, { maximumFractionDigits: 1 })} {currency}</span> على مدار 12 شهراً القادمة (تقديري).
+                </>
+              ) : (
+                <>
+                  * At the same monthly frequency, this difference could add up to about <span className="text-[#10B981] font-bold">{annualProjection.toLocaleString(undefined, { maximumFractionDigits: 1 })} {currency}</span> over 12 months (Estimated).
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`space-y-6 pb-24 text-sds-text ${isRtl ? 'text-right' : 'text-left'} animate-fadeIn`}>
       
@@ -497,6 +612,30 @@ export default function CompareRates({
       {/* Comparison Head-to-Head matchup overlay drawer */}
       {renderComparisonDrawer()}
 
+      {/* Destination Country Context Header & Savings Story */}
+      {!loading && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between bg-[#0C2547]/40 border border-sds-border px-4 py-3 rounded-2xl">
+            <div className="flex items-center gap-2 text-left">
+              <span className="text-xl leading-none">{activeCorridor.flag}</span>
+              <div>
+                <span className="text-[10px] font-black text-sds-text-sec uppercase tracking-widest block leading-none">
+                  {isRtl ? 'البلد والعملة' : 'Destination Corridor'}
+                </span>
+                <span className="text-xs font-bold text-white mt-0.5 block">
+                  {language === 'en' ? activeCorridor.toCountry : activeCorridor.toCountryAr} · <span className="font-mono text-[#F59E0B]">{activeCorridor.currencyCode}</span>
+                </span>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 rounded-lg text-[10px] font-black uppercase tracking-wider">
+              {isRtl ? 'نشط' : 'Active'}
+            </span>
+          </div>
+
+          {renderSavingsInsight()}
+        </div>
+      )}
+
       {/* 3. RATES RESULTS CONTAINER */}
       {loading ? (
         <div className="py-20 text-center space-y-4">
@@ -508,7 +647,7 @@ export default function CompareRates({
       ) : (
         <>
           {/* Results Sort header bar */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-b border-sds-border/60 pb-3 text-left">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2 border-b border-sds-border/60 pb-3 text-left">
             <div>
               <span className="text-sm font-black text-white uppercase tracking-wide">
                 {filteredOptions.length} {language === 'en' ? 'verified remittance channels active' : 'قنوات تحويل مؤكدة ونشطة'}
@@ -521,34 +660,94 @@ export default function CompareRates({
             {/* Sort Controls */}
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-sds-text-sec font-black uppercase tracking-wider flex items-center gap-1 shrink-0 font-mono">
-                <ArrowUpDown className="w-3 h-3 text-[#10B981]" /> Sort by:
+                <ArrowUpDown className="w-3 h-3 text-[#10B981]" /> {isRtl ? 'ترتيب حسب:' : 'Sort by:'}
               </span>
-              <div className="flex bg-[#0C2547] p-0.5 rounded-xl border border-sds-border text-[10px] font-black uppercase">
-                <button
-                  onClick={() => setSortBy('received')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                    sortBy === 'received' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Payout
-                </button>
-                <button
-                  onClick={() => setSortBy('rate')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                    sortBy === 'rate' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Rate
-                </button>
-                <button
-                  onClick={() => setSortBy('fee')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                    sortBy === 'fee' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Fee
-                </button>
-              </div>
+              {isMobile ? (
+                <div className="flex items-center gap-1.5">
+                  <div className="flex bg-[#0C2547] p-0.5 rounded-xl border border-sds-border text-[10px] font-black uppercase">
+                    <button
+                      onClick={() => setSortBy('value')}
+                      className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                        sortBy === 'value' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {isRtl ? 'أفضل قيمة' : 'Value'}
+                    </button>
+                    <button
+                      onClick={() => setSortBy('received')}
+                      className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                        sortBy === 'received' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {isRtl ? 'عائد' : 'Payout'}
+                    </button>
+                    <button
+                      onClick={() => setSortBy('rate')}
+                      className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                        sortBy === 'rate' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {isRtl ? 'سعر' : 'Rate'}
+                    </button>
+                  </div>
+                  <select
+                    value={sortBy === 'fee' || sortBy === 'trusted' ? sortBy : 'more'}
+                    onChange={(e) => {
+                      if (e.target.value !== 'more') {
+                        setSortBy(e.target.value as any);
+                      }
+                    }}
+                    className="bg-[#0C2547] border border-sds-border text-[10px] text-slate-300 font-black uppercase rounded-xl px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981]/20 cursor-pointer h-[32px]"
+                  >
+                    <option value="more" disabled className="text-slate-500">{isRtl ? 'المزيد' : 'More'}</option>
+                    <option value="fee" className="text-slate-800">{isRtl ? 'أقل رسوم' : 'Lowest Fee'}</option>
+                    <option value="trusted" className="text-slate-800">{isRtl ? 'الأكثر ثقة' : 'Most Trusted'}</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="flex bg-[#0C2547] p-0.5 rounded-xl border border-sds-border text-[10px] font-black uppercase">
+                  <button
+                    onClick={() => setSortBy('value')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                      sortBy === 'value' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Best Value
+                  </button>
+                  <button
+                    onClick={() => setSortBy('received')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                      sortBy === 'received' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Highest Payout
+                  </button>
+                  <button
+                    onClick={() => setSortBy('rate')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                      sortBy === 'rate' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Best Rate
+                  </button>
+                  <button
+                    onClick={() => setSortBy('fee')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                      sortBy === 'fee' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Lowest Fee
+                  </button>
+                  <button
+                    onClick={() => setSortBy('trusted')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
+                      sortBy === 'trusted' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Most Trusted
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -563,188 +762,273 @@ export default function CompareRates({
                   <p className="text-[11px] text-sds-text-sec mt-1 font-semibold">Try relaxing your filters or selecting another target corridor.</p>
                 </div>
               ) : (
-                mobileOptions.map((opt) => {
-                  const isBestValue = opt.resolved.provider_id === recommendation?.best_provider_id;
-                  const isExpanded = expandedSisId === opt.resolved.id;
+                (() => {
+                  const bestOpt = options.find(o => o.resolved.provider_id === recommendation?.best_provider_id);
+                  const bestNetAmount = bestOpt ? bestOpt.netAmount : (recommendation?.net_recipient_amount || 0);
 
-                  return (
-                    <div 
-                      key={opt.resolved.provider_id}
-                      className={`bg-[#0C2547] rounded-3xl border transition-all ${
-                        isBestValue 
-                          ? 'border-[#10B981] ring-2 ring-[#10B981]/10 shadow-lg' 
-                          : 'border-sds-border hover:border-sds-border/80 shadow-xs'
-                      } overflow-hidden`}
-                    >
-                      {/* Optimal Recommended badge banner */}
-                      {isBestValue && (
-                        <div className="bg-[#10B981] text-[#071A35] text-[9px] font-black px-3.5 py-1 uppercase tracking-widest flex items-center gap-1">
-                          <ThumbsUp className="w-3 h-3 fill-[#071A35]" />
-                          <span>Optimal Recommended Today (Highest Payout)</span>
-                        </div>
-                      )}
+                  return mobileOptions.map((opt) => {
+                    const isBestValue = opt.resolved.provider_id === recommendation?.best_provider_id;
+                    const isExpanded = expandedSisId === opt.resolved.id;
+                    const diff = bestNetAmount - opt.netAmount;
 
-                      <div className="p-4 space-y-4">
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`w-10 h-10 rounded-xl text-white font-black text-sm flex items-center justify-center uppercase shadow-inner shrink-0 ${
-                              opt.resolved.provider_id === 'stc-pay' ? 'bg-purple-600' :
-                              opt.resolved.provider_id === 'urpay' ? 'bg-blue-600' :
-                              opt.resolved.provider_id === 'mobily-pay' ? 'bg-cyan-500' :
-                              opt.resolved.provider_id === 'enjaz' ? 'bg-amber-600' :
-                              opt.resolved.provider_id === 'quickpay' ? 'bg-emerald-700' :
-                              opt.resolved.provider_id === 'western-union' ? 'bg-yellow-500 text-slate-950 font-black' : 'bg-blue-850'
-                            }`}>
-                              {opt.resolved.provider_name.substring(0, 2)}
-                            </div>
-                            <div className="text-left">
-                              <h4 className="font-black text-white text-sm uppercase leading-tight tracking-tight">
-                                {opt.resolved.provider_name}
-                              </h4>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                {getMethodIcon(opt.resolved.provider_id)}
-                                <span className="text-[8px] font-black text-sds-text-sec uppercase tracking-wider">
-                                  {getMethodLabel(opt.resolved.provider_id)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <span className={`inline-block px-1.5 py-0.5 text-[8px] font-black border rounded-md uppercase tracking-wider ${getSourceBadgeColor(opt.resolved.source_type)}`}>
-                            {opt.resolved.source_type === 'admin_override' ? 'Verified' : opt.resolved.source_type === 'community_verified' ? 'Community' : 'System'}
-                          </span>
-                        </div>
-
-                        {/* Amount details */}
-                        <div className="grid grid-cols-2 gap-4 py-1.5 border-t border-b border-sds-border/60 my-2 text-left">
-                          <div>
-                            <span className="text-[9px] text-sds-text-sec font-bold uppercase block tracking-wider leading-none">Exchange Rate</span>
-                            <div className="flex items-baseline gap-0.5 mt-1">
-                              <span className="font-mono text-sm font-black text-white">
-                                {opt.resolved.resolved_rate}
-                              </span>
-                              <span className="font-mono text-[9px] text-sds-text-sec font-bold uppercase ml-1">
-                                {activeCorridor.currencyCode}
-                              </span>
-                            </div>
-                            <span className="text-[8px] text-sds-text-sec font-semibold block mt-0.5 leading-none">
-                              {opt.resolved.transfer_fee === 0 ? 'FREE TRANSFER' : `Fee: ${opt.resolved.transfer_fee} SAR`}
-                            </span>
-                          </div>
-
-                          <div className="text-right">
-                            <span className="text-[9px] text-[#10B981] font-black uppercase tracking-wider block leading-none">Est. Received</span>
-                            <div className="flex items-baseline justify-end gap-0.5 mt-1">
-                              <span className="font-mono text-lg font-black text-white tracking-tight">
-                                {opt.netAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                              </span>
-                              <span className="text-xs font-black text-[#10B981] ml-1">
-                                {activeCorridor.currencyCode}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Badges row */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#071A35] border border-sds-border rounded-lg text-[10px] font-bold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                            <span className="font-black font-sans text-sds-text-sec">Confidence: {opt.sis.sis_score}%</span>
-                          </div>
-
-                          {opt.trueCost && (
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border uppercase tracking-wider ${getTrueCostColor(opt.trueCost.transparencyRating)}`}>
-                              {getTrueCostLabel(opt.trueCost.transparencyRating)}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Footer Buttons */}
-                        <div className="pt-3 border-t border-sds-border/60 flex flex-col gap-2">
-                          <div className="flex items-center justify-between gap-2.5">
-                            <button
-                              type="button"
-                              onClick={() => setComparisonTargetId(opt.resolved.provider_id)}
-                              className="flex-1 py-2 bg-[#071A35] hover:bg-[#091f3e] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
-                            >
-                              Compare
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setExpandedSisId(isExpanded ? null : opt.resolved.id)}
-                              className="flex-1 py-2 bg-[#071A35] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1"
-                            >
-                              <span>{isExpanded ? 'Hide Details' : 'More Details'}</span>
-                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-
-                          {user && (
-                            <button
-                              type="button"
-                              onClick={() => setRecordTransferOption(opt)}
-                              className="w-full py-2.5 bg-[#10B981] text-[#071A35] font-black text-[10px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                            >
-                              <Award className="w-3.5 h-3.5" />
-                              <span>{isRtl ? 'تسجيل التحويل المالي' : 'Record Transfer'}</span>
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Expanded detail accordion panel */}
-                        {isExpanded && (
-                          <div className="pt-4 border-t border-sds-border/60 space-y-4 animate-fadeIn text-sds-text-sec text-xs text-left">
-                            <div className="space-y-2">
-                              <h5 className="font-black text-[9px] text-[#F59E0B] uppercase tracking-widest leading-none">
-                                {language === 'en' ? 'Sari Intelligence Indicators (SIS)' : 'مؤشرات ساري التحليلية (SIS)'}
-                              </h5>
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                                <div className="space-y-0.5">
-                                  <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
-                                    <span>Rate Advantage</span>
-                                    <span className="font-mono text-white">{opt.sis.rate_advantage_score}/100</span>
-                                  </div>
-                                  <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
-                                    <div className="h-full bg-[#10B981]" style={{ width: `${opt.sis.rate_advantage_score}%` }}></div>
-                                  </div>
-                                </div>
-                                <div className="space-y-0.5">
-                                  <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
-                                    <span>Fee Advantage</span>
-                                    <span className="font-mono text-white">{opt.sis.fee_advantage_score}/100</span>
-                                  </div>
-                                  <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
-                                    <div className="h-full bg-[#10B981]" style={{ width: `${opt.sis.fee_advantage_score}%` }}></div>
-                                  </div>
-                                </div>
-                                <div className="space-y-0.5">
-                                  <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
-                                    <span>Transparency Score</span>
-                                    <span className="font-mono text-white">{opt.sis.true_cost_score ?? 80}/100</span>
-                                  </div>
-                                  <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
-                                    <div className="h-full bg-[#F59E0B]" style={{ width: `${opt.sis.true_cost_score ?? 80}%` }}></div>
-                                  </div>
-                                </div>
-                                <div className="space-y-0.5">
-                                  <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
-                                    <span>Freshness Indicator</span>
-                                    <span className="font-mono text-white">{opt.sis.freshness_score}/100</span>
-                                  </div>
-                                  <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
-                                    <div className="h-full bg-blue-500" style={{ width: `${opt.sis.freshness_score}%` }}></div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
+                    return (
+                      <div 
+                        key={opt.resolved.provider_id}
+                        className={`bg-[#0C2547] rounded-3xl border transition-all ${
+                          isBestValue 
+                            ? 'border-[#10B981] ring-4 ring-[#10B981]/15 shadow-xl bg-gradient-to-b from-[#0e2c53] to-[#0C2547]' 
+                            : 'border-sds-border hover:border-sds-border/80 shadow-xs'
+                        } overflow-hidden`}
+                      >
+                        {/* Optimal Recommended badge banner */}
+                        {isBestValue && (
+                          <div className="bg-[#10B981] text-[#071A35] text-[10px] font-black px-4 py-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                            <ThumbsUp className="w-3.5 h-3.5 fill-[#071A35]" />
+                            <span>{isRtl ? 'خيار اليوم الأفضل' : "Today's Best Choice"}</span>
                           </div>
                         )}
 
+                        <div className="p-4 space-y-4">
+                          {/* Header section: Provider identity & Value Badge */}
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <ProviderLogo channel={{ ...opt.resolved, providerCode: opt.resolved.provider_id, displayName: opt.resolved.provider_name }} size="md" shape="circle" surface="dark" />
+                              <div className="text-left">
+                                <h4 className="font-black text-white text-sm uppercase leading-tight tracking-tight">
+                                  {opt.resolved.provider_name}
+                                </h4>
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  {getMethodIcon(opt.resolved.provider_id)}
+                                  <span className="text-[8px] font-black text-sds-text-sec uppercase tracking-wider">
+                                    {getMethodLabel(opt.resolved.provider_id)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Labelled Value Badge */}
+                            <span className="inline-block px-2.5 py-1 text-[9px] font-black border rounded-lg uppercase tracking-wider bg-[#071A35] border-sds-border text-[#10B981]">
+                              {getValueLabel(opt, bestNetAmount)}
+                            </span>
+                          </div>
+
+                          {/* 2. Visual Recipient Payout Area */}
+                          <div className="bg-[#071A35] rounded-2xl p-4 border border-sds-border/50 text-left space-y-1">
+                            <span className="text-[9px] text-sds-text-sec font-black uppercase tracking-wider leading-none">
+                              {isRtl ? 'المبلغ المستلم' : 'They Receive'}
+                            </span>
+                            <div className="flex items-baseline gap-1">
+                              <span className="font-mono text-3xl font-black text-[#10B981] tracking-tight">
+                                {opt.netAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                              </span>
+                              <span className="text-sm font-black text-white font-mono uppercase">
+                                {activeCorridor.currencyCode}
+                              </span>
+                            </div>
+                            
+                            {/* Estimated savings story difference line */}
+                            <div className="text-[10px] font-bold text-slate-300 pt-1 flex items-center gap-1">
+                              <span className="text-[#10B981]">●</span>
+                              <span>
+                                {isBestValue ? (
+                                  isRtl ? (
+                                    `حوالي ${recommendation?.estimated_savings.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeCorridor.currencyCode} أكثر من متوسط السوق اليوم`
+                                  ) : (
+                                    `About ${recommendation?.estimated_savings.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeCorridor.currencyCode} more than current average`
+                                  )
+                                ) : (
+                                  isRtl ? (
+                                    `حوالي ${diff.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeCorridor.currencyCode} أقل من خيار الأفضل اليوم`
+                                  ) : (
+                                    `About ${diff.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeCorridor.currencyCode} less than today's best option`
+                                  )
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 3. Rate & Fee Row */}
+                          <div className="grid grid-cols-2 gap-3 text-left">
+                            <div className="p-2.5 bg-[#071A35]/40 border border-sds-border/40 rounded-xl">
+                              <span className="text-[8px] text-sds-text-sec font-black uppercase tracking-wider block">
+                                {isRtl ? 'سعر صرف اليوم' : "Today's Rate"}
+                              </span>
+                              <span className="font-mono text-sm font-black text-white block mt-0.5">
+                                {opt.resolved.resolved_rate} <span className="text-[9px] text-sds-text-sec">{activeCorridor.currencyCode}</span>
+                              </span>
+                            </div>
+                            <div className="p-2.5 bg-[#071A35]/40 border border-sds-border/40 rounded-xl">
+                              <span className="text-[8px] text-sds-text-sec font-black uppercase tracking-wider block">
+                                {isRtl ? 'رسوم التحويل' : 'Transfer Fee'}
+                              </span>
+                              <span className="font-mono text-sm font-black text-white block mt-0.5">
+                                {opt.resolved.transfer_fee === 0 ? (isRtl ? 'مجاناً' : 'FREE') : `${opt.resolved.transfer_fee} SAR`}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 4. Confidence Badge & Helper */}
+                          <div className="p-3 bg-[#071A35]/60 rounded-xl border border-sds-border/40 space-y-1 text-left">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black text-sds-text-sec uppercase tracking-wider">
+                              <ShieldAlert className="w-3.5 h-3.5 text-[#10B981]" />
+                              <span>{isRtl ? 'مستوى الثقة:' : 'Confidence Level:'}</span>
+                              <span className={getConfidenceLevel(opt.sis.sis_score).color}>
+                                {getConfidenceLevel(opt.sis.sis_score).label} ({opt.sis.sis_score}%)
+                              </span>
+                            </div>
+                            <p className="text-[9px] text-sds-text-sec/85 font-medium leading-tight">
+                              {isRtl ? 'يوضح مدى موثوقية وحداثة هذه البيانات المستخرجة.' : 'This shows how reliable and recent the extracted data is.'}
+                            </p>
+                          </div>
+
+                          {/* 5. Freshness & Source */}
+                          <div className="flex justify-between items-center text-[9px] font-bold text-sds-text-sec">
+                            <span>{getFreshnessLabel(opt)}</span>
+                            <span className="px-1.5 py-0.5 bg-[#071A35] border border-sds-border/50 rounded-md text-[8px] font-black uppercase">
+                              {getSourceLabelHuman(opt.resolved.source_type)}
+                            </span>
+                          </div>
+
+                          {/* 6. Why This Option? row of bullets */}
+                          <div className="bg-emerald-950/15 border border-[#10B981]/10 px-3 py-2 rounded-xl text-left flex items-center gap-2">
+                            <span className="text-xs">✨</span>
+                            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wide">
+                              {getWhyThisOption(opt, isBestValue).join('  ·  ')}
+                            </span>
+                          </div>
+
+                          {/* 7. Action Buttons */}
+                          <div className="pt-2 flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => setComparisonTargetId(opt.resolved.provider_id)}
+                                className="flex-1 py-3 bg-[#071A35] hover:bg-[#091f3e] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center h-[44px]"
+                              >
+                                {isRtl ? 'تحليل ومقارنة' : 'Compare'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setExpandedSisId(isExpanded ? null : opt.resolved.id)}
+                                className="flex-1 py-3 bg-[#071A35] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1 h-[44px]"
+                              >
+                                <span>{isExpanded ? (isRtl ? 'إخفاء التفاصيل' : 'Hide Details') : (isRtl ? 'تفاصيل أكثر' : 'More Details')}</span>
+                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+
+                            {user && (
+                              <button
+                                type="button"
+                                onClick={() => setRecordTransferOption(opt)}
+                                className="w-full py-3.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black text-[11px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm h-[44px]"
+                              >
+                                <Award className="w-4 h-4" />
+                                <span>{isRtl ? 'تسجيل هذا التحويل المالي' : 'Record Transfer'}</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Expanded detail accordion panel */}
+                          {isExpanded && (
+                            <div className="pt-4 border-t border-sds-border/60 space-y-4 animate-fadeIn text-sds-text-sec text-xs text-left">
+                              <div className="bg-[#071A35] rounded-2xl p-3 border border-sds-border space-y-3">
+                                <h5 className="font-black text-[9px] text-[#F59E0B] uppercase tracking-widest leading-none">
+                                  {isRtl ? 'تفاصيل التكلفة ومؤشرات ساري' : 'Cost Breakdown & Indicators'}
+                                </h5>
+                                <div className="grid grid-cols-2 gap-3 text-[11px]">
+                                  <div className="space-y-0.5">
+                                    <span className="text-sds-text-sec block">{isRtl ? "سعر صرف اليوم:" : "Today's Rate:"}</span>
+                                    <span className="font-mono text-white font-bold">{opt.resolved.resolved_rate} {activeCorridor.currencyCode}</span>
+                                  </div>
+                                  <div className="space-y-0.5 text-right">
+                                    <span className="text-sds-text-sec block">{isRtl ? "رسوم التحويل:" : "Transfer Fee:"}</span>
+                                    <span className="font-mono text-white font-bold">{opt.resolved.transfer_fee} SAR</span>
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <span className="text-sds-text-sec block">{isRtl ? "ضريبة القيمة المضافة والمصاريف:" : "VAT & Other Charges:"}</span>
+                                    <span className="font-mono text-white font-bold">{opt.trueCost?.vatAmount || 0} SAR</span>
+                                  </div>
+                                  <div className="space-y-0.5 text-right">
+                                    <span className="text-sds-text-sec block">{isRtl ? "التكلفة الإجمالية:" : "Total Cost:"}</span>
+                                    <span className="font-mono text-[#10B981] font-bold">{(opt.resolved.transfer_fee + (opt.trueCost?.vatAmount || 0))} SAR</span>
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <span className="text-sds-text-sec block">{isRtl ? "العائد المتوقع للمستلم:" : "Expected Recipient Amount:"}</span>
+                                    <span className="font-mono text-[#10B981] font-bold">{opt.netAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })} {activeCorridor.currencyCode}</span>
+                                  </div>
+                                  <div className="space-y-0.5 text-right">
+                                    <span className="text-sds-text-sec block">{isRtl ? "التوفير المتوقع:" : "Estimated Savings:"}</span>
+                                    <span className="font-mono text-[#10B981] font-bold">
+                                      {isBestValue 
+                                        ? `+${recommendation?.estimated_savings.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeCorridor.currencyCode}`
+                                        : `-${(bestNetAmount - opt.netAmount).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeCorridor.currencyCode}`
+                                      }
+                                    </span>
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <span className="text-sds-text-sec block">{isRtl ? "مصدر السعر والتحقق:" : "Rate Source:"}</span>
+                                    <span className="text-white font-bold">{getSourceLabelHuman(opt.resolved.source_type)}</span>
+                                  </div>
+                                  <div className="space-y-0.5 text-right">
+                                    <span className="text-sds-text-sec block">{isRtl ? "آخر تحديث:" : "Last Updated:"}</span>
+                                    <span className="text-white font-bold">{getRelativeTimeText(opt.resolved.last_updated)}</span>
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-sds-border/40 space-y-2">
+                                  <span className="font-black text-[9px] text-[#F59E0B] uppercase tracking-widest leading-none block">
+                                    {isRtl ? 'مؤشرات الأداء الثنائية (SIS)' : 'Sari Intelligence Indicators (SIS)'}
+                                  </span>
+                                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                                    <div className="space-y-0.5">
+                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                        <span>Rate Advantage</span>
+                                        <span className="font-mono text-white">{opt.sis.rate_advantage_score}/100</span>
+                                      </div>
+                                      <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
+                                        <div className="h-full bg-[#10B981]" style={{ width: `${opt.sis.rate_advantage_score}%` }}></div>
+                                      </div>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                        <span>Fee Advantage</span>
+                                        <span className="font-mono text-white">{opt.sis.fee_advantage_score}/100</span>
+                                      </div>
+                                      <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
+                                        <div className="h-full bg-[#10B981]" style={{ width: `${opt.sis.fee_advantage_score}%` }}></div>
+                                      </div>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                        <span>Transparency Score</span>
+                                        <span className="font-mono text-white">{opt.sis.true_cost_score ?? 80}/100</span>
+                                      </div>
+                                      <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
+                                        <div className="h-full bg-[#F59E0B]" style={{ width: `${opt.sis.true_cost_score ?? 80}%` }}></div>
+                                      </div>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                        <span>Freshness Indicator</span>
+                                        <span className="font-mono text-white">{opt.sis.freshness_score}/100</span>
+                                      </div>
+                                      <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
+                                        <div className="h-full bg-blue-500" style={{ width: `${opt.sis.freshness_score}%` }}></div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  });
+                })()
               )}
             </div>
           ) : (
@@ -786,16 +1070,7 @@ export default function CompareRates({
                             
                             {/* Logo and details */}
                             <div className="lg:col-span-4 flex items-center gap-3.5 text-left">
-                              <div className={`w-11 h-11 rounded-xl text-white font-black text-base flex items-center justify-center shrink-0 uppercase shadow-inner ${
-                                opt.resolved.provider_id === 'stc-pay' ? 'bg-purple-600' :
-                                opt.resolved.provider_id === 'urpay' ? 'bg-blue-600' :
-                                opt.resolved.provider_id === 'mobily-pay' ? 'bg-cyan-500' :
-                                opt.resolved.provider_id === 'enjaz' ? 'bg-amber-600' :
-                                opt.resolved.provider_id === 'quickpay' ? 'bg-emerald-700' :
-                                opt.resolved.provider_id === 'western-union' ? 'bg-yellow-500 text-slate-950 font-black' : 'bg-blue-800'
-                              }`}>
-                                {opt.resolved.provider_name.substring(0, 2)}
-                              </div>
+                              <ProviderLogo channel={{ ...opt.resolved, providerCode: opt.resolved.provider_id, displayName: opt.resolved.provider_name }} size="md" shape="rounded" surface="dark" />
                               <div>
                                 <h4 className="font-extrabold text-white text-base leading-tight uppercase tracking-tight">
                                   {opt.resolved.provider_name}

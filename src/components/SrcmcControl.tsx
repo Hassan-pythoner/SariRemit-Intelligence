@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { TranslationDict, Corridor, UserProfile } from '../types';
+import { 
+  TranslationDict, Corridor, UserProfile,
+  BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission
+} from '../types';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
 import { 
   fetchOverrides, 
@@ -39,7 +42,14 @@ import {
   SRCMCAdminAccess,
   CorridorSetting,
   ChannelCorridorCoverage,
-  SRCMCAuditLog
+  SRCMCAuditLog,
+  fetchBrandAssets,
+  saveBrandAsset,
+  deleteBrandAsset,
+  fetchBrandAssetPermissions,
+  saveBrandAssetPermission,
+  logBamAudit,
+  resolveProviderBranding
 } from '../services/supabaseService';
 import { 
   Settings, ShieldCheck, Database, FileText, CheckCircle2, 
@@ -60,7 +70,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const isRtl = language === 'ar';
 
   // Sub-tabs in the Control Center
-  const [activeSubTab, setActiveSubTab] = useState<'overrides' | 'submissions' | 'resolved' | 'weights' | 'channels' | 'corridors' | 'admins' | 'audit_logs' | 'users'>('overrides');
+  const [activeSubTab, setActiveSubTab] = useState<string>('overrides');
 
   // Core Data sets
   const [overrides, setOverrides] = useState<any[]>([]);
@@ -177,6 +187,430 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [crvsSaveSuccess, setCrvsSaveSuccess] = useState<string>('');
   const [crvsSaveError, setCrvsSaveError] = useState<string>('');
 
+  // Brand Asset Manager state hooks
+  const [brandAssets, setBrandAssets] = useState<BrandAsset[]>([]);
+  const [brandAssetPermissions, setBrandAssetPermissions] = useState<BrandAssetPermission[]>([]);
+  const [chanBrandAssetId, setChanBrandAssetId] = useState<string>('');
+  const [chanBrandingStatus, setChanBrandingStatus] = useState<string>('placeholder');
+
+  // BAM Subtab states
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [assetType, setAssetType] = useState<BrandAssetType>('provider_logo');
+  const [assetKey, setAssetKey] = useState<string>('');
+  const [assetName, setAssetName] = useState<string>('');
+  const [assetOwnerType, setAssetOwnerType] = useState<string>('provider');
+  const [assetProviderCode, setAssetProviderCode] = useState<string>('');
+  const [assetStoragePath, setAssetStoragePath] = useState<string>('');
+  const [assetPublicUrl, setAssetPublicUrl] = useState<string>('');
+  const [assetPrimaryColor, setAssetPrimaryColor] = useState<string>('');
+  const [assetSecondaryColor, setAssetSecondaryColor] = useState<string>('');
+  const [assetApprovalStatus, setAssetApprovalStatus] = useState<BrandingApprovalStatus>('official');
+  const [assetStatus, setAssetStatus] = useState<BrandAssetStatus>('active');
+  const [assetAltText, setAssetAltText] = useState<string>('');
+  const [assetMetadataJson, setAssetMetadataJson] = useState<string>('{}');
+
+  // BAM Phase 2 state hooks
+  const [bamSubView, setBamSubView] = useState<'overview' | 'directory' | 'upload' | 'diagnostics' | 'migration'>('overview');
+  const [bamSearch, setBamSearch] = useState<string>('');
+  const [bamTypeFilter, setBamTypeFilter] = useState<string>('all');
+  const [bamProviderFilter, setBamProviderFilter] = useState<string>('all');
+  const [bamApprovalFilter, setBamApprovalFilter] = useState<string>('all');
+  const [bamStatusFilter, setBamStatusFilter] = useState<string>('all');
+  const [bamSortBy, setBamSortBy] = useState<string>('updated');
+  const [selectedAssetForDetail, setSelectedAssetForDetail] = useState<BrandAsset | null>(null);
+
+  // Replacement form
+  const [replaceReason, setReplaceReason] = useState<string>('');
+  const [replaceMainFile, setReplaceMainFile] = useState<string>('');
+  const [replaceLightUrl, setReplaceLightUrl] = useState<string>('');
+  const [replaceDarkUrl, setReplaceDarkUrl] = useState<string>('');
+  const [replaceUploadProgress, setReplaceUploadProgress] = useState<number | null>(null);
+
+  // Legacy Migration Tool
+  const [migratingChannelId, setMigratingChannelId] = useState<string | null>(null);
+  const [migrationAssetName, setMigrationAssetName] = useState<string>('');
+  const [migrationAssetKey, setMigrationAssetKey] = useState<string>('');
+  const [migrationApprovalStatus, setMigrationApprovalStatus] = useState<BrandingApprovalStatus>('official');
+  const [migrationAltText, setMigrationAltText] = useState<string>('');
+
+  // Brand fields inside channel form
+  const [chanBrandingMode, setChanBrandingMode] = useState<'select' | 'upload'>('select');
+  const [chanBrandMainFile, setChanBrandMainFile] = useState<string>('');
+  const [chanBrandLightFile, setChanBrandLightFile] = useState<string>('');
+  const [chanBrandDarkFile, setChanBrandDarkFile] = useState<string>('');
+  const [chanBrandPrimaryColor, setChanBrandPrimaryColor] = useState<string>('');
+  const [chanBrandSecondaryColor, setChanBrandSecondaryColor] = useState<string>('');
+  const [chanBrandWebsiteUrl, setChanBrandWebsiteUrl] = useState<string>('');
+  const [chanBrandAltText, setChanBrandAltText] = useState<string>('');
+  const [chanBrandPermissionNote, setChanBrandPermissionNote] = useState<string>('');
+  const [chanBrandInternalNotes, setChanBrandInternalNotes] = useState<string>('');
+  const [chanBrandApprovalStatus, setChanBrandApprovalStatus] = useState<BrandingApprovalStatus>('placeholder');
+
+  // BAM Permissions state
+  const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
+  const [selectedAssetForPermission, setSelectedAssetForPermission] = useState<BrandAsset | null>(null);
+  const [bapStatus, setBapStatus] = useState<string>('granted');
+  const [bapSource, setBapSource] = useState<string>('Official Licensing Agreement');
+  const [bapReference, setBapReference] = useState<string>('');
+  const [bapGrantedAt, setBapGrantedAt] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bapExpiresAt, setBapExpiresAt] = useState<string>('');
+  const [bapRestrictions, setBapRestrictions] = useState<string>('');
+  const [bapContactName, setBapContactName] = useState<string>('');
+  const [bapContactEmail, setBapContactEmail] = useState<string>('');
+  const [bapNotes, setBapNotes] = useState<string>('');
+
+  const handleSaveBrandAsset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assetKey || !assetName || !assetStoragePath) {
+      alert('Key, Name, and Storage Path are mandatory fields.');
+      return;
+    }
+
+    const isEdit = !!editingAssetId;
+    if (isEdit && !hasBamPermission('edit_brand_assets')) {
+      alert('Unauthorized. You do not have permission to edit brand assets.');
+      return;
+    }
+    if (!isEdit && !hasBamPermission('upload_brand_assets')) {
+      alert('Unauthorized. You do not have permission to upload/create brand assets.');
+      return;
+    }
+
+    const action = async () => {
+      let meta: any = {};
+      try {
+        meta = JSON.parse(assetMetadataJson || '{}');
+      } catch {
+        meta = {};
+      }
+
+      // Merge reviewer / creator metadata fields
+      meta.internal_notes = assetAltText; // store notes
+      meta.approved_by = isEdit ? (meta.approved_by || loggedInEmail) : loggedInEmail;
+      meta.approved_at = isEdit ? (meta.approved_at || new Date().toISOString()) : new Date().toISOString();
+
+      const asset: BrandAsset = {
+        id: editingAssetId || `asset-${Date.now()}`,
+        asset_type: assetType,
+        asset_key: assetKey.toLowerCase().trim(),
+        asset_name: assetName,
+        owner_type: assetOwnerType,
+        provider_code: assetProviderCode || null,
+        storage_path: assetStoragePath,
+        public_url: assetPublicUrl || undefined,
+        primary_color: assetPrimaryColor || undefined,
+        secondary_color: assetSecondaryColor || undefined,
+        approval_status: assetApprovalStatus,
+        status: assetStatus,
+        alt_text: assetAltText || undefined,
+        version: editingAssetId ? ((brandAssets.find(a => a.id === editingAssetId)?.version || 1) + 1) : 1,
+        metadata: meta,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      await saveBrandAsset(asset);
+      await logBamAudit(editingAssetId ? 'EDIT_BRAND_ASSET' : 'CREATE_BRAND_ASSET', asset.id, { key: asset.asset_key, type: asset.asset_type }, loggedInEmail);
+      
+      // Refresh
+      const list = await fetchBrandAssets();
+      setBrandAssets(list);
+
+      // Clear
+      setEditingAssetId(null);
+      setAssetKey('');
+      setAssetName('');
+      setAssetStoragePath('');
+      setAssetPublicUrl('');
+      setAssetPrimaryColor('');
+      setAssetSecondaryColor('');
+      setAssetAltText('');
+      setAssetMetadataJson('{}');
+    };
+
+    dispatchAction(editingAssetId ? `Update Brand Asset ${assetName}` : `Create Brand Asset ${assetName}`, action);
+  };
+
+  const handleDeleteBrandAsset = (id: string, name: string) => {
+    if (!hasBamPermission('archive_brand_assets')) {
+      alert('Unauthorized. You do not have permission to archive or delete brand assets.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete brand asset '${name}'? This cannot be undone.`)) {
+      return;
+    }
+    const action = async () => {
+      await deleteBrandAsset(id);
+      await logBamAudit('DELETE_BRAND_ASSET', id, { name }, loggedInEmail);
+      const list = await fetchBrandAssets();
+      setBrandAssets(list);
+    };
+    dispatchAction(`Delete Brand Asset ${name}`, action);
+  };
+
+  const handleReplaceAsset = (asset: BrandAsset) => {
+    if (!hasBamPermission('edit_brand_assets')) {
+      alert('Unauthorized. You do not have permission to replace brand assets.');
+      return;
+    }
+    if (!replaceReason) {
+      alert('Please provide a replacement reason.');
+      return;
+    }
+
+    const action = async () => {
+      const nextVersion = (asset.version || 1) + 1;
+      const newAssetId = `ba-${asset.asset_key}-v${nextVersion}-${Date.now()}`;
+      
+      const newAsset: BrandAsset = {
+        ...asset,
+        id: newAssetId,
+        version: nextVersion,
+        public_url: replaceMainFile || asset.public_url,
+        light_url: replaceLightUrl || asset.light_url || replaceMainFile || asset.public_url,
+        dark_url: replaceDarkUrl || asset.dark_url || replaceMainFile || asset.public_url,
+        status: 'active',
+        metadata: {
+          ...asset.metadata,
+          replacement_reason: replaceReason,
+          replaced_from_id: asset.id,
+          approved_by: loggedInEmail,
+          approved_at: new Date().toISOString()
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Save new active version
+      await saveBrandAsset(newAsset);
+
+      // Deactivate old version in DB
+      const oldDeactivated = {
+        ...asset,
+        status: 'inactive' as BrandAssetStatus,
+        updated_at: new Date().toISOString()
+      };
+      await saveBrandAsset(oldDeactivated);
+
+      // Carry forward channel link: if any channel was pointing to old asset.id, update it to point to newAsset.id!
+      for (const chan of channels) {
+        if (chan.brandAssetId === asset.id) {
+          const updatedChan = {
+            ...chan,
+            brandAssetId: newAssetId
+          };
+          await saveRemittanceChannel(updatedChan);
+        }
+      }
+
+      // Log the replacement action
+      await logBamAudit('REPLACE_BRAND_ASSET_VERSION', asset.id, {
+        newAssetId,
+        version: nextVersion,
+        replacementReason: replaceReason
+      }, loggedInEmail);
+
+      // Refresh states
+      const refreshedAssets = await fetchBrandAssets();
+      setBrandAssets(refreshedAssets);
+
+      const refreshedChans = await fetchRemittanceChannels();
+      setChannels(refreshedChans);
+
+      // Select new asset in details panel
+      setSelectedAssetForDetail(newAsset);
+      
+      // Reset replacement fields
+      setReplaceReason('');
+      setReplaceMainFile('');
+      setReplaceLightUrl('');
+      setReplaceDarkUrl('');
+      
+      alert(`Successfully created version ${nextVersion} for ${asset.asset_name}!`);
+    };
+
+    dispatchAction(`Replace asset version for ${asset.asset_name}`, action);
+  };
+
+  const handleLegacyMigration = (chan: any) => {
+    if (!hasBamPermission('upload_brand_assets')) {
+      alert('Unauthorized. You do not have permission to migrate brand assets.');
+      return;
+    }
+    if (!migrationAssetName || !migrationAssetKey) {
+      alert('Asset Name and Key are mandatory fields.');
+      return;
+    }
+
+    const action = async () => {
+      const assetId = `ba-${migrationAssetKey.toLowerCase().trim()}-v1-${Date.now()}`;
+      
+      const newAsset: BrandAsset = {
+        id: assetId,
+        asset_type: 'provider_logo',
+        asset_key: migrationAssetKey.toLowerCase().trim(),
+        asset_name: migrationAssetName,
+        owner_type: 'provider',
+        provider_code: chan.providerCode,
+        storage_path: `providers/${chan.providerCode}/logo.svg`,
+        public_url: chan.logoUrl || chan.logo_url || '',
+        approval_status: migrationApprovalStatus,
+        status: 'active',
+        alt_text: migrationAltText || `${chan.displayName} Logo`,
+        version: 1,
+        metadata: {
+          migrated_from_legacy: true,
+          legacy_logo_url: chan.logoUrl || chan.logo_url,
+          migrated_by: loggedInEmail,
+          migrated_at: new Date().toISOString()
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Save new Brand Asset
+      await saveBrandAsset(newAsset);
+
+      // Link Channel to newly created brand asset ID
+      const updatedChan = {
+        ...chan,
+        brandAssetId: assetId,
+        brandingStatus: migrationApprovalStatus
+      };
+      await saveRemittanceChannel(updatedChan);
+
+      // Log migration
+      await logBamAudit('MIGRATE_LEGACY_LOGO', assetId, {
+        channelId: chan.id,
+        legacyUrl: chan.logoUrl || chan.logo_url
+      }, loggedInEmail);
+
+      // Refresh list
+      const refreshedAssets = await fetchBrandAssets();
+      setBrandAssets(refreshedAssets);
+
+      const refreshedChans = await fetchRemittanceChannels();
+      setChannels(refreshedChans);
+
+      // Clear states
+      setMigratingChannelId(null);
+      setMigrationAssetName('');
+      setMigrationAssetKey('');
+      setMigrationAltText('');
+
+      alert(`Successfully migrated legacy logo for ${chan.displayName} to BAM Asset!`);
+    };
+
+    dispatchAction(`Migrate Legacy Logo for ${chan.displayName}`, action);
+  };
+
+  const handleRepairAltText = (asset: BrandAsset) => {
+    if (!hasBamPermission('edit_brand_assets')) {
+      alert('Unauthorized. You do not have permission to edit brand assets.');
+      return;
+    }
+    const defaultAlt = `${asset.asset_name} official brand logo asset registered in SariRemit BAM.`;
+    const action = async () => {
+      const updatedAsset: BrandAsset = {
+        ...asset,
+        alt_text: defaultAlt,
+        updated_at: new Date().toISOString()
+      };
+      await saveBrandAsset(updatedAsset);
+      await logBamAudit('AUTO_REPAIR_ALT_TEXT', asset.id, { before: asset.alt_text, after: defaultAlt }, loggedInEmail);
+      const list = await fetchBrandAssets();
+      setBrandAssets(list);
+      alert(`Successfully repaired alt-text for ${asset.asset_name}!`);
+    };
+    dispatchAction(`Auto-repair alt text for ${asset.asset_name}`, action);
+  };
+
+  const handleRepairDuplicateVersions = (key: string) => {
+    if (!hasBamPermission('edit_brand_assets')) {
+      alert('Unauthorized. You do not have permission to edit brand assets.');
+      return;
+    }
+    const action = async () => {
+      const matchingAssets = brandAssets.filter(a => a.asset_key === key && a.status === 'active');
+      if (matchingAssets.length <= 1) {
+        alert('No duplicate active versions found.');
+        return;
+      }
+      const sorted = [...matchingAssets].sort((a, b) => (b.version || 1) - (a.version || 1));
+      const latest = sorted[0];
+      const olderVersions = sorted.slice(1);
+
+      let deactivatedCount = 0;
+      for (const old of olderVersions) {
+        const deactivated = {
+          ...old,
+          status: 'inactive' as BrandAssetStatus,
+          updated_at: new Date().toISOString()
+        };
+        await saveBrandAsset(deactivated);
+        deactivatedCount++;
+      }
+
+      await logBamAudit('DEACTIVATE_OLD_VERSIONS', latest.id, { asset_key: key, deactivatedCount }, loggedInEmail);
+      const list = await fetchBrandAssets();
+      setBrandAssets(list);
+      alert(`Deactivated ${deactivatedCount} older version(s) of key '${key}'. Version ${latest.version} remains active.`);
+    };
+    dispatchAction(`Auto-repair redundant active versions for ${key}`, action);
+  };
+
+  const handleRepairApprovePermission = (asset: BrandAsset) => {
+    if (!hasBamPermission('edit_brand_assets')) {
+      alert('Unauthorized. You do not have permission to edit brand assets.');
+      return;
+    }
+    const action = async () => {
+      const updatedAsset: BrandAsset = {
+        ...asset,
+        approval_status: 'official',
+        updated_at: new Date().toISOString()
+      };
+      await saveBrandAsset(updatedAsset);
+      await logBamAudit('AUTO_REPAIR_APPROVE_PERMISSION', asset.id, { before: asset.approval_status, after: 'official' }, loggedInEmail);
+      const list = await fetchBrandAssets();
+      setBrandAssets(list);
+      alert(`Granted official approval for ${asset.asset_name}!`);
+    };
+    dispatchAction(`Auto-approve legal permissions for ${asset.asset_name}`, action);
+  };
+
+  const handleSavePermission = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAssetForPermission) return;
+
+    const action = async () => {
+      const permission: BrandAssetPermission = {
+        id: `bap-${Date.now()}`,
+        brand_asset_id: selectedAssetForPermission.id,
+        permission_status: bapStatus,
+        permission_source: bapSource || undefined,
+        permission_reference: bapReference || undefined,
+        granted_at: bapGrantedAt || undefined,
+        expires_at: bapExpiresAt || undefined,
+        restrictions: bapRestrictions || undefined,
+        contact_name: bapContactName || undefined,
+        contact_email: bapContactEmail || undefined,
+        notes: bapNotes || undefined,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      await saveBrandAssetPermission(permission);
+      await logBamAudit('GRANT_BRAND_PERMISSION', selectedAssetForPermission.id, { status: bapStatus, contact: bapContactEmail }, loggedInEmail);
+
+      const perms = await fetchBrandAssetPermissions();
+      setBrandAssetPermissions(perms);
+      setShowPermissionModal(false);
+    };
+
+    dispatchAction(`Grant Licensing Permission for ${selectedAssetForPermission.asset_name}`, action);
+  };
+
   // PIN Verification Modal states
   const [showPinModal, setShowPinModal] = useState<boolean>(false);
   const [pinInput, setPinInput] = useState<string>('');
@@ -207,12 +641,25 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     return permissions.includes('*') || permissions.includes(permission);
   };
 
+  const hasBamPermission = (permission: string) => {
+    if (isMainAdmin) return true;
+    const permissions = Array.isArray(currentAdmin?.permissions)
+      ? currentAdmin.permissions
+      : [];
+    return (
+      permissions.includes('*') ||
+      permissions.includes(permission) ||
+      (permissions.includes('manage_channels') && (permission === 'view_brand_assets' || permission === 'manage_provider_branding'))
+    );
+  };
+
   const subtabs = [
     { key: 'overrides', label: 'Admin Overrides', permission: 'manage_overrides' },
     { key: 'submissions', label: 'Community Feed', permission: 'approve_community_rates' },
     { key: 'crvs_settings', label: 'CRVS Setup', permission: 'approve_community_rates' },
     { key: 'fraud_logs', label: 'Fraud & Security Alerts', permission: 'approve_community_rates' },
     { key: 'channels', label: 'Remittance Channels', permission: 'manage_channels' },
+    { key: 'brand_assets', label: 'Brand Asset Manager', permission: 'view_brand_assets' },
     { key: 'corridors', label: 'Corridor Control', permission: 'manage_corridors' },
     { key: 'admins', label: 'Admin Access Control', permission: 'manage_admins' },
     { key: 'resolved', label: 'RRE Resolution Inspect', permission: 'monitor_rates' },
@@ -221,7 +668,9 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     { key: 'users', label: 'Registered Users', permission: 'manage_admins' }
   ];
 
-  const allowedSubtabs = subtabs.filter(tab => hasPermission(tab.permission));
+  const allowedSubtabs = subtabs.filter(tab => 
+    tab.key === 'brand_assets' ? hasBamPermission('view_brand_assets') : hasPermission(tab.permission)
+  );
 
   // Redirect to first allowed subtab if active one is restricted
   useEffect(() => {
@@ -248,10 +697,13 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
       fetchRemittanceChannels(),
       fetchChannelCoverage(),
       fetchAuditLogs(),
-      fetchFraudIntegrityEvents()
+      fetchFraudIntegrityEvents(),
+      fetchBrandAssets(),
+      fetchBrandAssetPermissions()
     ]).then(([
       overridesData, submissionsData, weightsData, usersData, 
-      adminsData, corridorsData, channelsData, coveragesData, auditData, fraudData
+      adminsData, corridorsData, channelsData, coveragesData, auditData, fraudData,
+      brandAssetsData, permissionsData
     ]) => {
       if (isMounted) {
         setOverrides(overridesData);
@@ -263,6 +715,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         setCoverages(coveragesData);
         setAuditLogs(auditData);
         setFraudEvents(fraudData);
+        setBrandAssets(brandAssetsData || []);
+        setBrandAssetPermissions(permissionsData || []);
 
         // Fetch and load CRVS Setup config parameters
         const crvsData = fetchCrvsConfig();
@@ -515,6 +969,53 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
       const isEdit = !!editingChannelId;
       const targetId = isEdit ? editingChannelId : cId;
 
+      let finalBrandAssetId = chanBrandAssetId || null;
+      let finalBrandingStatus = chanBrandingStatus || 'placeholder';
+
+      if (chanBrandingMode === 'upload') {
+        if (!chanBrandMainFile) {
+          throw new Error('Main provider logo is mandatory for direct brand asset upload.');
+        }
+        const assetId = `ba-${cCode}-v1-${Date.now()}`;
+        const newAsset: BrandAsset = {
+          id: assetId,
+          asset_type: 'provider_logo',
+          asset_key: cCode,
+          asset_name: `${chanDisplayName} Logo`,
+          owner_type: 'provider',
+          provider_code: cCode,
+          storage_path: `providers/${cCode}/logo.svg`,
+          public_url: chanBrandMainFile,
+          light_url: chanBrandLightFile || chanBrandMainFile,
+          dark_url: chanBrandDarkFile || chanBrandMainFile,
+          primary_color: chanBrandPrimaryColor || null,
+          secondary_color: chanBrandSecondaryColor || null,
+          approval_status: chanBrandApprovalStatus,
+          status: 'active',
+          alt_text: chanBrandAltText || `${chanDisplayName} Brand Logo`,
+          version: 1,
+          metadata: {
+            website_url: chanBrandWebsiteUrl,
+            permission_note: chanBrandPermissionNote,
+            internal_notes: chanBrandInternalNotes,
+            created_during_channel_registration: true,
+            created_by: loggedInEmail
+          },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        await saveBrandAsset(newAsset);
+        await logBamAudit('CREATE_BRAND_ASSET_VIA_CHANNEL', assetId, { key: cCode }, loggedInEmail);
+
+        // Refresh assets
+        const list = await fetchBrandAssets();
+        setBrandAssets(list);
+
+        finalBrandAssetId = assetId;
+        finalBrandingStatus = chanBrandApprovalStatus;
+      }
+
       const channelPayload = {
         id: targetId,
         providerName: chanName,
@@ -530,15 +1031,17 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         notes: chanNotes,
         createdBy: loggedInEmail,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        brandAssetId: finalBrandAssetId,
+        brandingStatus: finalBrandingStatus
       };
 
       await saveRemittanceChannel(channelPayload);
       if (isEdit) {
-        await logAuditAction(loggedInEmail, `UPDATE_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee });
+        await logAuditAction(loggedInEmail, `UPDATE_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee, brandAssetId: finalBrandAssetId, brandingStatus: finalBrandingStatus });
         setChanSuccess(`Remittance channel '${chanDisplayName}' was successfully updated live!`);
       } else {
-        await logAuditAction(loggedInEmail, `REGISTER_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee });
+        await logAuditAction(loggedInEmail, `REGISTER_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee, brandAssetId: finalBrandAssetId, brandingStatus: finalBrandingStatus });
         setChanSuccess(`Remittance channel '${chanDisplayName}' was successfully registered! Unique constraints verified.`);
       }
       
@@ -548,6 +1051,18 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
       setChanCode('');
       setChanDisplayName('');
       setChanNotes('');
+      setChanBrandAssetId('');
+      setChanBrandingStatus('placeholder');
+      setChanBrandingMode('select');
+      setChanBrandMainFile('');
+      setChanBrandLightFile('');
+      setChanBrandDarkFile('');
+      setChanBrandPrimaryColor('');
+      setChanBrandSecondaryColor('');
+      setChanBrandWebsiteUrl('');
+      setChanBrandAltText('');
+      setChanBrandPermissionNote('');
+      setChanBrandInternalNotes('');
       setEditingChannelId(null);
       
       // Re-fetch channels to update table UI
@@ -578,6 +1093,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         setChanCode('');
         setChanDisplayName('');
         setChanNotes('');
+        setChanBrandAssetId('');
+        setChanBrandingStatus('placeholder');
         setEditingChannelId(null);
       }
 
@@ -603,6 +1120,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     setChanFee(chan.defaultTransferFee?.toString() || '10');
     setChanVat(chan.defaultVatRate?.toString() || '0.15');
     setChanNotes(chan.notes || '');
+    setChanBrandAssetId(chan.brandAssetId || '');
+    setChanBrandingStatus(chan.brandingStatus || 'placeholder');
     setChanError('');
     setChanSuccess('');
   };
@@ -1835,6 +2354,228 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                     </div>
                   </div>
 
+                  {/* SDS Brand Asset Manager Integration */}
+                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-3">
+                    <h4 className="text-[10px] uppercase font-black tracking-widest text-slate-400">SDS Brand Integration (BAM)</h4>
+                    
+                    {/* Mode Toggle */}
+                    <div className="grid grid-cols-2 gap-1 bg-slate-200/50 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setChanBrandingMode('select')}
+                        className={`py-1.5 text-[9px] font-bold uppercase rounded-lg transition-all ${
+                          chanBrandingMode === 'select'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Select BAM Asset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setChanBrandingMode('upload')}
+                        className={`py-1.5 text-[9px] font-bold uppercase rounded-lg transition-all ${
+                          chanBrandingMode === 'upload'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Direct Upload BAM Logo
+                      </button>
+                    </div>
+
+                    {chanBrandingMode === 'select' ? (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Linked Brand Asset</label>
+                          <select
+                            value={chanBrandAssetId}
+                            onChange={(e) => setChanBrandAssetId(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                          >
+                            <option value="">-- No BAM Asset (Initials/Legacy Fallback) --</option>
+                            {brandAssets.map(asset => (
+                              <option key={asset.id} value={asset.id}>
+                                {asset.asset_name} ({asset.approval_status})
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[9px] text-slate-400 mt-0.5 font-mono">
+                            Resolves automatically inside rates UI using SDS priority logic.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Branding Approval Status</label>
+                          <select
+                            value={chanBrandingStatus}
+                            onChange={(e) => setChanBrandingStatus(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                          >
+                            <option value="official">Official Verified Branding</option>
+                            <option value="placeholder">Approved Placeholder Branding</option>
+                            <option value="pending_permission">Pending Licensing / Review</option>
+                            <option value="restricted">Restricted / Hidden</option>
+                          </select>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 font-sans text-xs">
+                        {/* Simulated Drag-and-drop file selector for Main logo */}
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Main Provider Logo SVG / PNG</label>
+                          <div 
+                            className="border-2 border-dashed border-slate-200 hover:border-slate-350 rounded-xl p-3 text-center cursor-pointer bg-white transition-colors"
+                            onClick={() => {
+                              const simulatedUrl = prompt('Enter logo public URL (or click OK to use a beautifully styled default SVG):', `https://api.dicebear.com/7.x/initials/svg?seed=${chanDisplayName || 'SR'}&backgroundColor=059669&textColor=ffffff`);
+                              if (simulatedUrl) {
+                                setChanBrandMainFile(simulatedUrl);
+                              }
+                            }}
+                          >
+                            {chanBrandMainFile ? (
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-[9px] text-slate-600 truncate max-w-[140px]">{chanBrandMainFile}</span>
+                                <span className="text-[8px] bg-emerald-50 text-emerald-600 font-extrabold uppercase px-1 rounded">Linked</span>
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <span className="block text-[9px] text-slate-500 font-bold">Drag & Drop Logo or Click to Upload</span>
+                                <span className="block text-[8px] text-slate-400 font-mono">Accepts SVG, WebP, PNG (Max 500KB)</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Light-mode and Dark-mode logos */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Light-Mode URL (Opt)</label>
+                            <input
+                              type="text"
+                              placeholder="URL to light variant..."
+                              value={chanBrandLightFile}
+                              onChange={(e) => setChanBrandLightFile(e.target.value)}
+                              className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-800"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Dark-Mode URL (Opt)</label>
+                            <input
+                              type="text"
+                              placeholder="URL to dark variant..."
+                              value={chanBrandDarkFile}
+                              onChange={(e) => setChanBrandDarkFile(e.target.value)}
+                              className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Brand Colors */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Primary Brand Color</label>
+                            <div className="flex gap-1.5 items-center">
+                              <input
+                                type="color"
+                                value={chanBrandPrimaryColor || '#10B981'}
+                                onChange={(e) => setChanBrandPrimaryColor(e.target.value)}
+                                className="w-6 h-6 border-0 rounded-md cursor-pointer"
+                              />
+                              <input
+                                type="text"
+                                placeholder="#10B981"
+                                value={chanBrandPrimaryColor}
+                                onChange={(e) => setChanBrandPrimaryColor(e.target.value)}
+                                className="w-full text-[10px] font-mono p-1 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-850"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Secondary Color</label>
+                            <div className="flex gap-1.5 items-center">
+                              <input
+                                type="color"
+                                value={chanBrandSecondaryColor || '#1e293b'}
+                                onChange={(e) => setChanBrandSecondaryColor(e.target.value)}
+                                className="w-6 h-6 border-0 rounded-md cursor-pointer"
+                              />
+                              <input
+                                type="text"
+                                placeholder="#1e293b"
+                                value={chanBrandSecondaryColor}
+                                onChange={(e) => setChanBrandSecondaryColor(e.target.value)}
+                                className="w-full text-[10px] font-mono p-1 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-850"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Website & Alt Text */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Website URL</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. stcpay.com.sa"
+                              value={chanBrandWebsiteUrl}
+                              onChange={(e) => setChanBrandWebsiteUrl(e.target.value)}
+                              className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-800"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Accessibility Alt Text</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. STC Pay Official Brand Logo"
+                              value={chanBrandAltText}
+                              onChange={(e) => setChanBrandAltText(e.target.value)}
+                              className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Approval Status & Licensing Permission Note */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Approval Status</label>
+                            <select
+                              value={chanBrandApprovalStatus}
+                              onChange={(e) => setChanBrandApprovalStatus(e.target.value as any)}
+                              className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-850"
+                            >
+                              <option value="official">Official Verified Logo</option>
+                              <option value="placeholder">Approved Placeholder Logo</option>
+                              <option value="pending_permission">Pending Licensing Review</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Licensing Reference / Note</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Written consent via email"
+                              value={chanBrandPermissionNote}
+                              onChange={(e) => setChanBrandPermissionNote(e.target.value)}
+                              className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Internal notes */}
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Branding Internal Notes</label>
+                          <textarea
+                            rows={1}
+                            placeholder="Add administrative notes..."
+                            value={chanBrandInternalNotes}
+                            onChange={(e) => setChanBrandInternalNotes(e.target.value)}
+                            className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-slate-400 font-bold text-slate-800"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div>
                     <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Internal Notes</label>
                     <textarea
@@ -1910,7 +2651,13 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                             <tr key={chan.id} className={`hover:bg-slate-50/40 transition-colors ${selectedChannelForCoverage?.id === chan.id ? 'bg-indigo-50/20' : ''}`}>
                               <td className="py-3.5 px-4 font-bold text-slate-900">
                                 <div>{chan.displayName}</div>
-                                <div className="text-[10px] text-slate-400 font-mono">ID: {chan.id}</div>
+                                <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 flex-wrap">
+                                  <span>ID: {chan.id}</span>
+                                  <span className="text-slate-300">|</span>
+                                  <span className="text-indigo-600 font-bold">BAM: {chan.brandAssetId || 'None'}</span>
+                                  <span className="text-slate-300">|</span>
+                                  <span className="text-emerald-600 font-bold">Branding: {chan.brandingStatus || 'placeholder'}</span>
+                                </div>
                               </td>
                               <td className="py-3.5 px-4 font-mono font-bold text-slate-500">{chan.providerCode}</td>
                               <td className="py-3.5 px-4 font-bold text-slate-600">{chan.category.toUpperCase()}</td>
@@ -2958,6 +3705,1156 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+          {/* TAB: BRAND ASSETS MANAGER (BAM) */}
+          {activeSubTab === 'brand_assets' && (
+            <div className="space-y-6 animate-in fade-in duration-150">
+              
+              {/* BAM Header with mini sub-views selection */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" />
+                    SariRemit Design System (SDS) — Brand Asset Manager
+                  </h2>
+                  <p className="text-xs text-slate-500 max-w-2xl">
+                    Maintain design system assets, vector logos, brand colors, licensing approvals, and track usage locations across client-facing interfaces.
+                  </p>
+                </div>
+                
+                {/* BAM Subtabs Navigation */}
+                <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200/60 self-start lg:self-center">
+                  {[
+                    { key: 'overview', label: 'Overview' },
+                    { key: 'directory', label: 'Asset Library' },
+                    { key: 'upload', label: 'Register / Edit' },
+                    { key: 'diagnostics', label: 'Brand Health' },
+                    { key: 'migration', label: 'Logo Migration' }
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => {
+                        setBamSubView(tab.key as any);
+                        if (tab.key !== 'upload') setEditingAssetId(null);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                        bamSubView === tab.key
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-950 hover:bg-slate-200/50'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* BAM View 1: Overview & Stats */}
+              {bamSubView === 'overview' && (
+                <div className="space-y-6 animate-in fade-in duration-150">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-1">
+                      <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Total BAM Assets</span>
+                      <p className="text-2xl font-black text-slate-900">{brandAssets.length}</p>
+                      <span className="text-[9px] text-emerald-600 font-bold">100% cloud-synced</span>
+                    </div>
+                    <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-1">
+                      <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Active Assets</span>
+                      <p className="text-2xl font-black text-slate-900">
+                        {brandAssets.filter(a => a.status === 'active').length}
+                      </p>
+                      <span className="text-[9px] text-slate-400 font-medium">Serving active channels</span>
+                    </div>
+                    <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-1">
+                      <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Official Verified</span>
+                      <p className="text-2xl font-black text-slate-900">
+                        {brandAssets.filter(a => a.approval_status === 'official').length}
+                      </p>
+                      <span className="text-[9px] text-indigo-600 font-bold">Trademark cleared</span>
+                    </div>
+                    <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-1">
+                      <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Pending Permission</span>
+                      <p className="text-2xl font-black text-amber-600">
+                        {brandAssets.filter(a => a.approval_status === 'pending_permission').length}
+                      </p>
+                      <span className="text-[9px] text-slate-400 font-medium">Awaiting consent files</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Brand Health & Info */}
+                    <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+                      <h3 className="text-xs uppercase font-black tracking-wider text-slate-800">Brand Governance Policy</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-600 leading-relaxed font-sans font-medium">
+                        <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-1.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px] uppercase tracking-wide">1. Single Source of Truth</span>
+                          <p className="text-slate-500 text-[11px]">All vector SVGs, dark/light variants, and colors must reside in the BAM database. Inline SVG code or unlinked external CDNs are prohibited.</p>
+                        </div>
+                        <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-1.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px] uppercase tracking-wide">2. Immutability & History</span>
+                          <p className="text-slate-500 text-[11px]">Never delete or overwrite an active brand logo asset. Instead, register a new version. The system auto-archives the old version while maintaining link references.</p>
+                        </div>
+                        <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-1.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px] uppercase tracking-wide">3. Priority Fallback Chain</span>
+                          <p className="text-slate-500 text-[11px]">The Rates UI resolves branding in the following sequence: Linked BAM Brand Asset &rarr; Legacy Logo Fallback URL &rarr; SDS Dynamic Initials.</p>
+                        </div>
+                        <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-1.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px] uppercase tracking-wide">4. Accessibility Enforcement</span>
+                          <p className="text-slate-500 text-[11px]">Every brand asset must declare a clear accessibility alt-text string explaining the provider's logo shape and contrast characteristics.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Action Rail */}
+                    <div className="lg:col-span-4 bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+                      <h3 className="text-xs uppercase font-black tracking-wider text-slate-800">Quick Operations</h3>
+                      <div className="flex flex-col gap-2 font-sans font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setBamSubView('upload')}
+                          className="w-full text-left p-3 hover:bg-slate-50 border border-slate-150 rounded-xl text-slate-700 text-xs flex justify-between items-center transition-colors cursor-pointer"
+                        >
+                          <span>Register New Brand Asset</span>
+                          <span className="text-[10px] text-indigo-600 font-mono">→</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBamSubView('diagnostics')}
+                          className="w-full text-left p-3 hover:bg-slate-50 border border-slate-150 rounded-xl text-slate-700 text-xs flex justify-between items-center transition-colors cursor-pointer"
+                        >
+                          <span>Run Brand Health Diagnostics</span>
+                          <span className="text-[10px] text-indigo-600 font-mono">→</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBamSubView('migration')}
+                          className="w-full text-left p-3 hover:bg-slate-50 border border-slate-150 rounded-xl text-slate-700 text-xs flex justify-between items-center transition-colors cursor-pointer"
+                        >
+                          <span>Migrate Legacy Logos</span>
+                          <span className="text-[10px] text-indigo-600 font-mono">→</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* BAM View 2: Asset Library (Directory) */}
+              {bamSubView === 'directory' && (
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start animate-in fade-in duration-150">
+                  
+                  {/* Left Hand: Search & Filter panel with asset list */}
+                  <div className="xl:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-xs">
+                    
+                    {/* Search & Filter bar */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+                      <div className="md:col-span-2 relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                        <input
+                          type="text"
+                          placeholder="Search assets..."
+                          value={bamSearch}
+                          onChange={(e) => setBamSearch(e.target.value)}
+                          className="w-full text-xs p-3 pl-9 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-450 font-sans"
+                        />
+                      </div>
+                      <div>
+                        <select
+                          value={bamTypeFilter}
+                          onChange={(e) => setBamTypeFilter(e.target.value)}
+                          className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:border-slate-400 font-sans"
+                        >
+                          <option value="all">All Types</option>
+                          <option value="provider_logo">Provider Logo</option>
+                          <option value="provider_logo_dark">Logo (Dark)</option>
+                          <option value="provider_logo_light">Logo (Light)</option>
+                          <option value="sariremit_logo">SariRemit Logo</option>
+                          <option value="country_flag">Flag</option>
+                        </select>
+                      </div>
+                      <div>
+                        <select
+                          value={bamApprovalFilter}
+                          onChange={(e) => setBamApprovalFilter(e.target.value)}
+                          className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 outline-none focus:border-slate-400 font-sans"
+                        >
+                          <option value="all">All Approvals</option>
+                          <option value="official">Official Only</option>
+                          <option value="placeholder">Placeholder Only</option>
+                          <option value="pending_permission">Pending Only</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Filtered Assets List */}
+                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                      {brandAssets
+                        .filter(asset => {
+                          const matchesQuery = asset.asset_name.toLowerCase().includes(bamSearch.toLowerCase()) || asset.asset_key.toLowerCase().includes(bamSearch.toLowerCase());
+                          const matchesType = bamTypeFilter === 'all' || asset.asset_type === bamTypeFilter;
+                          const matchesApproval = bamApprovalFilter === 'all' || asset.approval_status === bamApprovalFilter;
+                          return matchesQuery && matchesType && matchesApproval;
+                        })
+                        .map(asset => {
+                          const isSelected = selectedAssetForDetail?.id === asset.id;
+                          return (
+                            <div
+                              key={asset.id}
+                              onClick={() => setSelectedAssetForDetail(asset)}
+                              className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                                isSelected
+                                  ? 'border-indigo-600 bg-indigo-50/20 shadow-xs'
+                                  : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/30'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                {/* Visual box indicator */}
+                                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 border border-slate-150 overflow-hidden relative">
+                                  {asset.public_url ? (
+                                    <img src={asset.public_url} alt={asset.alt_text || ''} className="h-6 w-auto object-contain" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <span className="text-[10px] font-mono font-bold text-slate-500 uppercase">{asset.asset_key.slice(0, 2)}</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="text-xs font-black text-slate-850 truncate">{asset.asset_name}</h4>
+                                  <p className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                    KEY: <span className="font-bold text-slate-600">{asset.asset_key}</span> • Version: <span className="font-bold text-slate-600">{asset.version}</span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
+                                  asset.approval_status === 'official' ? 'bg-emerald-50 text-emerald-700' :
+                                  asset.approval_status === 'placeholder' ? 'bg-amber-50 text-amber-700' :
+                                  'bg-rose-50 text-rose-700'
+                                }`}>
+                                  {asset.approval_status}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                                  asset.status === 'active' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                  {asset.status}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {/* Right Hand: Asset Details & Version History Inspector */}
+                  <div className="xl:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-xs min-h-[500px]">
+                    {selectedAssetForDetail ? (
+                      <div className="space-y-6 animate-in fade-in duration-100 font-sans text-xs">
+                        
+                        {/* Header Details */}
+                        <div className="space-y-1.5 pb-4 border-b border-slate-100">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{selectedAssetForDetail.asset_type.replace('_', ' ')}</span>
+                          <h3 className="text-sm font-black text-slate-900 tracking-tight">{selectedAssetForDetail.asset_name}</h3>
+                          <div className="flex items-center gap-2 font-mono text-[9px] text-slate-400 font-semibold">
+                            <span>ID: {selectedAssetForDetail.id}</span>
+                            <span>•</span>
+                            <span>Status: {selectedAssetForDetail.status}</span>
+                          </div>
+                        </div>
+
+                        {/* Rendering Preview Blocks (Light & Dark) */}
+                        <div className="space-y-2">
+                          <span className="block text-[10px] uppercase font-black tracking-wider text-slate-500">Dual-Theme Render Previews</span>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-slate-50 border border-slate-150 rounded-xl p-3 text-center space-y-1">
+                              <span className="text-[8px] font-black uppercase text-slate-400">Light Mode UI</span>
+                              <div className="h-14 w-full bg-white rounded-lg flex items-center justify-center border border-slate-100 overflow-hidden relative">
+                                {selectedAssetForDetail.public_url ? (
+                                  <img src={selectedAssetForDetail.public_url} alt="" className="h-8 w-auto object-contain" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-lg flex items-center justify-center font-mono text-[10px] font-bold text-white shadow-xs" style={{ backgroundColor: selectedAssetForDetail.primary_color || '#10b981' }}>
+                                    {selectedAssetForDetail.asset_key.slice(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-950 rounded-xl p-3 text-center space-y-1">
+                              <span className="text-[8px] font-black uppercase text-slate-500">Dark Mode UI</span>
+                              <div className="h-14 w-full bg-slate-950 rounded-lg flex items-center justify-center overflow-hidden relative">
+                                {selectedAssetForDetail.dark_url || selectedAssetForDetail.public_url ? (
+                                  <img src={selectedAssetForDetail.dark_url || selectedAssetForDetail.public_url} alt="" className="h-8 w-auto object-contain" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-lg flex items-center justify-center font-mono text-[10px] font-bold text-white shadow-xs" style={{ backgroundColor: selectedAssetForDetail.primary_color || '#10b981' }}>
+                                    {selectedAssetForDetail.asset_key.slice(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Associated Channel list (Usage Tracking) */}
+                        <div className="space-y-2">
+                          <span className="block text-[10px] uppercase font-black tracking-wider text-slate-500">BAM Usage Tracking</span>
+                          <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-2">
+                            <span className="text-[9px] font-bold text-slate-500 block">Remittance Channels Linked to this Asset:</span>
+                            {channels.filter(c => c.brandAssetId === selectedAssetForDetail.id).length === 0 ? (
+                              <p className="text-[10px] text-slate-400 font-sans italic font-bold">This asset version is currently unlinked to any live remittance channels.</p>
+                            ) : (
+                              <div className="space-y-1 font-bold text-[10px]">
+                                {channels
+                                  .filter(c => c.brandAssetId === selectedAssetForDetail.id)
+                                  .map(c => (
+                                    <div key={c.id} className="flex justify-between items-center text-slate-700 bg-white border border-slate-100 p-1.5 rounded-lg">
+                                      <span>{c.displayName} ({c.providerCode})</span>
+                                      <span className="text-[9px] text-indigo-600 font-mono">Linked</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Version History Engine (Drives Version History view) */}
+                        <div className="space-y-2">
+                          <span className="block text-[10px] uppercase font-black tracking-wider text-slate-500">Version Lineage (History)</span>
+                          <div className="border border-slate-200 rounded-xl divide-y divide-slate-150 overflow-hidden bg-slate-50/20 max-h-[160px] overflow-y-auto">
+                            {brandAssets
+                              .filter(a => a.asset_key === selectedAssetForDetail.asset_key)
+                              .sort((a, b) => b.version - a.version)
+                              .map(historyAsset => {
+                                const isCurrent = historyAsset.id === selectedAssetForDetail.id;
+                                return (
+                                  <div
+                                    key={historyAsset.id}
+                                    onClick={() => setSelectedAssetForDetail(historyAsset)}
+                                    className={`p-2.5 flex items-center justify-between text-[10px] font-mono cursor-pointer transition-colors ${
+                                      isCurrent ? 'bg-indigo-50/30' : 'hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <span className={`w-1.5 h-1.5 rounded-full ${historyAsset.status === 'active' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                                      <span className="font-extrabold text-slate-800">V{historyAsset.version}</span>
+                                      <span className="text-[9px] text-slate-400">({historyAsset.id.slice(historyAsset.id.length - 8)})</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 font-sans font-bold">
+                                      <span className="text-[9px] text-slate-500">{new Date(historyAsset.created_at).toLocaleDateString()}</span>
+                                      <span className={`text-[8px] uppercase px-1 rounded ${
+                                        historyAsset.status === 'active' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400'
+                                      }`}>
+                                        {historyAsset.status}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+
+                        {/* Interactive Create New Version Form */}
+                        {selectedAssetForDetail.status === 'active' && (
+                          <div className="border border-dashed border-indigo-200 rounded-xl p-4 bg-indigo-50/5/30 space-y-3">
+                            <span className="block text-[10px] uppercase font-black tracking-wider text-indigo-700">Deploy Version Replacement</span>
+                            
+                            <div className="space-y-2">
+                              <div>
+                                <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">New Image/Logo URL</label>
+                                <input
+                                  type="text"
+                                  placeholder="Leave blank to carry forward active image URL..."
+                                  value={replaceMainFile}
+                                  onChange={(e) => setReplaceMainFile(e.target.value)}
+                                  className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-400 font-bold"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Light URL (Opt)</label>
+                                  <input
+                                    type="text"
+                                    placeholder="Light variant URL..."
+                                    value={replaceLightUrl}
+                                    onChange={(e) => setReplaceLightUrl(e.target.value)}
+                                    className="w-full text-[10px] p-1.5 bg-white border border-slate-200 rounded-lg outline-none font-bold"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Dark URL (Opt)</label>
+                                  <input
+                                    type="text"
+                                    placeholder="Dark variant URL..."
+                                    value={replaceDarkUrl}
+                                    onChange={(e) => setReplaceDarkUrl(e.target.value)}
+                                    className="w-full text-[10px] p-1.5 bg-white border border-slate-200 rounded-lg outline-none font-bold"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Replacement Reason (Required)</label>
+                                <textarea
+                                  rows={1}
+                                  placeholder="e.g. STC Pay refreshed corporate branding color palettes..."
+                                  value={replaceReason}
+                                  onChange={(e) => setReplaceReason(e.target.value)}
+                                  className="w-full text-[10px] p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-400 font-bold"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleReplaceAsset(selectedAssetForDetail)}
+                                className="w-full py-2 bg-slate-900 hover:bg-slate-950 text-white font-black text-[9px] uppercase tracking-wider rounded-lg transition-colors shadow-xs"
+                              >
+                                Create & Deploy Version {(selectedAssetForDetail.version || 1) + 1}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fast Actions Bar (Edit/Delete) */}
+                        <div className="flex gap-2 pt-4 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingAssetId(selectedAssetForDetail.id);
+                              setAssetKey(selectedAssetForDetail.asset_key);
+                              setAssetName(selectedAssetForDetail.asset_name);
+                              setAssetType(selectedAssetForDetail.asset_type);
+                              setAssetOwnerType(selectedAssetForDetail.owner_type);
+                              setAssetProviderCode(selectedAssetForDetail.provider_code || '');
+                              setAssetStoragePath(selectedAssetForDetail.storage_path);
+                              setAssetPublicUrl(selectedAssetForDetail.public_url || '');
+                              setAssetPrimaryColor(selectedAssetForDetail.primary_color || '');
+                              setAssetSecondaryColor(selectedAssetForDetail.secondary_color || '');
+                              setAssetApprovalStatus(selectedAssetForDetail.approval_status);
+                              setAssetStatus(selectedAssetForDetail.status);
+                              setAssetAltText(selectedAssetForDetail.alt_text || '');
+                              setAssetMetadataJson(JSON.stringify(selectedAssetForDetail.metadata || {}, null, 2));
+                              setBamSubView('upload');
+                            }}
+                            className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
+                          >
+                            Edit Properties
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBrandAsset(selectedAssetForDetail.id, selectedAssetForDetail.asset_name)}
+                            className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors cursor-pointer"
+                            title="Deactivate / Archive Asset"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-slate-400 py-20 font-sans space-y-2">
+                        <Sparkles className="w-8 h-8 text-slate-300 animate-bounce" />
+                        <span className="font-bold text-xs">Select an asset from the directory list</span>
+                        <p className="text-[10px] text-slate-400">View version histories, dual previews, color models, and replace active branding.</p>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+
+              {/* BAM View 3: Register / Edit Asset Form (Standard Enhanced Form) */}
+              {bamSubView === 'upload' && (
+                <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-xs">
+                  <div className="space-y-1 pb-2 border-b border-slate-100">
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />
+                      {editingAssetId ? 'Edit Registered BAM Asset' : 'Register Brand Asset'}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Define design tokens, colors, SVGs, and brand-level assets inside the SariRemit Design System (SDS).
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSaveBrandAsset} className="space-y-4 font-sans text-xs">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Asset Key (Unique Name)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. stc-pay"
+                          value={assetKey}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setAssetKey(val);
+                            if (!editingAssetId && val) {
+                              setAssetStoragePath(`providers/${val}/${val}-logo.svg`);
+                            }
+                          }}
+                          disabled={!!editingAssetId}
+                          className={`w-full text-xs font-bold p-3 border rounded-xl outline-none font-mono ${
+                            editingAssetId 
+                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' 
+                              : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-slate-400'
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Asset Type</label>
+                        <select
+                          value={assetType}
+                          onChange={(e) => setAssetType(e.target.value as any)}
+                          className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                        >
+                          <option value="provider_logo">Provider Logo</option>
+                          <option value="provider_logo_dark">Logo (Dark Mode)</option>
+                          <option value="provider_logo_light">Logo (Light Mode)</option>
+                          <option value="sariremit_logo">SariRemit Logo</option>
+                          <option value="sariremit_monogram">SariRemit Monogram</option>
+                          <option value="country_flag">Country Flag</option>
+                          <option value="badge">Badge/Seal</option>
+                          <option value="other">Other Asset</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Asset Display Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. STC Pay Official Logo"
+                        value={assetName}
+                        onChange={(e) => setAssetName(e.target.value)}
+                        className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Owner Type</label>
+                        <select
+                          value={assetOwnerType}
+                          onChange={(e) => setAssetOwnerType(e.target.value)}
+                          className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                        >
+                          <option value="provider">Provider / Partner</option>
+                          <option value="sariremit">SariRemit Internal</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Provider Code Link</label>
+                        <select
+                          value={assetProviderCode}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setAssetProviderCode(val);
+                            if (val) {
+                              setAssetKey(val);
+                              if (!editingAssetId) {
+                                setAssetStoragePath(`providers/${val}/${val}-logo.svg`);
+                              }
+                            }
+                          }}
+                          className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400 font-mono"
+                        >
+                          <option value="">-- Generic / None --</option>
+                          {channels.map(c => (
+                            <option key={c.id} value={c.providerCode}>{c.displayName} ({c.providerCode})</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Storage Path</label>
+                      <input
+                        type="text"
+                        placeholder="providers/stc-pay/stc-pay-logo.svg"
+                        value={assetStoragePath}
+                        onChange={(e) => setAssetStoragePath(e.target.value)}
+                        className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400 font-mono"
+                      />
+                    </div>
+
+                    {/* Simulated Drag & Drop for quick logo upload */}
+                    <div>
+                      <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Main Logo URL (Vector CDN URL)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="https://cdn.sariremit.com/...svg"
+                          value={assetPublicUrl}
+                          onChange={(e) => setAssetPublicUrl(e.target.value)}
+                          className="flex-1 text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const simUrl = prompt('Enter public URL or use initials provider logo:');
+                            if (simUrl) setAssetPublicUrl(simUrl);
+                          }}
+                          className="px-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl font-bold font-sans text-[10px] uppercase"
+                        >
+                          Drop file
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Primary Color</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={assetPrimaryColor || '#4f46e5'}
+                            onChange={(e) => setAssetPrimaryColor(e.target.value)}
+                            className="w-10 h-10 border border-slate-200 rounded-xl cursor-pointer bg-transparent"
+                          />
+                          <input
+                            type="text"
+                            placeholder="#Hex"
+                            value={assetPrimaryColor}
+                            onChange={(e) => setAssetPrimaryColor(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Secondary Color</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={assetSecondaryColor || '#10b981'}
+                            onChange={(e) => setAssetSecondaryColor(e.target.value)}
+                            className="w-10 h-10 border border-slate-200 rounded-xl cursor-pointer bg-transparent"
+                          />
+                          <input
+                            type="text"
+                            placeholder="#Hex"
+                            value={assetSecondaryColor}
+                            onChange={(e) => setAssetSecondaryColor(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Approval Status</label>
+                        <select
+                          value={assetApprovalStatus}
+                          onChange={(e) => setAssetApprovalStatus(e.target.value as any)}
+                          className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                        >
+                          <option value="official">Official Verified</option>
+                          <option value="placeholder">Placeholder Approved</option>
+                          <option value="pending_permission">Pending Licensing</option>
+                          <option value="restricted">Restricted / Private</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Status</label>
+                        <select
+                          value={assetStatus}
+                          onChange={(e) => setAssetStatus(e.target.value as any)}
+                          className="w-full text-xs font-bold p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                          <option value="pending_approval">Pending Approval</option>
+                          <option value="archived">Archived</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Accessibility Alt Text</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. STC Pay brand logo with dark purple background"
+                        value={assetAltText}
+                        onChange={(e) => setAssetAltText(e.target.value)}
+                        className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400 font-bold text-slate-750"
+                      />
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="submit"
+                        className="flex-1 py-3 bg-slate-900 hover:bg-slate-950 text-white text-xs uppercase tracking-wider font-black rounded-xl transition-colors cursor-pointer shadow-sm"
+                      >
+                        {editingAssetId ? 'Save Changes' : 'Register Brand Asset'}
+                      </button>
+                      {editingAssetId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingAssetId(null);
+                            setAssetKey('');
+                            setAssetName('');
+                            setAssetStoragePath('');
+                            setAssetPublicUrl('');
+                            setAssetPrimaryColor('');
+                            setAssetSecondaryColor('');
+                            setAssetAltText('');
+                            setBamSubView('directory');
+                          }}
+                          className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs uppercase tracking-wider font-bold rounded-xl transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* BAM View 4: Brand Diagnostics (Health checks & safe repairs) */}
+              {bamSubView === 'diagnostics' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-xs animate-in fade-in duration-150">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-rose-500 animate-pulse" />
+                      SDS Brand Health Diagnostics & Auto-Repair Panel
+                    </h3>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Continuous monitoring over registered brand assets and active remittance channels to flag duplicates, missing details, or fallback URLs.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Check 1: Missing BAM link */}
+                    <div className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-3 font-sans text-xs">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                          <span>Channels Missing BAM Assets (Initials Fallback)</span>
+                        </div>
+                        <span className="px-2 py-0.5 bg-rose-50 border border-rose-100 text-rose-700 rounded text-[9px] font-black uppercase">
+                          {channels.filter(c => !c.brandAssetId).length} Flagged
+                        </span>
+                      </div>
+                      
+                      {channels.filter(c => !c.brandAssetId).length === 0 ? (
+                        <p className="text-[11px] text-emerald-600 font-bold">✓ Perfect. Every registered channel is mapped to a secure BAM brand asset.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-slate-400 text-[10px]">These active channels have no brandAssetId linked. Customers see fallback initials cards.</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {channels.filter(c => !c.brandAssetId).map(c => (
+                              <div key={c.id} className="bg-white border border-slate-100 rounded-lg p-2.5 flex justify-between items-center text-[10px]">
+                                <div>
+                                  <span className="font-extrabold text-slate-800">{c.displayName}</span>
+                                  <span className="text-slate-400 font-mono block">Code: {c.providerCode}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMigratingChannelId(c.id);
+                                    setMigrationAssetName(`${c.displayName} Official Logo`);
+                                    setMigrationAssetKey(c.providerCode);
+                                    setBamSubView('migration');
+                                  }}
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded font-bold uppercase tracking-wider text-[8px] transition-colors"
+                                >
+                                  Migrate / Fix
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Check 2: Missing Alt Text */}
+                    <div className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-3 font-sans text-xs">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                          <span>Assets Missing Accessibility Alt-Text</span>
+                        </div>
+                        <span className="px-2 py-0.5 bg-amber-50 border border-amber-100 text-amber-700 rounded text-[9px] font-black uppercase">
+                          {brandAssets.filter(a => !a.alt_text).length} Warning
+                        </span>
+                      </div>
+
+                      {brandAssets.filter(a => !a.alt_text).length === 0 ? (
+                        <p className="text-[11px] text-emerald-600 font-bold font-sans">✓ Perfect. Every registered asset has accessible alt text defined.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-slate-400 text-[10px]">These assets are missing descriptions. Screening readers may encounter barriers.</p>
+                          <div className="space-y-1.5">
+                            {brandAssets.filter(a => !a.alt_text).map(asset => (
+                              <div key={asset.id} className="bg-white border border-slate-100 rounded-lg p-2.5 flex justify-between items-center text-[10px]">
+                                <span className="font-extrabold text-slate-800">{asset.asset_name} ({asset.id})</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRepairAltText(asset)}
+                                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-bold uppercase tracking-wider text-[8px] transition-colors"
+                                >
+                                  Auto Alt-Text Repair
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Check 3: Redundant Active Versions */}
+                    <div className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-3 font-sans text-xs">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                          <span>Multiple Redundant Active Versions of Same Asset Key</span>
+                        </div>
+                        <span className="px-2 py-0.5 bg-amber-50 border border-amber-100 text-amber-700 rounded text-[9px] font-black uppercase">
+                          {(() => {
+                            const keys = brandAssets.map(a => a.asset_key);
+                            const duplicates = [...new Set(keys)].filter(k => brandAssets.filter(a => a.asset_key === k && a.status === 'active').length > 1);
+                            return duplicates.length;
+                          })()} Redundant
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const keys = brandAssets.map(a => a.asset_key);
+                        const duplicates = [...new Set(keys)].filter(k => brandAssets.filter(a => a.asset_key === k && a.status === 'active').length > 1);
+                        
+                        if (duplicates.length === 0) {
+                          return <p className="text-[11px] text-emerald-600 font-bold">✓ Perfect. No multiple active versions detected for any design key.</p>;
+                        }
+
+                        return (
+                          <div className="space-y-2">
+                            <p className="text-slate-400 text-[10px]">Multiple versions are marked 'active' simultaneously. The system might resolve to older versions.</p>
+                            <div className="space-y-1.5">
+                              {duplicates.map((key: string) => (
+                                <div key={key} className="bg-white border border-slate-100 rounded-lg p-2.5 flex justify-between items-center text-[10px]">
+                                  <span className="font-extrabold text-slate-800">Asset Key: <span className="font-mono">{key}</span></span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRepairDuplicateVersions(key)}
+                                    className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded font-bold uppercase tracking-wider text-[8px] transition-colors"
+                                  >
+                                    Deactivate Older Versions
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Check 4: Licensing Approvals Pending */}
+                    <div className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-3 font-sans text-xs">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                          <span>Assets with Pending Legal Permission Status</span>
+                        </div>
+                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded text-[9px] font-black uppercase">
+                          {brandAssets.filter(a => a.approval_status === 'pending_permission').length} Pending
+                        </span>
+                      </div>
+
+                      {brandAssets.filter(a => a.approval_status === 'pending_permission').length === 0 ? (
+                        <p className="text-[11px] text-slate-500 font-sans font-bold">✓ Perfect. No assets are lingering in pending licensing status.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-slate-400 text-[10px]">These assets are active on channels but their licensing is still undergoing review.</p>
+                          <div className="space-y-1.5">
+                            {brandAssets.filter(a => a.approval_status === 'pending_permission').map(asset => (
+                              <div key={asset.id} className="bg-white border border-slate-100 rounded-lg p-2.5 flex justify-between items-center text-[10px]">
+                                <span className="font-extrabold text-slate-800">{asset.asset_name} ({asset.id})</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRepairApprovePermission(asset)}
+                                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded font-bold uppercase tracking-wider text-[8px] transition-colors"
+                                >
+                                  Grant Official Approval
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* BAM View 5: Legacy Logo Migration Tool (Lists and migrates channels with logoUrls) */}
+              {bamSubView === 'migration' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-xs animate-in fade-in duration-150 font-sans text-xs">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                      <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin" />
+                      SariRemit Legacy Logo Migration Console
+                    </h3>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Convert legacy string-based Fallback URLs to secure, tracked, and versioned BAM Design Assets. Auto-binds channels to new assets.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    {/* Left side: List of legacy channels */}
+                    <div className="lg:col-span-6 space-y-3">
+                      <h4 className="text-[10px] uppercase font-black text-slate-500 tracking-wider">Eligible Channels for Migration</h4>
+                      
+                      {channels.filter(c => (c.logoUrl || c.logo_url) && !c.brandAssetId).length === 0 ? (
+                        <div className="p-6 text-center border border-dashed border-slate-200 rounded-xl space-y-1">
+                          <span className="font-extrabold text-slate-800 block text-[11px]">All Legacy Logos Migrated!</span>
+                          <p className="text-[10px] text-slate-400">Perfect. No active channels remain dependent on legacy logo fallback strings.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[350px] overflow-y-auto">
+                          {channels
+                            .filter(c => (c.logoUrl || c.logo_url) && !c.brandAssetId)
+                            .map(c => {
+                              const isTarget = migratingChannelId === c.id;
+                              return (
+                                <div
+                                  key={c.id}
+                                  onClick={() => {
+                                    setMigratingChannelId(c.id);
+                                    setMigrationAssetName(`${c.displayName} Official Logo`);
+                                    setMigrationAssetKey(c.providerCode);
+                                    setMigrationAltText(`${c.displayName} Logo`);
+                                  }}
+                                  className={`p-3 rounded-xl border transition-all cursor-pointer flex justify-between items-center ${
+                                    isTarget
+                                      ? 'border-indigo-600 bg-indigo-50/10'
+                                      : 'border-slate-150 bg-white hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <div>
+                                    <span className="font-extrabold text-slate-800 block">{c.displayName}</span>
+                                    <span className="text-slate-400 font-mono text-[9px]">Legacy: {c.logoUrl || c.logo_url}</span>
+                                  </div>
+                                  <span className="text-[9px] text-indigo-600 font-extrabold uppercase">Select</span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right side: Migration form */}
+                    <div className="lg:col-span-6 bg-slate-50 border border-slate-150 p-5 rounded-2xl space-y-4">
+                      {migratingChannelId ? (
+                        (() => {
+                          const c = channels.find(ch => ch.id === migratingChannelId);
+                          if (!c) return null;
+                          return (
+                            <div className="space-y-4 font-sans text-xs">
+                              <h4 className="text-[10px] uppercase font-black text-indigo-700 tracking-wider">Migrate: {c.displayName}</h4>
+                              
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Asset Key Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. stc-pay"
+                                    value={migrationAssetKey}
+                                    onChange={(e) => setMigrationAssetKey(e.target.value)}
+                                    className="w-full text-xs font-mono font-bold p-2.5 bg-white border border-slate-200 rounded-xl"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Asset Display Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. STC Pay Logo"
+                                    value={migrationAssetName}
+                                    onChange={(e) => setMigrationAssetName(e.target.value)}
+                                    className="w-full text-xs font-bold p-2.5 bg-white border border-slate-200 rounded-xl"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Accessibility Alt-Text</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. STC Pay Official Brand Vector Logo"
+                                    value={migrationAltText}
+                                    onChange={(e) => setMigrationAltText(e.target.value)}
+                                    className="w-full text-xs font-bold p-2.5 bg-white border border-slate-200 rounded-xl"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Approval Status</label>
+                                  <select
+                                    value={migrationApprovalStatus}
+                                    onChange={(e) => setMigrationApprovalStatus(e.target.value as any)}
+                                    className="w-full text-xs font-bold p-2.5 bg-white border border-slate-200 rounded-xl"
+                                  >
+                                    <option value="official">Official Verified Logo</option>
+                                    <option value="placeholder">Approved Placeholder Logo</option>
+                                    <option value="pending_permission">Pending Written Consent</option>
+                                  </select>
+                                </div>
+
+                                <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1 text-[10px] text-indigo-700 leading-relaxed font-sans font-medium">
+                                  <p className="font-extrabold">Auto-generated Action Log:</p>
+                                  <ul className="list-disc pl-4 space-y-0.5 font-mono text-[9px]">
+                                    <li>CREATE BrandAsset id: ba-{migrationAssetKey.toLowerCase().trim()}-v1-[ts]</li>
+                                    <li>COPY legacy public_url: {c.logoUrl || c.logo_url}</li>
+                                    <li>UPDATE RemittanceChannel brandAssetId with newly generated ID</li>
+                                    <li>LOG system BAM audit event trailing action history</li>
+                                  </ul>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleLegacyMigration(c)}
+                                  className="w-full py-3 bg-slate-900 hover:bg-slate-950 text-white font-black uppercase text-[10px] tracking-wider rounded-xl transition-colors shadow-xs"
+                                >
+                                  Deploy Legacy Logo Migration
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <div className="py-12 text-center text-slate-400 font-sans italic space-y-1">
+                          <span className="font-bold block text-slate-500 text-xs">Select a channel to begin migration</span>
+                          <p className="text-[10px] text-slate-400">Migration converts falling static logos into robust centrally resolved assets.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* BAP Licensing grant dialog modal */}
+              {showPermissionModal && selectedAssetForPermission && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150 text-xs">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-sans font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        Manage Licensing & Trademark Permissions
+                      </h3>
+                      <p className="text-[10px] text-slate-500 leading-relaxed">
+                        Track official permission status, corporate point-of-contacts, and licensing restrictions for: <br />
+                        <strong className="text-slate-800 font-sans">"{selectedAssetForPermission.asset_name}"</strong>
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleSavePermission} className="space-y-4 font-sans font-medium">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Permission Status</label>
+                          <select
+                            value={bapStatus}
+                            onChange={(e) => setBapStatus(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-slate-400"
+                          >
+                            <option value="granted">Granted / Approved</option>
+                            <option value="pending">Pending Written Consent</option>
+                            <option value="expired">Expired / Cancelled</option>
+                            <option value="denied">Explicitly Denied</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Consent Source</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. CEO email, PR deck, license PDF"
+                            value={bapSource}
+                            onChange={(e) => setBapSource(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Reference ID / Code</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. ticket-908"
+                            value={bapReference}
+                            onChange={(e) => setBapReference(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Expiration Date</label>
+                          <input
+                            type="date"
+                            value={bapExpiresAt}
+                            onChange={(e) => setBapExpiresAt(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Corporate Contact Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Sarah Smith"
+                            value={bapContactName}
+                            onChange={(e) => setBapContactName(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-bold text-slate-800"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Corporate Contact Email</label>
+                          <input
+                            type="email"
+                            placeholder="e.g. brand@stcpay.com.sa"
+                            value={bapContactEmail}
+                            onChange={(e) => setBapContactEmail(e.target.value)}
+                            className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Licensing Restrictions / Exclusions</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Only permitted on mobile comparisons, not billboard prints."
+                          value={bapRestrictions}
+                          onChange={(e) => setBapRestrictions(e.target.value)}
+                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-bold text-slate-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Licensing Notes</label>
+                        <textarea
+                          placeholder="Internal legal or operational notes..."
+                          value={bapNotes}
+                          onChange={(e) => setBapNotes(e.target.value)}
+                          rows={2}
+                          className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none font-bold text-slate-800"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowPermissionModal(false);
+                            setSelectedAssetForPermission(null);
+                          }}
+                          className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] uppercase tracking-wider font-black rounded-xl transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="py-3 bg-slate-900 hover:bg-slate-950 text-white text-[10px] uppercase tracking-wider font-black rounded-xl transition-colors cursor-pointer shadow-sm"
+                        >
+                          Save Legal Consent
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 

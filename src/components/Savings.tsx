@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
-import { TranslationDict, UserProfile } from '../types';
-import { fetchUserTransfers, saveUserTransfer, getRecommendations, UserTransferSavings } from '../services/supabaseService';
+import { TranslationDict, UserProfile, RecordedTransfer } from '../types';
+import { CountryFlag, ProviderLogo } from './SdsBamComponents';
+import { getUserSavingsLedger } from '../services/supabaseService';
 import { 
-  PiggyBank, Plus, Check, Landmark, History, Wallet, Calendar, 
-  Sparkles, X, ChevronRight, Award, TrendingUp, HelpCircle, Info, ArrowUpRight
+  PiggyBank, History, Wallet, Sparkles, ChevronRight, Award, TrendingUp 
 } from 'lucide-react';
-import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
 
 interface SavingsProps {
   language: 'en' | 'ar';
@@ -20,51 +19,25 @@ export default function Savings({
   profile,
 }: SavingsProps) {
   const isRtl = language === 'ar';
-  const [transfers, setTransfers] = useState<UserTransferSavings[]>([]);
+  const [transfers, setTransfers] = useState<RecordedTransfer[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isAdding, setIsAdding] = useState<boolean>(false);
 
   // Stats
   const [monthlySavings, setMonthlySavings] = useState<number>(0);
   const [lifetimeSavings, setLifetimeSavings] = useState<number>(0);
   const [lifetimeVolume, setLifetimeVolume] = useState<number>(0);
 
-  // New transfer form state
-  const [corridorId, setCorridorId] = useState<string>(profile.preferredCorridorId || 'sa-pk');
-  const [providerId, setProviderId] = useState<string>('stc-pay');
-  const [sendAmount, setSendAmount] = useState<number>(1000);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-
-  // Load history
+  // Load history using the formal SEPS module shared service
   const loadHistory = async () => {
     setIsLoading(true);
     try {
-      const history = await fetchUserTransfers(profile.email);
-      setTransfers(history);
-      
-      // Calculate Stats
-      if (history.length > 0) {
-        const totalSaved = history.reduce((acc, t) => acc + t.computed_savings, 0);
-        const totalVolume = history.reduce((acc, t) => acc + t.send_amount, 0);
-        setLifetimeSavings(totalSaved);
-        setLifetimeVolume(totalVolume);
-
-        const now = new Date();
-        const currentMonthSavings = history
-          .filter((t) => {
-            if (!t.recorded_at) return false;
-            const date = new Date(t.recorded_at);
-            return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-          })
-          .reduce((acc, t) => acc + t.computed_savings, 0);
-        setMonthlySavings(currentMonthSavings);
-      } else {
-        setLifetimeSavings(0);
-        setLifetimeVolume(0);
-        setMonthlySavings(0);
-      }
+      const { transfers: activeTransfers, summary } = await getUserSavingsLedger(profile.id);
+      setTransfers(activeTransfers);
+      setLifetimeSavings(summary.lifetimeSavingsSAR);
+      setLifetimeVolume(summary.lifetimeSendAmountSAR);
+      setMonthlySavings(summary.monthlySavingsSAR);
     } catch (err) {
-      console.error('Failed to load user transfers:', err);
+      console.error('Failed to load user savings ledger:', err);
     } finally {
       setIsLoading(false);
     }
@@ -73,45 +46,6 @@ export default function Savings({
   useEffect(() => {
     loadHistory();
   }, [profile]);
-
-  const handleAddTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      // Fetch current best RRE rate to compute actual recipient and savings
-      const res = await getRecommendations(corridorId, sendAmount);
-      const activeCorridor = CORRIDORS.find(c => c.id === corridorId) || CORRIDORS[0];
-      const activeProvider = PROVIDERS.find(p => p.id === providerId) || PROVIDERS[0];
-      
-      // Attempt to find specific provider rate, fallback to best option
-      const providerOption = res.allOptions.find(o => o.resolved.provider_id === providerId) || res.allOptions[0];
-      
-      const rate = providerOption?.resolved?.resolved_rate || activeCorridor.baseExchangeRate;
-      const fee = providerOption?.resolved?.transfer_fee || activeCorridor.typicalFee;
-      const savings = res.bestOption?.estimated_savings || (sendAmount * 0.045);
-      const recipient = providerOption?.netAmount || ((sendAmount * rate) - fee);
-
-      const transferData: UserTransferSavings = {
-        user_id: profile.email,
-        corridor_id: corridorId,
-        send_amount: sendAmount,
-        exchange_rate: rate,
-        transfer_fee: fee,
-        computed_savings: parseFloat(savings.toFixed(2)),
-        recipient_amount: parseFloat(recipient.toFixed(2)),
-        transfer_status: 'completed'
-      };
-
-      await saveUserTransfer(transferData);
-      setIsAdding(false);
-      await loadHistory();
-    } catch (err) {
-      console.error('Failed to save user transfer:', err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const getCorridorFlag = (cid: string) => {
     return CORRIDORS.find(c => c.id === cid)?.flag || '🇸🇦';
@@ -136,20 +70,25 @@ export default function Savings({
 
   const tier = getSavingsTier(lifetimeSavings);
 
-  // Generate responsive SVG chart points safely from transfer log
+  // Generate responsive SVG chart points safely from transfer log (real recorded transfers)
   const generateChartPoints = () => {
-    if (transfers.length === 0) return '';
+    const validTransfersForSavings = transfers.filter(t => {
+      const s = t.status ? t.status.toLowerCase() : 'recorded';
+      return s === 'recorded' || s === 'completed' || s === 'corrected';
+    });
+
+    if (validTransfersForSavings.length === 0) return '';
     const chartHeight = 120;
     const chartWidth = 500;
-    const sorted = [...transfers].sort((a, b) => {
-      const dateA = a.recorded_at ? new Date(a.recorded_at).getTime() : 0;
-      const dateB = b.recorded_at ? new Date(b.recorded_at).getTime() : 0;
+    const sorted = [...validTransfersForSavings].sort((a, b) => {
+      const dateA = a.recordedAt ? new Date(a.recordedAt).getTime() : 0;
+      const dateB = b.recordedAt ? new Date(b.recordedAt).getTime() : 0;
       return dateA - dateB;
     });
 
     let runningSum = 0;
     const sums = sorted.map((t) => {
-      runningSum += t.computed_savings;
+      runningSum += (t.estimatedSavingsSAR || 0);
       return runningSum;
     });
 
@@ -158,7 +97,7 @@ export default function Savings({
     const range = max - min;
 
     const points = sums.map((val, idx) => {
-      const x = (idx / (sums.length - 1 || 1)) * (chartWidth - 40) + 20;
+      const x = sums.length === 1 ? 250 : (idx / (sums.length - 1 || 1)) * (chartWidth - 40) + 20;
       const y = chartHeight - ((val - min) / range) * (chartHeight - 30) - 10;
       return `${x},${y}`;
     });
@@ -179,17 +118,9 @@ export default function Savings({
             <span>Savings & Ledger</span>
           </h1>
           <p className="text-xs text-sds-text-sec max-w-xl">
-            Log your remittance transfers, monitor your overall savings, and audit channels head-to-head.
+            Monitor your overall savings history and trace optimization trends compiled directly from your remittance logs.
           </p>
         </div>
-
-        <button
-          onClick={() => setIsAdding(true)}
-          className="py-2.5 px-4 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 shadow-md hover:scale-[1.02] transition-all self-start sm:self-auto cursor-pointer"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>Record Transfer</span>
-        </button>
       </div>
 
       {/* 2. DYNAMIC ANALYTICS KPI CARDS */}
@@ -273,7 +204,7 @@ export default function Savings({
 
           {transfers.length === 0 ? (
             <div className="py-12 text-center text-sds-text-sec text-xs">
-              Record multiple transfers to compile a visual trendline.
+              No transfers recorded yet. Record a transfer to start tracking your savings.
             </div>
           ) : (
             <div className="relative w-full pt-2">
@@ -293,7 +224,9 @@ export default function Savings({
                 {/* Filled Area */}
                 {chartPoints && (
                   <path
-                    d={`M 20,110 L ${chartPoints} L 480,110 Z`}
+                    d={transfers.length === 1 
+                      ? `M 20,110 L 250,55 L 480,110 Z`
+                      : `M 20,110 L ${chartPoints} L 480,110 Z`}
                     fill="url(#chartGrad)"
                   />
                 )}
@@ -329,6 +262,11 @@ export default function Savings({
                 <span>Start Ledger</span>
                 <span>Latest optimization</span>
               </div>
+              {transfers.length === 1 && (
+                <div className="mt-3 text-center text-[#F59E0B] text-[10px] font-semibold font-mono">
+                  ℹ️ Only 1 transfer recorded. Add more transfers to trace a cumulative trendline.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -388,7 +326,7 @@ export default function Savings({
             <PiggyBank className="w-12 h-12 text-sds-text-sec opacity-40 mx-auto mb-3" />
             <p className="font-extrabold text-sm text-white uppercase">No recorded transfers</p>
             <p className="text-xs text-sds-text-sec mt-1 max-w-xs mx-auto text-center">
-              Record your remittance transfers using the button above to start compiling your cumulative analytics.
+              Your savings history will appear here after you record a transfer from a provider card.
             </p>
           </div>
         ) : (
@@ -408,23 +346,26 @@ export default function Savings({
                 {transfers.map((t) => (
                   <tr key={t.id} className="hover:bg-[#071A35]/40 transition-colors">
                     <td className="py-3.5 font-mono text-sds-text-sec font-bold">
-                      {t.recorded_at ? new Date(t.recorded_at).toLocaleDateString() : 'N/A'}
+                      {t.recordedAt ? new Date(t.recordedAt).toLocaleDateString() : 'N/A'}
                     </td>
                     <td className="py-3.5 font-bold text-white flex items-center gap-1.5">
-                      <span className="text-sm">{getCorridorFlag(t.corridor_id)}</span>
-                      <span>{getCorridorName(t.corridor_id)}</span>
+                      <CountryFlag country="" currency={t.corridorId.split('-')[1]} size="xs" />
+                      <span>{getCorridorName(t.corridorId)}</span>
                     </td>
                     <td className="py-3.5 text-slate-300 font-semibold">
-                      {getProviderName(t.provider_id)}
+                      <div className="flex items-center gap-1.5">
+                        <ProviderLogo channel={{ providerCode: t.channelId, displayName: getProviderName(t.channelId) }} size="xs" shape="circle" />
+                        <span>{getProviderName(t.channelId)}</span>
+                      </div>
                     </td>
                     <td className="py-3.5 font-mono font-extrabold text-white">
-                      {t.send_amount.toLocaleString()} SAR
+                      {t.sendAmountSAR.toLocaleString()} SAR
                     </td>
                     <td className="py-3.5 font-mono font-bold text-slate-400">
-                      {t.recipient_amount.toLocaleString()}
+                      {t.estimatedRecipientAmount.toLocaleString()}
                     </td>
                     <td className="py-3.5 font-mono font-black text-[#10B981] text-right">
-                      +{t.computed_savings.toLocaleString()} SAR
+                      +{t.estimatedSavingsSAR ? t.estimatedSavingsSAR.toLocaleString() : '0'} SAR
                     </td>
                   </tr>
                 ))}
@@ -433,109 +374,6 @@ export default function Savings({
           </div>
         )}
       </div>
-
-      {/* 5. ADD TRANSFER MODAL (SDS COMPLIANT) */}
-      {isAdding && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50 text-sds-text">
-          <div className="bg-[#0C2547] rounded-3xl border border-sds-border shadow-2xl max-w-md w-full overflow-hidden animate-fadeIn">
-            
-            {/* Modal Header */}
-            <div className="bg-[#071A35] px-5 py-4 flex items-center justify-between border-b border-sds-border">
-              <h3 className="text-sm font-black uppercase tracking-wider flex items-center gap-2 text-white font-mono">
-                <PiggyBank className="w-5 h-5 text-[#10B981]" />
-                Record Remittance Transfer
-              </h3>
-              <button
-                onClick={() => setIsAdding(false)}
-                className="text-sds-text-sec hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleAddTransfer} className="p-6 space-y-4 text-left">
-              
-              {/* Corridor selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                  Destination Corridor
-                </label>
-                <select
-                  value={corridorId}
-                  onChange={(e) => setCorridorId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
-                >
-                  {CORRIDORS.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-[#071A35] text-slate-850 font-semibold">
-                      {c.flag} {c.toCountry} ({c.currencyCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Provider selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                  Provider Used
-                </label>
-                <select
-                  value={providerId}
-                  onChange={(e) => setProviderId(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer"
-                >
-                  {PROVIDERS.map((p) => (
-                    <option key={p.id} value={p.id} className="bg-[#071A35] text-slate-850 font-semibold">
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Send amount input */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                  Sending Amount (SAR)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={sendAmount}
-                  onChange={(e) => setSendAmount(Math.max(1, parseInt(e.target.value) || 0))}
-                  className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold font-mono text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-sds-border">
-                <button
-                  type="button"
-                  onClick={() => setIsAdding(false)}
-                  className="flex-1 py-2.5 bg-[#071A35] hover:bg-[#091f3e] text-slate-350 border border-sds-border font-black text-xs uppercase rounded-xl transition-all cursor-pointer text-center"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black text-xs uppercase rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {isSubmitting ? (
-                    <span>Saving...</span>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 stroke-[3]" />
-                      <span>Save Ledger</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-            </form>
-
-          </div>
-        </div>
-      )}
 
     </div>
   );

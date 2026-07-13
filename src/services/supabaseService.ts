@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress } from '../types';
+import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress, BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission } from '../types';
 import { PROVIDERS, CORRIDORS } from './constants';
 
 // Interfaces for Supabase tables
@@ -2017,6 +2017,14 @@ export interface AuthSession {
     first_transfer_experience_prompt_shown_at?: string;
     first_transfer_experience_completed_at?: string;
     engagement_notifications_enabled?: boolean;
+    achievement_notifications_enabled?: boolean;
+    rate_notifications_enabled?: boolean;
+    transfer_notifications_enabled?: boolean;
+    community_notifications_enabled?: boolean;
+    security_notifications_enabled?: boolean;
+    admin_notifications_enabled?: boolean;
+    push_notifications_enabled?: boolean;
+    email_notifications_enabled?: boolean;
   } | null;
 }
 
@@ -2145,6 +2153,22 @@ export async function signUpWithSupabase(
         if (profileError && !profileError.message.includes('duplicate key')) {
           console.error('[SariRemit Auth] Failed to create user profile during signup:', profileError);
           throw profileError;
+        }
+
+        // Dual-mode sync: save to local fallback list too so SRCMC is always perfectly in sync
+        const allUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+        if (!allUsers.some(u => u.id === authUserId || u.email.toLowerCase() === normalizedEmail)) {
+          allUsers.push({
+            id: authUserId,
+            email: normalizedEmail,
+            name: name,
+            phone: phone,
+            preferred_corridor_id: preferredCorridorId,
+            language: 'en',
+            onboarding_completed: false,
+            created_at: new Date().toISOString()
+          });
+          saveLocalStorageItem('sr_supabase_registered_users', allUsers);
         }
       }
     }
@@ -2444,6 +2468,22 @@ export async function handleGoogleCallback(): Promise<AuthSession> {
           throw createError;
         }
         profile = newProfile;
+
+        // Dual-mode sync: save to local fallback list too so SRCMC is always perfectly in sync
+        const allUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+        if (!allUsers.some(u => u.id === user.id || u.email.toLowerCase() === normalizedEmail)) {
+          allUsers.push({
+            id: user.id,
+            email: normalizedEmail,
+            name: name,
+            phone: phone,
+            preferred_corridor_id: 'sa-pk',
+            language: 'en',
+            onboarding_completed: false,
+            created_at: new Date().toISOString()
+          });
+          saveLocalStorageItem('sr_supabase_registered_users', allUsers);
+        }
       }
     }
 
@@ -2576,6 +2616,14 @@ export async function getCurrentSessionProfile(): Promise<AuthSession> {
               first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || undefined,
               first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || undefined,
               engagement_notifications_enabled: profile.engagement_notifications_enabled !== false,
+              achievement_notifications_enabled: profile.achievement_notifications_enabled !== false,
+              rate_notifications_enabled: profile.rate_notifications_enabled !== false,
+              transfer_notifications_enabled: profile.transfer_notifications_enabled !== false,
+              community_notifications_enabled: profile.community_notifications_enabled !== false,
+              security_notifications_enabled: profile.security_notifications_enabled !== false,
+              admin_notifications_enabled: profile.admin_notifications_enabled !== false,
+              push_notifications_enabled: !!profile.push_notifications_enabled,
+              email_notifications_enabled: !!profile.email_notifications_enabled,
             }
           };
           saveAuthSession(session);
@@ -2614,6 +2662,14 @@ export async function updateUserProfileInDb(profile: {
   first_transfer_experience_prompt_shown_at?: string;
   first_transfer_experience_completed_at?: string;
   engagement_notifications_enabled?: boolean;
+  achievement_notifications_enabled?: boolean;
+  rate_notifications_enabled?: boolean;
+  transfer_notifications_enabled?: boolean;
+  community_notifications_enabled?: boolean;
+  security_notifications_enabled?: boolean;
+  admin_notifications_enabled?: boolean;
+  push_notifications_enabled?: boolean;
+  email_notifications_enabled?: boolean;
 }): Promise<void> {
   const targetId = profile.id;
   const userEmail = (profile.email || getAuthSession().user?.email || '').trim().toLowerCase();
@@ -2637,6 +2693,14 @@ export async function updateUserProfileInDb(profile: {
         first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || null,
         first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || null,
         engagement_notifications_enabled: profile.engagement_notifications_enabled !== undefined ? profile.engagement_notifications_enabled : true,
+        achievement_notifications_enabled: profile.achievement_notifications_enabled !== undefined ? profile.achievement_notifications_enabled : true,
+        rate_notifications_enabled: profile.rate_notifications_enabled !== undefined ? profile.rate_notifications_enabled : true,
+        transfer_notifications_enabled: profile.transfer_notifications_enabled !== undefined ? profile.transfer_notifications_enabled : true,
+        community_notifications_enabled: profile.community_notifications_enabled !== undefined ? profile.community_notifications_enabled : true,
+        security_notifications_enabled: profile.security_notifications_enabled !== undefined ? profile.security_notifications_enabled : true,
+        admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : true,
+        push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : false,
+        email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : false,
         updated_at: new Date().toISOString()
       };
 
@@ -2658,6 +2722,58 @@ export async function updateUserProfileInDb(profile: {
           preferredCorridorId: profile.preferredCorridorId,
         }
       });
+
+      // Dual-mode sync: save updated profile to local fallback list too so SRCMC is always perfectly in sync
+      const allUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
+      const isExist = allUsers.some(u => u.id === targetId || u.email.toLowerCase() === userEmail);
+      let updatedUsers;
+      if (isExist) {
+        updatedUsers = allUsers.map(u => (u.id === targetId || u.email.toLowerCase() === userEmail)
+          ? {
+              ...u,
+              id: targetId,
+              name: profile.name,
+              phone: profile.phone,
+              preferred_corridor_id: profile.preferredCorridorId,
+              language: profile.language,
+              onboarding_completed: profile.onboarding_completed !== undefined ? profile.onboarding_completed : false,
+              primary_destination_country: profile.primary_destination_country,
+              primary_destination_currency: profile.primary_destination_currency,
+              preferred_channels: profile.preferred_channels || [],
+              estimated_monthly_send_amount: profile.estimated_monthly_send_amount,
+              rate_submissions_restricted: profile.rate_submissions_restricted,
+              first_transfer_recorded_at: profile.first_transfer_recorded_at || u.first_transfer_recorded_at,
+              first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || u.first_transfer_experience_prompt_shown_at,
+              first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || u.first_transfer_experience_completed_at,
+              engagement_notifications_enabled: profile.engagement_notifications_enabled !== undefined ? profile.engagement_notifications_enabled : u.engagement_notifications_enabled,
+              achievement_notifications_enabled: profile.achievement_notifications_enabled !== undefined ? profile.achievement_notifications_enabled : u.achievement_notifications_enabled,
+              rate_notifications_enabled: profile.rate_notifications_enabled !== undefined ? profile.rate_notifications_enabled : u.rate_notifications_enabled,
+              transfer_notifications_enabled: profile.transfer_notifications_enabled !== undefined ? profile.transfer_notifications_enabled : u.transfer_notifications_enabled,
+              community_notifications_enabled: profile.community_notifications_enabled !== undefined ? profile.community_notifications_enabled : u.community_notifications_enabled,
+              security_notifications_enabled: profile.security_notifications_enabled !== undefined ? profile.security_notifications_enabled : u.security_notifications_enabled,
+              admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : u.admin_notifications_enabled,
+              push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : u.push_notifications_enabled,
+              email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : u.email_notifications_enabled,
+              updated_at: new Date().toISOString()
+            }
+          : u
+        );
+      } else {
+        updatedUsers = [
+          ...allUsers,
+          {
+            id: targetId,
+            email: userEmail,
+            name: profile.name,
+            phone: profile.phone,
+            preferred_corridor_id: profile.preferredCorridorId,
+            language: profile.language,
+            onboarding_completed: profile.onboarding_completed || false,
+            created_at: new Date().toISOString()
+          }
+        ];
+      }
+      saveLocalStorageItem('sr_supabase_registered_users', updatedUsers);
     } catch (err) {
       console.warn('Failed to update Supabase user profile:', err);
       throw err;
@@ -2683,6 +2799,14 @@ export async function updateUserProfileInDb(profile: {
           first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || u.first_transfer_experience_prompt_shown_at,
           first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || u.first_transfer_experience_completed_at,
           engagement_notifications_enabled: profile.engagement_notifications_enabled !== undefined ? profile.engagement_notifications_enabled : u.engagement_notifications_enabled,
+          achievement_notifications_enabled: profile.achievement_notifications_enabled !== undefined ? profile.achievement_notifications_enabled : u.achievement_notifications_enabled,
+          rate_notifications_enabled: profile.rate_notifications_enabled !== undefined ? profile.rate_notifications_enabled : u.rate_notifications_enabled,
+          transfer_notifications_enabled: profile.transfer_notifications_enabled !== undefined ? profile.transfer_notifications_enabled : u.transfer_notifications_enabled,
+          community_notifications_enabled: profile.community_notifications_enabled !== undefined ? profile.community_notifications_enabled : u.community_notifications_enabled,
+          security_notifications_enabled: profile.security_notifications_enabled !== undefined ? profile.security_notifications_enabled : u.security_notifications_enabled,
+          admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : u.admin_notifications_enabled,
+          push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : u.push_notifications_enabled,
+          email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : u.email_notifications_enabled,
           updated_at: new Date().toISOString()
         }
       : u
@@ -2710,6 +2834,14 @@ export async function updateUserProfileInDb(profile: {
       first_transfer_experience_prompt_shown_at: profile.first_transfer_experience_prompt_shown_at || currentSession.user.first_transfer_experience_prompt_shown_at,
       first_transfer_experience_completed_at: profile.first_transfer_experience_completed_at || currentSession.user.first_transfer_experience_completed_at,
       engagement_notifications_enabled: profile.engagement_notifications_enabled !== undefined ? profile.engagement_notifications_enabled : currentSession.user.engagement_notifications_enabled,
+      achievement_notifications_enabled: profile.achievement_notifications_enabled !== undefined ? profile.achievement_notifications_enabled : currentSession.user.achievement_notifications_enabled,
+      rate_notifications_enabled: profile.rate_notifications_enabled !== undefined ? profile.rate_notifications_enabled : currentSession.user.rate_notifications_enabled,
+      transfer_notifications_enabled: profile.transfer_notifications_enabled !== undefined ? profile.transfer_notifications_enabled : currentSession.user.transfer_notifications_enabled,
+      community_notifications_enabled: profile.community_notifications_enabled !== undefined ? profile.community_notifications_enabled : currentSession.user.community_notifications_enabled,
+      security_notifications_enabled: profile.security_notifications_enabled !== undefined ? profile.security_notifications_enabled : currentSession.user.security_notifications_enabled,
+      admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : currentSession.user.admin_notifications_enabled,
+      push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : currentSession.user.push_notifications_enabled,
+      email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : currentSession.user.email_notifications_enabled,
     };
     saveAuthSession(currentSession);
   }
@@ -2875,7 +3007,12 @@ export async function fetchRecordedTransfers(userId: string): Promise<RecordedTr
           comparisonChannelId: item.comparison_channel_id,
           idempotencyKey: item.idempotency_key,
           recordedAt: item.recorded_at,
-          createdAt: item.created_at
+          createdAt: item.created_at,
+          status: item.status || 'recorded',
+          invalidatedAt: item.invalidated_at || null,
+          invalidationReason: item.invalidation_reason || null,
+          deletedAt: item.deleted_at || null,
+          updatedAt: item.updated_at || undefined
         }));
       }
       console.warn('Supabase fetch recorded transfers failed:', error);
@@ -2887,6 +3024,144 @@ export async function fetchRecordedTransfers(userId: string): Promise<RecordedTr
   // Fallback
   const list = getLocalStorageItem<RecordedTransfer[]>('sr_recorded_transfers', []);
   return list.filter(item => item.userId === userId).sort((a,b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime());
+}
+
+export type SavingsTrendPoint = {
+  date: string;
+  transferSavingsSAR: number;
+  cumulativeSavingsSAR: number;
+};
+
+export type SavingsLedgerSummary = {
+  transferCount: number;
+  monthlySavingsSAR: number;
+  lifetimeSavingsSAR: number;
+  averageSavingsPerTransferSAR: number;
+  monthlySendAmountSAR: number;
+  lifetimeSendAmountSAR: number;
+  currentContributorStatus: string;
+  recentTransfers: RecordedTransfer[];
+  monthlyTrend: SavingsTrendPoint[];
+};
+
+// Reusable SEPS savings service
+export async function getUserSavingsLedger(userId: string): Promise<{
+  transfers: RecordedTransfer[];
+  summary: SavingsLedgerSummary;
+  trend: SavingsTrendPoint[];
+}> {
+  // Query from public.user_transfer_savings as the only source of truth
+  const rawSavingsHistory = await fetchUserTransfers(userId);
+
+  // Helper to map UserTransferSavings to RecordedTransfer
+  const mappedTransfers: RecordedTransfer[] = rawSavingsHistory.map((t) => {
+    const corridor = CORRIDORS.find(c => c.id === t.corridor_id) || CORRIDORS[0];
+    const channelId = t.provider_id || t.channel_id || 'stc-pay';
+    const computedSavings = t.computed_savings !== undefined ? t.computed_savings : (t.savings_amount_sar !== undefined ? t.savings_amount_sar : 0);
+    const sendAmount = t.send_amount !== undefined ? t.send_amount : (t.send_amount_sar !== undefined ? t.send_amount_sar : 0);
+    const recipientAmount = t.recipient_amount !== undefined ? t.recipient_amount : (t.estimated_recipient_amount !== undefined ? t.estimated_recipient_amount : 0);
+    const exchangeRate = t.exchange_rate !== undefined ? t.exchange_rate : 1.0;
+    const transferFee = t.transfer_fee !== undefined ? t.transfer_fee : 0;
+    
+    return {
+      id: t.id || `trans-${Date.now()}`,
+      userId: t.user_id,
+      channelId: channelId,
+      corridorId: t.corridor_id,
+      sendAmountSAR: sendAmount,
+      destinationCurrency: t.destination_currency || corridor.currencyCode,
+      estimatedRecipientAmount: recipientAmount,
+      actualRecipientAmount: t.actual_recipient_amount !== undefined ? t.actual_recipient_amount : recipientAmount,
+      resolvedRate: exchangeRate,
+      rateSource: 'RRE',
+      transferFeeSAR: transferFee,
+      vatAmountSAR: 0,
+      otherChargesSAR: 0,
+      estimatedSavingsSAR: computedSavings,
+      savingsComparisonType: (t.comparison_type as any) || 'preferred_provider',
+      comparisonChannelId: t.comparison_label || 'STC Bank Wallet',
+      recordedAt: t.recorded_at || new Date().toISOString(),
+      createdAt: t.recorded_at || new Date().toISOString(),
+      status: t.transfer_status || t.status || 'recorded'
+    };
+  });
+
+  // Filter out deleted transfers
+  const activeTransfers = mappedTransfers.filter(t => !t.deletedAt && t.status !== 'deleted');
+
+  // Filter for valid savings statuses: 'recorded', 'completed', 'confirmed'
+  const isEligible = (status?: string) => {
+    if (!status) return true;
+    const s = status.toLowerCase();
+    return s === 'recorded' || s === 'completed' || s === 'confirmed';
+  };
+
+  const eligibleTransfers = activeTransfers.filter(t => isEligible(t.status));
+
+  let totalSaved = 0;
+  let totalVolume = 0;
+  let eligibleCount = 0;
+  
+  const now = new Date();
+  let monthlySavings = 0;
+  let monthlyVolume = 0;
+
+  eligibleTransfers.forEach((t) => {
+    const savings = Math.max(t.estimatedSavingsSAR || 0, 0);
+    totalSaved += savings;
+    totalVolume += t.sendAmountSAR;
+    eligibleCount++;
+
+    if (t.recordedAt) {
+      const d = new Date(t.recordedAt);
+      if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+        monthlySavings += savings;
+        monthlyVolume += t.sendAmountSAR;
+      }
+    }
+  });
+
+  const averageSavingsPerTransfer = eligibleCount > 0 ? (totalSaved / eligibleCount) : 0;
+
+  // Determine standard milestone tiers based on cumulative lifetime savings
+  let statusName = 'Bronze Contributor';
+  if (totalSaved >= 1500) statusName = 'Platinum Master';
+  else if (totalSaved >= 750) statusName = 'Gold Optimist';
+  else if (totalSaved >= 250) statusName = 'Silver Saver';
+
+  // Chronological sorting for cumulative trend
+  const chronological = [...eligibleTransfers].sort((a, b) => 
+    new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+  );
+
+  let runningSum = 0;
+  const trend: SavingsTrendPoint[] = chronological.map(t => {
+    const savings = Math.max(t.estimatedSavingsSAR || 0, 0);
+    runningSum += savings;
+    return {
+      date: t.recordedAt ? new Date(t.recordedAt).toLocaleDateString() : 'N/A',
+      transferSavingsSAR: savings,
+      cumulativeSavingsSAR: runningSum
+    };
+  });
+
+  const summary: SavingsLedgerSummary = {
+    transferCount: activeTransfers.length,
+    monthlySavingsSAR: monthlySavings,
+    lifetimeSavingsSAR: totalSaved,
+    averageSavingsPerTransferSAR: averageSavingsPerTransfer,
+    monthlySendAmountSAR: monthlyVolume,
+    lifetimeSendAmountSAR: totalVolume,
+    currentContributorStatus: statusName,
+    recentTransfers: activeTransfers,
+    monthlyTrend: trend
+  };
+
+  return {
+    transfers: activeTransfers,
+    summary,
+    trend
+  };
 }
 
 // 2. Save recorded transfer and return newly earned achievements
@@ -2922,7 +3197,11 @@ export async function saveRecordedTransfer(transfer: RecordedTransfer): Promise<
         idempotency_key: transfer.idempotencyKey || null,
         recorded_at: transfer.recordedAt,
         created_at: transfer.createdAt,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        status: transfer.status || 'recorded',
+        invalidated_at: transfer.invalidatedAt || null,
+        invalidation_reason: transfer.invalidationReason || null,
+        deleted_at: transfer.deletedAt || null
       };
 
       const { error } = await supabaseClient.from('recorded_transfers').insert(dbPayload);
@@ -2936,7 +3215,12 @@ export async function saveRecordedTransfer(transfer: RecordedTransfer): Promise<
 
   // Save to Local Storage anyway
   const list = getLocalStorageItem<RecordedTransfer[]>('sr_recorded_transfers', []);
-  list.push(transfer);
+  const localRecord = {
+    ...transfer,
+    status: transfer.status || 'recorded',
+    updatedAt: new Date().toISOString()
+  };
+  list.push(localRecord);
   saveLocalStorageItem('sr_recorded_transfers', list);
 
   // SECTION 15 Integration: Also save to old user_transfer_savings so existing savings widgets remain perfectly in sync
@@ -2973,6 +3257,27 @@ export async function saveRecordedTransfer(transfer: RecordedTransfer): Promise<
   // Recalculate will have already saved new achievements
   const allAchievements = await fetchUserAchievements(transfer.userId);
   const newlyAwarded = allAchievements.filter(ach => !prevAchievements.some(p => p.achievementId === ach.achievementId));
+
+  // SNS transfer notifications integration
+  try {
+    const { createNotification } = await import('./notificationService');
+    await createNotification({
+      userId: transfer.userId,
+      audienceType: 'user',
+      category: 'transfer',
+      priority: 'normal',
+      title: 'Transfer recorded',
+      message: 'Your transfer was saved and your estimated savings were updated.',
+      actionLabel: 'View savings',
+      actionUrl: '/savings',
+      sourceSystem: 'SEPS',
+      sourceEvent: 'transfer_recorded',
+      sourceId: transfer.id,
+      idempotencyKey: `transfer_recorded:${transfer.id}`
+    });
+  } catch (notifErr) {
+    console.warn('[SNS] Failed to send transfer confirmation notification:', notifErr);
+  }
 
   return { success: true, newAchievements: newlyAwarded, firstTime: isFirstTime };
 }
@@ -3166,10 +3471,15 @@ export async function fetchUserProgress(userId: string): Promise<UserProgress> {
 // 9. Recalculate user progress & award achievements
 export async function recalculateUserProgress(userId: string): Promise<UserProgress> {
   const transfers = await fetchRecordedTransfers(userId);
-  const transferCount = transfers.length;
+  const activeTransfers = transfers.filter(t => !t.deletedAt && t.status !== 'deleted');
+  const validTransfersForSavings = activeTransfers.filter(t => {
+    const s = t.status ? t.status.toLowerCase() : 'recorded';
+    return s === 'recorded' || s === 'completed' || s === 'corrected';
+  });
+  const transferCount = activeTransfers.length;
 
   // Calculate savings
-  const lifetimeSavings = transfers.reduce((acc, t) => acc + (t.estimatedSavingsSAR || 0), 0);
+  const lifetimeSavings = validTransfersForSavings.reduce((acc, t) => acc + (t.estimatedSavingsSAR || 0), 0);
 
   // Calculate approved community submissions
   let approvedContributions = 0;
@@ -3368,6 +3678,22 @@ export interface UserTransferSavings {
   recipient_amount: number;
   transfer_status: string;
   recorded_at?: string;
+  provider_id?: string;
+  channel_id?: string;
+  provider_name?: string;
+  destination_country?: string;
+  destination_currency?: string;
+  send_amount_sar?: number;
+  estimated_recipient_amount?: number;
+  actual_recipient_amount?: number;
+  savings_amount_sar?: number;
+  savings_amount_destination?: number;
+  comparison_type?: string;
+  comparison_label?: string;
+  created_at?: string;
+  status?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
 }
 
 const initialTransferSavings: UserTransferSavings[] = [
@@ -3381,7 +3707,13 @@ const initialTransferSavings: UserTransferSavings[] = [
     computed_savings: 45.2,
     recipient_amount: 37540,
     transfer_status: 'completed',
-    recorded_at: new Date(Date.now() - 86400000 * 5).toISOString()
+    recorded_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    provider_id: 'stc-pay',
+    channel_id: 'stc-pay',
+    provider_name: 'STC Pay',
+    savings_amount_sar: 45.2,
+    comparison_type: 'preferred_provider',
+    comparison_label: 'STC Bank Wallet'
   }
 ];
 
@@ -3412,17 +3744,45 @@ export async function saveUserTransfer(transfer: UserTransferSavings): Promise<v
 
   if (supabaseClient) {
     try {
+      // Attempt insert with all extended fields
       const { error } = await supabaseClient
         .from('user_transfer_savings')
         .insert(newTransfer);
-      if (error) console.error('Failed to insert transfer into Supabase:', error);
+      
+      if (error) {
+        console.warn('Failed to insert transfer with all fields, falling back to core fields:', error);
+        // Fallback: only use columns guaranteed in standard schema
+        const coreTransfer = {
+          id: newTransfer.id,
+          user_id: newTransfer.user_id,
+          corridor_id: newTransfer.corridor_id,
+          send_amount: newTransfer.send_amount,
+          exchange_rate: newTransfer.exchange_rate,
+          transfer_fee: newTransfer.transfer_fee,
+          computed_savings: newTransfer.computed_savings,
+          recipient_amount: newTransfer.recipient_amount,
+          transfer_status: newTransfer.transfer_status,
+          recorded_at: newTransfer.recorded_at
+        };
+        const { error: coreError } = await supabaseClient
+          .from('user_transfer_savings')
+          .insert(coreTransfer);
+        if (coreError) {
+          console.error('Failed to insert core transfer:', coreError);
+        }
+      }
     } catch (err) {
       console.warn('Supabase insert transfer error:', err);
     }
   }
 
   const allTransfers = getLocalStorageItem<UserTransferSavings[]>('sr_user_transfer_savings', initialTransferSavings);
-  allTransfers.push(newTransfer);
+  const index = allTransfers.findIndex(t => t.id === newTransfer.id);
+  if (index >= 0) {
+    allTransfers[index] = newTransfer;
+  } else {
+    allTransfers.push(newTransfer);
+  }
   saveLocalStorageItem('sr_user_transfer_savings', allTransfers);
 }
 
@@ -3929,7 +4289,9 @@ export async function fetchRemittanceChannels(): Promise<any[]> {
           notes: r.notes,
           createdBy: r.created_by,
           createdAt: r.created_at,
-          updatedAt: r.updated_at
+          updatedAt: r.updated_at,
+          brandAssetId: r.brand_asset_id,
+          brandingStatus: r.branding_status || 'placeholder'
         }));
         saveLocalStorageItem<any[]>(CHANNELS_KEY, mapped);
         return mapped;
@@ -3977,7 +4339,9 @@ export async function saveRemittanceChannel(channel: any): Promise<any> {
         notes: updatedChannel.notes,
         created_by: updatedChannel.createdBy,
         created_at: updatedChannel.createdAt,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        brand_asset_id: updatedChannel.brandAssetId || null,
+        branding_status: updatedChannel.brandingStatus || 'placeholder'
       };
       await supabaseClient.from('remittance_channels').upsert(dbRow);
     } catch (err) {
@@ -4297,5 +4661,294 @@ export async function syncSupabaseToLocal(): Promise<void> {
     console.warn('Failed to sync database to localStorage:', err);
   }
 }
+
+// 8. Brand Asset Manager (BAM) Methods & Fallback data
+export const BRAND_ASSETS_KEY = 'sr_brand_assets';
+export const BRAND_PERMISSIONS_KEY = 'sr_brand_permissions';
+
+export const initialBrandAssets: BrandAsset[] = [
+  {
+    id: 'ba-stc-pay',
+    asset_type: 'provider_logo',
+    asset_key: 'stc-pay',
+    asset_name: 'STC Pay Logo',
+    owner_type: 'provider',
+    provider_code: 'stc-pay',
+    storage_path: 'providers/stc-pay/stc-pay-logo.svg',
+    public_url: '',
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#9333ea',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-urpay',
+    asset_type: 'provider_logo',
+    asset_key: 'urpay',
+    asset_name: 'Urpay Logo',
+    owner_type: 'provider',
+    provider_code: 'urpay',
+    storage_path: 'providers/urpay/urpay-logo.svg',
+    public_url: '',
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#4f46e5',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-mobily-pay',
+    asset_type: 'provider_logo',
+    asset_key: 'mobily-pay',
+    asset_name: 'Mobily Pay Logo',
+    owner_type: 'provider',
+    provider_code: 'mobily-pay',
+    storage_path: 'providers/mobily-pay/mobily-pay-logo.svg',
+    public_url: '',
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#0ea5e9',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-enjaz',
+    asset_type: 'provider_logo',
+    asset_key: 'enjaz',
+    asset_name: 'Enjaz Logo',
+    owner_type: 'provider',
+    provider_code: 'enjaz',
+    storage_path: 'providers/enjaz/enjaz-logo.svg',
+    public_url: '',
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#d97706',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-quickpay',
+    asset_type: 'provider_logo',
+    asset_key: 'quickpay',
+    asset_name: 'QuickPay Logo',
+    owner_type: 'provider',
+    provider_code: 'quickpay',
+    storage_path: 'providers/quickpay/quickpay-logo.svg',
+    public_url: '',
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#059669',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-western-union',
+    asset_type: 'provider_logo',
+    asset_key: 'western-union',
+    asset_name: 'Western Union Logo',
+    owner_type: 'provider',
+    provider_code: 'western-union',
+    storage_path: 'providers/western-union/western-union-logo.svg',
+    public_url: '',
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#eab308',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-al-rajhi-tahweel',
+    asset_type: 'provider_logo',
+    asset_key: 'al-rajhi-tahweel',
+    asset_name: 'Al Rajhi Tahweel Logo',
+    owner_type: 'provider',
+    provider_code: 'al-rajhi-tahweel',
+    storage_path: 'providers/al-rajhi-tahweel/tahweel-logo.svg',
+    public_url: '',
+    approval_status: 'placeholder',
+    status: 'active',
+    version: 1,
+    primary_color: '#1e293b',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+];
+
+export async function fetchBrandAssets(): Promise<BrandAsset[]> {
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.from('brand_assets').select('*');
+      if (!error && data) {
+        saveLocalStorageItem<BrandAsset[]>(BRAND_ASSETS_KEY, data as BrandAsset[]);
+        return data as BrandAsset[];
+      }
+    } catch (err) {
+      console.warn('Supabase fetch brand assets failed, falling back:', err);
+    }
+  }
+  return getLocalStorageItem<BrandAsset[]>(BRAND_ASSETS_KEY, initialBrandAssets);
+}
+
+export function getBrandAssetsSync(): BrandAsset[] {
+  return getLocalStorageItem<BrandAsset[]>(BRAND_ASSETS_KEY, initialBrandAssets);
+}
+
+export async function saveBrandAsset(asset: BrandAsset): Promise<BrandAsset> {
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('brand_assets').upsert(asset);
+    } catch (err) {
+      console.warn('Supabase save brand asset failed, falling back:', err);
+    }
+  }
+  const current = getLocalStorageItem<BrandAsset[]>(BRAND_ASSETS_KEY, initialBrandAssets);
+  const filtered = current.filter(a => a.id !== asset.id);
+  const updated = [asset, ...filtered];
+  saveLocalStorageItem(BRAND_ASSETS_KEY, updated);
+  return asset;
+}
+
+export async function deleteBrandAsset(id: string): Promise<void> {
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('brand_assets').delete().eq('id', id);
+    } catch (err) {
+      console.warn('Supabase delete brand asset failed, falling back:', err);
+    }
+  }
+  const current = getLocalStorageItem<BrandAsset[]>(BRAND_ASSETS_KEY, initialBrandAssets);
+  const updated = current.filter(a => a.id !== id);
+  saveLocalStorageItem(BRAND_ASSETS_KEY, updated);
+}
+
+export async function fetchBrandAssetPermissions(): Promise<BrandAssetPermission[]> {
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.from('brand_asset_permissions').select('*');
+      if (!error && data) {
+        saveLocalStorageItem<BrandAssetPermission[]>(BRAND_PERMISSIONS_KEY, data as BrandAssetPermission[]);
+        return data as BrandAssetPermission[];
+      }
+    } catch (err) {
+      console.warn('Supabase fetch brand asset permissions failed, falling back:', err);
+    }
+  }
+  return getLocalStorageItem<BrandAssetPermission[]>(BRAND_PERMISSIONS_KEY, []);
+}
+
+export async function saveBrandAssetPermission(permission: BrandAssetPermission): Promise<BrandAssetPermission> {
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('brand_asset_permissions').upsert(permission);
+    } catch (err) {
+      console.warn('Supabase save brand asset permission failed, falling back:', err);
+    }
+  }
+  const current = getLocalStorageItem<BrandAssetPermission[]>(BRAND_PERMISSIONS_KEY, []);
+  const filtered = current.filter(p => p.id !== permission.id);
+  const updated = [permission, ...filtered];
+  saveLocalStorageItem(BRAND_PERMISSIONS_KEY, updated);
+  return permission;
+}
+
+export async function logBamAudit(action: string, assetId: string, metadata: any, userEmail: string = 'admin@sariremit.com'): Promise<void> {
+  await logAuditAction(userEmail, action, 'brand_asset', assetId, metadata);
+}
+
+export function resolveProviderBranding(channel: any, assetsList?: BrandAsset[]): {
+  public_url: string;
+  light_url: string;
+  dark_url: string;
+  approval_status: string;
+  primary_color?: string;
+  secondary_color?: string;
+  logoText: string;
+} {
+  const assets = assetsList || getBrandAssetsSync();
+  const providerCode = channel?.providerCode || channel?.provider_code || channel?.id || '';
+  const brandAssetId = channel?.brandAssetId || channel?.brand_asset_id;
+
+  // Try finding by brandAssetId first
+  let asset = assets.find(a => a.id === brandAssetId && a.status === 'active');
+  
+  // Try fallback by providerCode if not matched by ID
+  if (!asset && providerCode) {
+    asset = assets.find(a => a.provider_code === providerCode && a.status === 'active');
+  }
+
+  if (asset) {
+    if (asset.approval_status === 'official') {
+      return {
+        public_url: asset.public_url || '',
+        light_url: asset.light_url || asset.public_url || '',
+        dark_url: asset.dark_url || asset.public_url || '',
+        approval_status: 'official',
+        primary_color: asset.primary_color || undefined,
+        secondary_color: asset.secondary_color || undefined,
+        logoText: channel?.displayName?.substring(0, 2) || channel?.providerName?.substring(0, 2) || providerCode.substring(0, 2).toUpperCase()
+      };
+    }
+    if (asset.approval_status === 'placeholder') {
+      return {
+        public_url: asset.public_url || '',
+        light_url: asset.light_url || asset.public_url || '',
+        dark_url: asset.dark_url || asset.public_url || '',
+        approval_status: 'placeholder',
+        primary_color: asset.primary_color || undefined,
+        secondary_color: asset.secondary_color || undefined,
+        logoText: channel?.displayName?.substring(0, 2) || channel?.providerName?.substring(0, 2) || providerCode.substring(0, 2).toUpperCase()
+      };
+    }
+  }
+
+  // Fallback to legacy logo_url if present
+  if (channel?.logoUrl || channel?.logo_url) {
+    return {
+      public_url: channel.logoUrl || channel.logo_url,
+      light_url: channel.logoUrl || channel.logo_url,
+      dark_url: channel.logoUrl || channel.logo_url,
+      approval_status: 'legacy',
+      primary_color: undefined,
+      logoText: channel?.displayName?.substring(0, 2) || channel?.providerName?.substring(0, 2) || providerCode.substring(0, 2).toUpperCase()
+    };
+  }
+
+  // Fallback to SDS Fallback initials
+  return {
+    public_url: '',
+    light_url: '',
+    dark_url: '',
+    approval_status: 'fallback',
+    primary_color: getFallbackColor(providerCode),
+    logoText: channel?.displayName?.substring(0, 2) || channel?.providerName?.substring(0, 2) || providerCode.substring(0, 2).toUpperCase()
+  };
+}
+
+function getFallbackColor(providerCode: string): string {
+  switch (providerCode?.toLowerCase()) {
+    case 'stc-pay': return '#9333ea';
+    case 'urpay': return '#4f46e5';
+    case 'mobily-pay': return '#0ea5e9';
+    case 'enjaz': return '#d97706';
+    case 'quickpay': return '#059669';
+    case 'western-union': return '#eab308';
+    default: return '#10B981';
+  }
+}
+
 
 

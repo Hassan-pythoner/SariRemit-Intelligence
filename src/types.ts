@@ -108,6 +108,59 @@ export interface UserProfile {
   first_transfer_experience_prompt_shown_at?: string;
   first_transfer_experience_completed_at?: string;
   engagement_notifications_enabled?: boolean;
+  achievement_notifications_enabled?: boolean;
+  rate_notifications_enabled?: boolean;
+  transfer_notifications_enabled?: boolean;
+  community_notifications_enabled?: boolean;
+  security_notifications_enabled?: boolean;
+  admin_notifications_enabled?: boolean;
+  push_notifications_enabled?: boolean;
+  email_notifications_enabled?: boolean;
+}
+
+export type NotificationCategory =
+  | "rate"
+  | "recommendation"
+  | "transfer"
+  | "savings"
+  | "achievement"
+  | "community_submission"
+  | "verification"
+  | "security"
+  | "channel"
+  | "corridor"
+  | "override"
+  | "admin"
+  | "system";
+
+export type NotificationPriority =
+  | "critical"
+  | "high"
+  | "normal"
+  | "low";
+
+export interface Notification {
+  id: string;
+  userId?: string;
+  audienceType: 'user' | 'all_users' | 'corridor' | 'channel' | 'srcmc' | 'srcmc_permission' | 'main_admin' | string;
+  category: NotificationCategory;
+  priority: NotificationPriority;
+  title: string;
+  message: string;
+  actionLabel?: string;
+  actionUrl?: string;
+  payload: Record<string, any>;
+  sourceSystem?: string;
+  sourceEvent?: string;
+  sourceId?: string;
+  isRead: boolean;
+  readAt?: string;
+  isArchived: boolean;
+  archivedAt?: string;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  idempotencyKey?: string;
 }
 
 export interface TranslationDict {
@@ -353,6 +406,11 @@ export interface RecordedTransfer {
   idempotencyKey?: string | null;
   recordedAt: string;
   createdAt: string;
+  status?: string;
+  invalidatedAt?: string | null;
+  invalidationReason?: string | null;
+  deletedAt?: string | null;
+  updatedAt?: string;
 }
 
 export interface UserExperienceFeedback {
@@ -400,6 +458,86 @@ export interface UserProgress {
   latestAchievementCode?: string | null;
   updatedAt: string;
 }
+
+export type BrandAssetType =
+  | "sariremit_logo"
+  | "sariremit_monogram"
+  | "provider_logo"
+  | "provider_logo_dark"
+  | "provider_logo_light"
+  | "country_flag"
+  | "corridor_icon"
+  | "badge"
+  | "achievement_icon"
+  | "illustration"
+  | "notification_icon"
+  | "partner_logo"
+  | "marketing_asset"
+  | "theme_asset"
+  | "other";
+
+export type BrandAssetStatus =
+  | "active"
+  | "inactive"
+  | "pending_approval"
+  | "archived";
+
+export type BrandingApprovalStatus =
+  | "official"
+  | "placeholder"
+  | "pending_permission"
+  | "restricted";
+
+export interface BrandAsset {
+  id: string;
+  asset_type: BrandAssetType;
+  asset_key: string;
+  asset_name: string;
+  owner_type: string;
+  owner_id?: string | null;
+  provider_code?: string | null;
+  country_code?: string | null;
+  storage_path: string;
+  file_name?: string | null;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
+  width_px?: number | null;
+  height_px?: number | null;
+  public_url?: string | null;
+  light_url?: string | null;
+  dark_url?: string | null;
+  thumbnail_url?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  approval_status: BrandingApprovalStatus;
+  status: BrandAssetStatus;
+  alt_text?: string | null;
+  version: number;
+  metadata: Record<string, any>;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string | null;
+}
+
+export interface BrandAssetPermission {
+  id: string;
+  brand_asset_id: string;
+  permission_status: string;
+  permission_source?: string;
+  permission_reference?: string;
+  granted_at?: string;
+  expires_at?: string;
+  restrictions?: string;
+  contact_name?: string;
+  contact_email?: string;
+  notes?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 
 
 

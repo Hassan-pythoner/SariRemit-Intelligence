@@ -10,7 +10,7 @@ import { getAuthSession, checkIsAdminSync, syncSupabaseToLocal } from './service
 import { UserProfile as UserProfileType, TranslationDict } from './types';
 import Navigation from './components/Navigation';
 import LandingPage from './components/LandingPage';
-import logoImg from './assets/images/sariremit_logo_1783671155763.jpg';
+import { SariRemitLogo } from './components/SdsBamComponents';
 import CompareRates from './components/CompareRates';
 import SubmitRate from './components/SubmitRate';
 import CorridorInsights from './components/CorridorInsights';
@@ -35,6 +35,7 @@ export default function App() {
     const session = getAuthSession();
     if (session.user) {
       return {
+        id: session.user.id,
         name: session.user.name,
         email: session.user.email,
         phone: session.user.phone,
@@ -82,6 +83,7 @@ export default function App() {
             if (session && session.user) {
               console.log('[SariRemit Auth Callback] Google login successful. User ID:', session.user.id);
               const resolvedProfile = {
+                id: session.user.id,
                 name: session.user.name,
                 email: session.user.email,
                 phone: session.user.phone,
@@ -132,6 +134,7 @@ export default function App() {
           console.log('[SariRemit Mount Check] Onboarding Status:', session.user.onboarding_completed);
           
           const resolvedProfile = {
+            id: session.user.id,
             name: session.user.name,
             email: session.user.email,
             phone: session.user.phone,
@@ -285,13 +288,8 @@ export default function App() {
     return (
       <div className="min-h-screen bg-sds-bg flex flex-col items-center justify-center font-sans">
         <div className="flex flex-col items-center gap-4">
-          <img 
-            src={logoImg} 
-            alt="SariRemit Logo" 
-            className="h-16 w-auto object-contain animate-pulse rounded-2xl" 
-            referrerPolicy="no-referrer"
-          />
-          <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest">
+          <SariRemitLogo variant="primary" size="xl" surface="dark" showSlogan={true} className="animate-pulse" />
+          <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest mt-2">
             <div className="w-2 h-2 rounded-full bg-sds-secondary animate-ping" />
             Loading App Session & Access Control...
           </div>

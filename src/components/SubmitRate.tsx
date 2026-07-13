@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TranslationDict, Corridor, Provider, RateSubmission } from '../types';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
 import { saveCommunitySubmission, getAuthSession, fetchCommunitySubmissions, supabaseClient } from '../services/supabaseService';
+import { createNotification } from '../services/notificationService';
 import { 
   PlusCircle, Upload, CheckCircle2, ShieldAlert, Sparkles, 
   Trash2, Image as ImageIcon, ArrowRight, ArrowLeft, RefreshCw,
   MapPin, Wallet, Landmark, HelpCircle, Check, Info, Calendar
 } from 'lucide-react';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
+import { CountryFlag, ProviderLogo } from './SdsBamComponents';
 
 interface SubmitRateProps {
   language: 'en' | 'ar';
@@ -331,6 +333,30 @@ export default function SubmitRate({
         screenshot_hash: `hash-${selectedFile.name.replace(/[^a-zA-Z0-9]/g, '')}-${selectedFile.size}`,
         evidence_status: 'pending'
       });
+
+      // Trigger notification inside SNS
+      if (session.user) {
+        try {
+          await createNotification({
+            userId: session.user.id,
+            audienceType: 'user',
+            category: 'community_submission',
+            priority: 'normal',
+            title: language === 'en' ? 'Rate Evidence Received' : 'تم استلام دليل السعر',
+            message: language === 'en' 
+              ? `Your rate submission for ${activeProvider.name} (${activeCorridor.fromCountry} → ${activeCorridor.toCountry}) is pending verification.`
+              : `إرسال سعر ${activeProvider.name} (${activeCorridor.fromCountry} ← ${activeCorridor.toCountry}) قيد التحقق الآن.`,
+            actionLabel: language === 'en' ? 'View Profile' : 'عرض الملف',
+            actionUrl: '/profile',
+            payload: { providerId, rate: parsedRate },
+            sourceSystem: 'SIC',
+            sourceEvent: 'rate_submission_created',
+            sourceId: `sub_event_${Date.now()}`
+          });
+        } catch (notifErr) {
+          console.warn('[SNS] Failed to trigger submission notification:', notifErr);
+        }
+      }
 
       setIsUploading(false);
       setSuccess(true);
@@ -890,8 +916,10 @@ export default function SubmitRate({
 
                         <div className="text-xs text-left">
                           <div className="flex justify-between items-center">
-                            <span className="font-black text-white uppercase text-[11px] leading-none">
-                              {sub.providerName} ({corr.flag})
+                            <span className="font-black text-white uppercase text-[11px] leading-none flex items-center gap-1.5">
+                              <CountryFlag country={corr.toCountry} currency={corr.currencyCode} size="xs" />
+                              <ProviderLogo channel={{ providerCode: sub.providerId, displayName: sub.providerName }} size="xs" shape="circle" />
+                              <span>{sub.providerName}</span>
                             </span>
                             <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
                               sub.status === 'approved' 

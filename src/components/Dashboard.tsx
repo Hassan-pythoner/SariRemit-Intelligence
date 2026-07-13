@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { TranslationDict, UserProfile } from '../types';
+import { TranslationDict, UserProfile, RecordedTransfer } from '../types';
 import { CORRIDORS } from '../services/ratesService';
-import { getRecommendations, fetchUserTransfers, UserTransferSavings } from '../services/supabaseService';
+import { getRecommendations, getUserSavingsLedger } from '../services/supabaseService';
 import { slf } from '../services/slfService';
 import { 
   Sparkles, ArrowLeftRight, TrendingUp, Landmark, ShieldCheck, Zap, 
@@ -9,6 +9,7 @@ import {
   Star, Check, ChevronRight, RefreshCw, User, CheckCircle2, Globe
 } from 'lucide-react';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect, SDSSisGauge } from './Sds';
+import { ProviderLogo, ProviderBrandBlock, CountryFlag, BrandIllustration } from './SdsBamComponents';
 
 interface DashboardProps {
   language: 'en' | 'ar';
@@ -40,43 +41,27 @@ export default function Dashboard({
   const [confidence, setConfidence] = useState<string>('High');
   const [lastUpdated, setLastUpdated] = useState<string>('3 minutes ago');
   const [estimatedSavings, setEstimatedSavings] = useState<number>(35);
+  const [recommendedChannel, setRecommendedChannel] = useState<any>(null);
 
   // User Transfer history stats
-  const [transfers, setTransfers] = useState<UserTransferSavings[]>([]);
+  const [transfers, setTransfers] = useState<RecordedTransfer[]>([]);
   const [monthlySavings, setMonthlySavings] = useState<number>(0);
   const [lifetimeSavings, setLifetimeSavings] = useState<number>(0);
-  const [lastTransfer, setLastTransfer] = useState<UserTransferSavings | null>(null);
+  const [lastTransfer, setLastTransfer] = useState<RecordedTransfer | null>(null);
 
   const activeCorridor = CORRIDORS.find(c => c.id === selectedCorridorId) || CORRIDORS[0];
 
-  // Load user transfers and calculate stats
+  // Load user transfers and calculate stats using unified SEPS ledger service
   useEffect(() => {
     let isMounted = true;
     
-    fetchUserTransfers(profile.email)
-      .then((history) => {
+    getUserSavingsLedger(profile.id)
+      .then(({ transfers: activeTransfers, summary }) => {
         if (!isMounted) return;
-        setTransfers(history);
-        if (history.length > 0) {
-          const totalSaved = history.reduce((acc, t) => acc + t.computed_savings, 0);
-          setLifetimeSavings(totalSaved);
-
-          const now = new Date();
-          const currentMonthSavings = history
-            .filter((t) => {
-              if (!t.recorded_at) return false;
-              const date = new Date(t.recorded_at);
-              return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-            })
-            .reduce((acc, t) => acc + t.computed_savings, 0);
-          
-          setMonthlySavings(currentMonthSavings > 0 ? currentMonthSavings : (profile.estimated_monthly_send_amount ? profile.estimated_monthly_send_amount * 0.045 : 128));
-          setLastTransfer(history[0]);
-        } else {
-          setMonthlySavings(128);
-          setLifetimeSavings(1490);
-          setLastTransfer(null);
-        }
+        setTransfers(activeTransfers);
+        setLifetimeSavings(summary.lifetimeSavingsSAR);
+        setMonthlySavings(summary.monthlySavingsSAR);
+        setLastTransfer(activeTransfers[0] || null);
       })
       .catch((err) => console.error('Failed to load transfers:', err));
 
@@ -108,6 +93,13 @@ export default function Dashboard({
           if (bestOptionDetails) {
             setSisScore(bestOptionDetails.sis.sis_score);
             setSisLabel(bestOptionDetails.sis.sis_label);
+            setRecommendedChannel(bestOptionDetails.resolved);
+          } else {
+            setRecommendedChannel({
+              provider_code: res.bestOption.best_provider_id,
+              displayName: res.bestOption.best_provider_name,
+              providerName: res.bestOption.best_provider_name
+            });
           }
         }
         setIsLoading(false);
@@ -147,6 +139,12 @@ export default function Dashboard({
         ? `${bestProvider} هو الخيار الأمثل حالياً، ولكن السوق متقلب. ننصح بالتحقق المستمر.`
         : `${bestProvider} is currently the optimal choice, but the market is volatile. Regular checks recommended.`;
     }
+  };
+
+  const recommendedChannelObj = recommendedChannel || {
+    provider_code: 'stc-pay',
+    displayName: bestProvider,
+    providerName: bestProvider
   };
 
   return (
@@ -253,12 +251,12 @@ export default function Dashboard({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 bg-[#071A35] px-3 py-1.5 rounded-xl border border-sds-border">
-                  <Sparkles className="w-4 h-4 text-[#F59E0B]" />
-                  <span className="text-[11px] font-black text-[#F59E0B] uppercase tracking-wider">
-                    {bestProvider} {isRtl ? 'موصى به' : 'Recommended'}
-                  </span>
-                </div>
+                <ProviderBrandBlock
+                  channel={recommendedChannelObj}
+                  surface="dark"
+                  showVerification={true}
+                  className="bg-[#071A35]/60 border-sds-border/60 shrink-0 min-w-[200px]"
+                />
               </div>
 
               {/* HUGE EXPECTED FAMILY PAYOUT DISPLAY */}
@@ -422,7 +420,8 @@ export default function Dashboard({
                     {transfers.slice(0, 3).map((item) => (
                       <div key={item.id} className="p-3 bg-[#091F3E] rounded-xl border border-sds-border/40 flex items-center justify-between text-xs">
                         <div className="flex items-center gap-3">
-                          <span className="text-xl">🇸🇦</span>
+                          <CountryFlag country="" currency={item.currency_code} size="xs" />
+                          <ProviderLogo channel={{ providerCode: item.provider_id, displayName: item.provider_name }} size="xs" shape="circle" />
                           <div>
                             <span className="font-extrabold text-white block">
                               {item.send_amount} SAR → {item.recipient_amount.toLocaleString()} {item.currency_code}

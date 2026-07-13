@@ -4,7 +4,8 @@ import {
   ArrowLeftRight, Bell, Compass, PlusCircle, User, UserPlus, Globe2, Sparkles, 
   LayoutDashboard, PiggyBank, Info, CheckCircle2, Home, Plus, Menu, X, ArrowRight, ShieldCheck
 } from 'lucide-react';
-import logoImg from '../assets/images/sariremit_logo_1783671155763.jpg';
+import { SariRemitLogo } from './SdsBamComponents';
+import NotificationCenter from './NotificationCenter';
 
 interface NavigationProps {
   activeTab: string;
@@ -107,20 +108,7 @@ export default function Navigation({
             onClick={() => setActiveTab('landing')} 
             className={`flex items-center gap-3 cursor-pointer transition-transform active:scale-98 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}
           >
-            <img 
-              src={logoImg} 
-              alt="SariRemit Logo" 
-              className="h-9 w-auto object-contain rounded-lg"
-              referrerPolicy="no-referrer"
-            />
-            <div className={`flex flex-col ${isRtl ? 'items-end' : 'items-start'}`}>
-              <span className="font-sans font-black text-sm text-white tracking-tight leading-none uppercase">
-                SARIREMIT
-              </span>
-              <span className="text-[9px] text-amber-400 font-bold uppercase tracking-widest mt-0.5 font-mono">
-                Remit Intelligence
-              </span>
-            </div>
+            <SariRemitLogo variant="primary" size="md" surface="dark" showSlogan={true} />
           </div>
 
           {/* 2. CENTER NAVIGATION */}
@@ -167,17 +155,11 @@ export default function Navigation({
             
             {/* Notification Bell (Only when logged in) */}
             {isLoggedIn && (
-              <button 
-                onClick={() => setActiveTab('profile')}
-                className="relative p-1.5 text-slate-300 hover:text-amber-400 transition-all rounded-lg bg-slate-900 border border-slate-800 cursor-pointer hover:scale-105"
-                title="Notifications"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1 right-1 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                </span>
-              </button>
+              <NotificationCenter 
+                userId={profile.id} 
+                language={language} 
+                setActiveTab={setActiveTab} 
+              />
             )}
 
             {/* Language Toggle */}

@@ -13,7 +13,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Corridor, RecordedTransfer } from '../types';
-import { saveRecordedTransfer } from '../services/supabaseService';
+import { saveRecordedTransfer, ACHIEVEMENT_DEFINITIONS } from '../services/supabaseService';
+import { createNotification } from '../services/notificationService';
 
 interface RecordTransferModalProps {
   isOpen: boolean;
@@ -164,6 +165,70 @@ export const RecordTransferModal: React.FC<RecordTransferModalProps> = ({
 
       const result = await saveRecordedTransfer(record);
       if (result.success) {
+        // Trigger transfer notification in SNS
+        try {
+          await createNotification({
+            userId,
+            audienceType: 'user',
+            category: 'transfer',
+            priority: 'normal',
+            title: isRtl ? 'تم تسجيل الحوالة بنجاح' : 'Transfer Recorded Successfully',
+            message: isRtl 
+              ? `لقد سجلت تحويلاً بقيمة ${sendAmountSAR} ر.س إلى ${corridor.toCountry}. التوفير المقدر: ${estimatedSavingsSAR > 0 ? estimatedSavingsSAR.toFixed(2) : '0'} ر.س.`
+              : `You recorded a transfer of ${sendAmountSAR} SAR to ${corridor.toCountry}. Estimated savings: ${estimatedSavingsSAR > 0 ? estimatedSavingsSAR.toFixed(2) : '0'} SAR.`,
+            actionLabel: isRtl ? 'عرض المدخرات' : 'View Savings',
+            actionUrl: '/savings',
+            payload: { sendAmountSAR, targetCountry: corridor.toCountry, savingsSAR: estimatedSavingsSAR },
+            sourceSystem: 'SEPS',
+            sourceEvent: 'transfer_recorded',
+            sourceId: record.id
+          });
+
+          // Trigger achievement notification if first time
+          if (result.firstTime) {
+            await createNotification({
+              userId,
+              audienceType: 'user',
+              category: 'achievement',
+              priority: 'high',
+              title: isRtl ? 'إنجاز جديد: خطوتك الأولى!' : 'New Achievement: Your First Step!',
+              message: isRtl
+                ? 'تهانينا على تسجيل معاملتك الأولى مع SariRemit! تم تفعيل مكافأة مدخراتك الأولى.'
+                : 'Congratulations on recording your first transaction with SariRemit! Your first savings reward is active.',
+              actionLabel: isRtl ? 'عرض الإنجازات' : 'View Achievements',
+              actionUrl: '/profile',
+              payload: { achievementCode: 'first_transfer' },
+              sourceSystem: 'SAF',
+              sourceEvent: 'achievement_unlocked',
+              sourceId: `ach_first_transfer_${userId}`
+            });
+          }
+
+          if (result.newAchievements && result.newAchievements.length > 0) {
+            for (const ach of result.newAchievements) {
+              const def = ACHIEVEMENT_DEFINITIONS.find(d => d.id === ach.achievementId);
+              const title = def?.title || 'New Achievement';
+              const desc = def?.description || 'You unlocked a new milestone!';
+              await createNotification({
+                userId,
+                audienceType: 'user',
+                category: 'achievement',
+                priority: 'normal',
+                title: isRtl ? `تم فتح الإنجاز: ${title}` : `Achievement Unlocked: ${title}`,
+                message: desc,
+                actionLabel: isRtl ? 'عرض الملف' : 'View Profile',
+                actionUrl: '/profile',
+                payload: { achievementId: ach.achievementId },
+                sourceSystem: 'SAF',
+                sourceEvent: 'achievement_unlocked',
+                sourceId: `ach_${ach.achievementId}_${userId}`
+              });
+            }
+          }
+        } catch (notifErr) {
+          console.warn('[SNS] Failed to trigger transfer notifications:', notifErr);
+        }
+
         onSuccess(result.newAchievements, result.firstTime);
         onClose();
       } else {

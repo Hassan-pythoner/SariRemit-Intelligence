@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
     preferred_channels JSONB DEFAULT '[]'::jsonb,
     estimated_monthly_send_amount NUMERIC,
     rate_submissions_restricted BOOLEAN DEFAULT false,
+    first_transfer_recorded_at TIMESTAMPTZ,
+    first_transfer_experience_prompt_shown_at TIMESTAMPTZ,
+    first_transfer_experience_completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -224,6 +227,22 @@ CREATE TABLE IF NOT EXISTS public.user_transfer_savings (
     recipient_amount NUMERIC(12, 2) NOT NULL,
     transfer_status TEXT DEFAULT 'completed' NOT NULL,
     recorded_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    
+    -- Extended fields for Savings & Ledger refinement
+    provider_id TEXT,
+    provider_name TEXT,
+    destination_country TEXT,
+    destination_currency TEXT,
+    send_amount_sar NUMERIC(12, 2),
+    estimated_recipient_amount NUMERIC(12, 2),
+    actual_recipient_amount NUMERIC(12, 2),
+    savings_amount_sar NUMERIC(10, 2),
+    savings_amount_destination NUMERIC(12, 2),
+    comparison_type TEXT,
+    comparison_label TEXT,
+    status TEXT DEFAULT 'recorded',
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    deleted_at TIMESTAMPTZ,
     
     -- Relational Foreign Key Connection
     CONSTRAINT fk_savings_user_profile 
@@ -608,8 +627,11 @@ USING (bucket_id = 'verification-screenshots');
 -- INCREMENTAL SCHEMA UPDATES & MIGRATION ALTER CODES (FOR EXISTING DATABASES)
 -- =========================================================================
 
--- 1. Update user_profiles for rate submissions restriction
+-- 1. Update user_profiles for rate submissions restriction & SIS transfer progress
 ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS rate_submissions_restricted BOOLEAN DEFAULT false;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS first_transfer_recorded_at TIMESTAMPTZ;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS first_transfer_experience_prompt_shown_at TIMESTAMPTZ;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS first_transfer_experience_completed_at TIMESTAMPTZ;
 
 -- 2. Drop the old restrictive check on community_rate_submissions status
 ALTER TABLE public.community_rate_submissions DROP CONSTRAINT IF EXISTS community_rate_submissions_status_check;
@@ -651,3 +673,196 @@ ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS rejection
 ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS reviewer_notes TEXT;
 ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS valid_until TIMESTAMPTZ;
 ALTER TABLE public.community_rate_submissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
+
+-- 4. SNS - User Profile Notification Preferences
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS engagement_notifications_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS achievement_notifications_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS rate_notifications_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS transfer_notifications_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS community_notifications_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS security_notifications_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS admin_notifications_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS push_notifications_enabled BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS email_notifications_enabled BOOLEAN NOT NULL DEFAULT false;
+
+-- 5. SNS - Notifications Table
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT, -- Relates to user_profiles(id)
+  audience_type TEXT NOT NULL DEFAULT 'user',
+  category TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal',
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  action_label TEXT,
+  action_url TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::JSONB,
+  source_system TEXT,
+  source_event TEXT,
+  source_id TEXT,
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  read_at TIMESTAMPTZ,
+  is_archived BOOLEAN NOT NULL DEFAULT false,
+  archived_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  idempotency_key TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  
+  CONSTRAINT fk_notifications_user_profile
+    FOREIGN KEY (user_id)
+    REFERENCES public.user_profiles(id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+-- Unique index for idempotency
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_user_idempotency_unique
+ON public.notifications(user_id, idempotency_key)
+WHERE idempotency_key IS NOT NULL;
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS notifications_user_created_idx
+ON public.notifications(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS notifications_user_unread_idx
+ON public.notifications(user_id, is_read)
+WHERE is_read = false;
+
+CREATE INDEX IF NOT EXISTS notifications_category_idx
+ON public.notifications(category);
+
+CREATE INDEX IF NOT EXISTS notifications_source_idx
+ON public.notifications(source_system, source_event);
+
+-- Enable RLS
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+DROP POLICY IF EXISTS "Users read own notifications" ON public.notifications;
+CREATE POLICY "Users read own notifications"
+ON public.notifications
+FOR SELECT
+TO authenticated
+USING (auth.uid()::text = user_id);
+
+-- Admins can read all notifications
+DROP POLICY IF EXISTS "Admins read all notifications" ON public.notifications;
+CREATE POLICY "Admins read all notifications"
+ON public.notifications
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.srcmc_admin_access
+    WHERE srcmc_admin_access.user_id = auth.uid()
+    AND srcmc_admin_access.is_active = true
+  )
+);
+
+-- Users can update read/archive state of their own notifications
+DROP POLICY IF EXISTS "Users update own notifications" ON public.notifications;
+CREATE POLICY "Users update own notifications"
+ON public.notifications
+FOR UPDATE
+TO authenticated
+USING (auth.uid()::text = user_id)
+WITH CHECK (auth.uid()::text = user_id);
+
+-- Admins/System can insert/manage notifications
+DROP POLICY IF EXISTS "Admins insert notifications" ON public.notifications;
+CREATE POLICY "Admins insert notifications"
+ON public.notifications
+FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admins insert all notifications" ON public.notifications;
+CREATE POLICY "Admins insert all notifications"
+ON public.notifications
+FOR INSERT
+WITH CHECK (true);
+
+
+-- =========================================================================
+-- 6. SEPS - RECORDED TRANSFERS MODULE
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS public.recorded_transfers (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL,
+    channel_id TEXT,
+    corridor_id TEXT,
+    send_amount_sar NUMERIC(12, 2) NOT NULL,
+    destination_currency TEXT,
+    estimated_recipient_amount NUMERIC(12, 2) NOT NULL,
+    actual_recipient_amount NUMERIC(12, 2),
+    resolved_rate NUMERIC(12, 6) NOT NULL,
+    rate_source TEXT,
+    transfer_fee_sar NUMERIC(12, 2) NOT NULL,
+    vat_amount_sar NUMERIC(12, 2) NOT NULL,
+    other_charges_sar NUMERIC(12, 2) NOT NULL,
+    estimated_savings_destination NUMERIC(12, 2),
+    estimated_savings_sar NUMERIC(12, 2),
+    savings_comparison_type TEXT,
+    comparison_channel_id TEXT,
+    idempotency_key TEXT,
+    recorded_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    status TEXT DEFAULT 'recorded' NOT NULL,
+    invalidated_at TIMESTAMPTZ,
+    invalidation_reason TEXT,
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT recorded_transfers_user_idempotency_unique UNIQUE (user_id, idempotency_key)
+);
+
+-- Indexing for lookup speed
+CREATE INDEX IF NOT EXISTS idx_recorded_transfers_user_id ON public.recorded_transfers(user_id);
+CREATE INDEX IF NOT EXISTS idx_recorded_transfers_recorded_at ON public.recorded_transfers(recorded_at DESC);
+
+-- Enable RLS
+ALTER TABLE public.recorded_transfers ENABLE ROW LEVEL SECURITY;
+
+-- Select policy
+DROP POLICY IF EXISTS "Users read own recorded transfers" ON public.recorded_transfers;
+CREATE POLICY "Users read own recorded transfers"
+ON public.recorded_transfers
+FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- Insert policy
+DROP POLICY IF EXISTS "Users insert own recorded transfers" ON public.recorded_transfers;
+CREATE POLICY "Users insert own recorded transfers"
+ON public.recorded_transfers
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+-- Update policy
+DROP POLICY IF EXISTS "Users update own recorded transfers" ON public.recorded_transfers;
+CREATE POLICY "Users update own recorded transfers"
+ON public.recorded_transfers
+FOR UPDATE
+TO authenticated
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+-- Delete policy (soft deletion or hard deletion)
+DROP POLICY IF EXISTS "Users delete own recorded transfers" ON public.recorded_transfers;
+CREATE POLICY "Users delete own recorded transfers"
+ON public.recorded_transfers
+FOR DELETE
+TO authenticated
+USING (auth.uid() = user_id);
+
+
+-- INCREMENTAL MIGRATIONS FOR EXISTING DATABASES (SAFE / NON-DESTRUCTIVE)
+-- =========================================================================
+ALTER TABLE public.recorded_transfers ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'recorded';
+ALTER TABLE public.recorded_transfers ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
+ALTER TABLE public.recorded_transfers ADD COLUMN IF NOT EXISTS invalidation_reason TEXT;
+ALTER TABLE public.recorded_transfers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.recorded_transfers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now());
+

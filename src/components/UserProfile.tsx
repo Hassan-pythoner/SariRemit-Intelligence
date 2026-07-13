@@ -9,9 +9,10 @@ import {
 } from '../services/supabaseService';
 import { 
   User, Mail, Phone, Globe, Shield, Trophy, MapPin, 
-  Clock, CheckCircle, Clock3, AlertTriangle, Save, LogIn, UserPlus, LogOut, Loader2 
+  Clock, CheckCircle, Clock3, AlertTriangle, Save, LogIn, UserPlus, LogOut, Loader2, Bell
 } from 'lucide-react';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
+import { SariRemitLogo, SariRemitMonogram, ProviderLogo, CountryFlag, AchievementIcon } from './SdsBamComponents';
 
 interface UserProfileProps {
   language: 'en' | 'ar';
@@ -58,6 +59,16 @@ export default function UserProfile({
   const [preferredCorridorId, setPreferredCorridorId] = useState<string>(profile.preferredCorridorId);
   const [userLanguage, setUserLanguage] = useState<'en' | 'ar'>(profile.language);
   
+  const [engagementEnabled, setEngagementEnabled] = useState<boolean>(profile.engagement_notifications_enabled !== false);
+  const [achievementEnabled, setAchievementEnabled] = useState<boolean>(profile.achievement_notifications_enabled !== false);
+  const [rateEnabled, setRateEnabled] = useState<boolean>(profile.rate_notifications_enabled !== false);
+  const [transferEnabled, setTransferEnabled] = useState<boolean>(profile.transfer_notifications_enabled !== false);
+  const [communityEnabled, setCommunityEnabled] = useState<boolean>(profile.community_notifications_enabled !== false);
+  const [securityEnabled, setSecurityEnabled] = useState<boolean>(true);
+  const [adminEnabled, setAdminEnabled] = useState<boolean>(profile.admin_notifications_enabled !== false);
+  const [pushEnabled, setPushEnabled] = useState<boolean>(!!profile.push_notifications_enabled);
+  const [emailEnabled, setEmailEnabled] = useState<boolean>(!!profile.email_notifications_enabled);
+  
   const [success, setSuccess] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [mySubmissions, setMySubmissions] = useState<RateSubmission[]>([]);
@@ -90,6 +101,15 @@ export default function UserProfile({
       setPhone(activeSession.user.phone);
       setPreferredCorridorId(activeSession.user.preferredCorridorId);
       setUserLanguage(activeSession.user.language || 'en');
+      setEngagementEnabled(activeSession.user.engagement_notifications_enabled !== false);
+      setAchievementEnabled(activeSession.user.achievement_notifications_enabled !== false);
+      setRateEnabled(activeSession.user.rate_notifications_enabled !== false);
+      setTransferEnabled(activeSession.user.transfer_notifications_enabled !== false);
+      setCommunityEnabled(activeSession.user.community_notifications_enabled !== false);
+      setSecurityEnabled(true);
+      setAdminEnabled(activeSession.user.admin_notifications_enabled !== false);
+      setPushEnabled(!!activeSession.user.push_notifications_enabled);
+      setEmailEnabled(!!activeSession.user.email_notifications_enabled);
     }
   }, [isAuthenticated]);
 
@@ -245,9 +265,19 @@ export default function UserProfile({
           primary_destination_currency: profile.primary_destination_currency,
           preferred_channels: profile.preferred_channels,
           estimated_monthly_send_amount: profile.estimated_monthly_send_amount,
+          engagement_notifications_enabled: engagementEnabled,
+          achievement_notifications_enabled: achievementEnabled,
+          rate_notifications_enabled: rateEnabled,
+          transfer_notifications_enabled: transferEnabled,
+          community_notifications_enabled: communityEnabled,
+          security_notifications_enabled: true,
+          admin_notifications_enabled: adminEnabled,
+          push_notifications_enabled: pushEnabled,
+          email_notifications_enabled: emailEnabled,
         };
         await updateUserProfileInDb(updatedProfile);
         setProfile({
+          ...profile,
           name,
           email: activeSession.user.email,
           phone,
@@ -258,6 +288,15 @@ export default function UserProfile({
           primary_destination_currency: profile.primary_destination_currency,
           preferred_channels: profile.preferred_channels,
           estimated_monthly_send_amount: profile.estimated_monthly_send_amount,
+          engagement_notifications_enabled: engagementEnabled,
+          achievement_notifications_enabled: achievementEnabled,
+          rate_notifications_enabled: rateEnabled,
+          transfer_notifications_enabled: transferEnabled,
+          community_notifications_enabled: communityEnabled,
+          security_notifications_enabled: true,
+          admin_notifications_enabled: adminEnabled,
+          push_notifications_enabled: pushEnabled,
+          email_notifications_enabled: emailEnabled,
         });
         onSessionSync();
         setSuccess(true);
@@ -308,10 +347,7 @@ export default function UserProfile({
           <div className="md:col-span-5 bg-[#071A35]/60 p-6 sm:p-8 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-sds-border relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-[#10B981]/5 rounded-full blur-2xl pointer-events-none" />
             <div className="space-y-4">
-              <div className="w-10 h-10 bg-[#10B981] rounded-xl flex items-center justify-center font-black text-xl shadow-md text-[#071A35] relative">
-                S
-                <span className="absolute bottom-1 right-1 w-1.5 h-1.5 bg-[#F59E0B] rounded-full animate-pulse" />
-              </div>
+              <SariRemitMonogram surface="dark" size="md" />
               <h3 className="text-sm font-black tracking-wider uppercase text-white font-mono">
                 SariRemit Network
               </h3>
@@ -702,6 +738,133 @@ export default function UserProfile({
                 </div>
               </div>
 
+              {/* Notification Preferences Section */}
+              <div className="space-y-4 border-t border-sds-border/60 pt-6 text-left">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-[#10B981]" />
+                  <h4 className="text-[11px] font-black text-white uppercase tracking-wider font-mono">
+                    Notification Preferences
+                  </h4>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Engagement Notifications */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
+                    <input
+                      type="checkbox"
+                      checked={engagementEnabled}
+                      onChange={(e) => setEngagementEnabled(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black text-white block">Engagement Notifications</span>
+                      <span className="text-[10px] text-sds-text-sec block">General tips, updates, and experience feedback.</span>
+                    </div>
+                  </label>
+
+                  {/* Rate Alerts */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
+                    <input
+                      type="checkbox"
+                      checked={rateEnabled}
+                      onChange={(e) => setRateEnabled(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black text-white block">Rate & Provider Alerts</span>
+                      <span className="text-[10px] text-sds-text-sec block">Alerts for target rates and recommendation improvements.</span>
+                    </div>
+                  </label>
+
+                  {/* Transfer Notifications */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
+                    <input
+                      type="checkbox"
+                      checked={transferEnabled}
+                      onChange={(e) => setTransferEnabled(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black text-white block">Transfer Notifications</span>
+                      <span className="text-[10px] text-sds-text-sec block">Confirmations when transfer records and savings are saved.</span>
+                    </div>
+                  </label>
+
+                  {/* Achievement Notifications */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
+                    <input
+                      type="checkbox"
+                      checked={achievementEnabled}
+                      onChange={(e) => setAchievementEnabled(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black text-white block">Achievements & Milestones</span>
+                      <span className="text-[10px] text-sds-text-sec block">Notifications for new levels, badges, and milestones.</span>
+                    </div>
+                  </label>
+
+                  {/* Community Submissions */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
+                    <input
+                      type="checkbox"
+                      checked={communityEnabled}
+                      onChange={(e) => setCommunityEnabled(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black text-white block">Community Verification</span>
+                      <span className="text-[10px] text-sds-text-sec block">Updates on your submitted rate evidence reviews.</span>
+                    </div>
+                  </label>
+
+                  {/* Security Notifications */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/30 rounded-xl border border-sds-border/30 select-none opacity-85">
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      disabled
+                      className="mt-1 w-4 h-4 rounded text-[#10B981]/50 bg-[#0C2547] border-sds-border cursor-not-allowed"
+                    />
+                    <div className="space-y-0.5 flex-1">
+                      <span className="text-xs font-black text-white flex items-center justify-between gap-1.5 w-full">
+                        <span>Security Alerts</span>
+                        <Shield className="w-3.5 h-3.5 text-[#F59E0B]" />
+                      </span>
+                      <span className="text-[10px] text-[#F59E0B] font-mono block font-bold">Required for account safety.</span>
+                    </div>
+                  </label>
+
+                  {/* Push Notifications */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
+                    <input
+                      type="checkbox"
+                      checked={pushEnabled}
+                      onChange={(e) => setPushEnabled(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black text-white block">Push Notifications</span>
+                      <span className="text-[10px] text-sds-text-sec block">Send instant notifications directly to this browser.</span>
+                    </div>
+                  </label>
+
+                  {/* Email Notifications */}
+                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
+                    <input
+                      type="checkbox"
+                      checked={emailEnabled}
+                      onChange={(e) => setEmailEnabled(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-black text-white block">Email Notifications</span>
+                      <span className="text-[10px] text-sds-text-sec block">Send daily or weekly summary digests to your email.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 id="profile-save-btn"
@@ -817,8 +980,8 @@ export default function UserProfile({
                       className={`p-2.5 rounded-2xl border transition-all flex flex-col items-center text-center space-y-1.5 ${isUnlocked ? 'bg-[#071A35] border-[#F59E0B]/30' : 'bg-[#071A35]/40 border-sds-border/40 opacity-50'}`}
                       title={def.description}
                     >
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${isUnlocked ? 'bg-[#F59E0B]/15 border-[#F59E0B]/35 text-[#F59E0B]' : 'bg-[#0C2547]/50 border-sds-border text-sds-text-sec'}`}>
-                        <Trophy className="w-4 h-4" />
+                      <div className="shrink-0 flex items-center justify-center">
+                        <AchievementIcon achievement={def} size="sm" className={isUnlocked ? '' : 'grayscale opacity-60'} />
                       </div>
                       <div className="space-y-0.5">
                         <span className={`text-[10px] font-extrabold line-clamp-1 leading-tight ${isUnlocked ? 'text-white' : 'text-sds-text-sec'}`}>
@@ -851,7 +1014,8 @@ export default function UserProfile({
                     return (
                       <div key={sub.id} className="p-3 bg-[#071A35]/80 rounded-xl border border-sds-border flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2.5">
-                          <span className="text-lg leading-none">{corr.flag}</span>
+                          <CountryFlag country={corr.toCountry} currency={corr.currencyCode} size="xs" />
+                          <ProviderLogo channel={{ providerCode: sub.providerId, displayName: sub.providerName }} size="xs" shape="circle" />
                           <div className="text-left">
                             <span className="font-extrabold text-white block leading-tight">
                               {sub.providerName}

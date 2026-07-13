@@ -56,6 +56,29 @@ export default function Onboarding({
             preferred_channels: selectedProviders,
             estimated_monthly_send_amount: monthlyEstimate,
           });
+
+          // Trigger Welcome Notification
+          try {
+            const { createNotification } = await import('../services/notificationService');
+            await createNotification({
+              userId: session.user.id,
+              audienceType: 'user',
+              category: 'system',
+              priority: 'high',
+              title: profile.language === 'ar' ? 'مرحباً بك في SariRemit!' : 'Welcome to SariRemit!',
+              message: profile.language === 'ar'
+                ? `أهلاً بك يا ${profile.name}! لقد تم إعداد حسابك بنجاح لمقارنة الأسعار إلى ${activeCorridor.toCountry}.`
+                : `Hello ${profile.name}! Your account has been configured to check optimal rates to ${activeCorridor.toCountry}.`,
+              actionLabel: profile.language === 'ar' ? 'قارن الأسعار' : 'Compare Rates',
+              actionUrl: '/compare',
+              payload: { destinationCountry: activeCorridor.toCountry },
+              sourceSystem: 'Auth',
+              sourceEvent: 'onboarding_completed',
+              sourceId: `welcome_${session.user.id}`
+            });
+          } catch (notifErr) {
+            console.warn('[SNS] Failed to trigger welcome notification:', notifErr);
+          }
         }
       } catch (err) {
         console.error('Failed to update onboarding state in Supabase:', err);
