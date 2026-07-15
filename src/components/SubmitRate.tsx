@@ -660,10 +660,10 @@ export default function SubmitRate({
                     </div>
                   </div>
 
-                  {/* Other hidden costs */}
+                  {/* Other rate impact costs */}
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                      Other / Hidden Costs (SAR)
+                      Other / Rate Impact Costs (SAR)
                     </label>
                     <div className="relative">
                       <input

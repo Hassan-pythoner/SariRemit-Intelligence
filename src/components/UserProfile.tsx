@@ -9,7 +9,7 @@ import {
 } from '../services/supabaseService';
 import { 
   User, Mail, Phone, Globe, Shield, Trophy, MapPin, 
-  Clock, CheckCircle, Clock3, AlertTriangle, Save, LogIn, UserPlus, LogOut, Loader2, Bell
+  Clock, CheckCircle, Clock3, AlertTriangle, Save, LogIn, UserPlus, LogOut, Loader2, Bell, X
 } from 'lucide-react';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
 import { SariRemitLogo, SariRemitMonogram, ProviderLogo, CountryFlag, AchievementIcon } from './SdsBamComponents';
@@ -51,6 +51,8 @@ export default function UserProfile({
   const [authCorridor, setAuthCorridor] = useState<string>('sa-pk');
   const [authError, setAuthError] = useState<string>('');
   const [authSuccess, setAuthSuccess] = useState<string>('');
+  const [privacyAccepted, setPrivacyAccepted] = useState<boolean>(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
 
   // Profile preferences inputs
   const [name, setName] = useState<string>(profile.name);
@@ -217,9 +219,22 @@ export default function UserProfile({
       return;
     }
 
+    if (!privacyAccepted) {
+      setAuthError(isRtl ? 'الرجاء قراءة وقبول سياسة الخصوصية للمتابعة' : 'Please read and accept the Privacy Policy to proceed');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const res = await signUpWithSupabase(authEmail, authName, authPhone, authCorridor, authPassword);
+      const res = await signUpWithSupabase(
+        authEmail, 
+        authName, 
+        authPhone, 
+        authCorridor, 
+        authPassword, 
+        'v1.2', 
+        new Date().toISOString()
+      );
       if (res.confirmationRequired) {
         setAuthSuccess(isRtl ? 'Check your email to confirm your account.' : 'Check your email to confirm your account.');
       } else if (res.session && res.session.user) {
@@ -589,6 +604,41 @@ export default function UserProfile({
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 pt-1 pb-1">
+                    <input
+                      id="privacy-accept-checkbox"
+                      type="checkbox"
+                      checked={privacyAccepted}
+                      onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                      className="w-4 h-4 rounded border-sds-border bg-[#071A35] text-[#10B981] focus:ring-[#10B981] mt-0.5 cursor-pointer accent-[#10B981]"
+                    />
+                    <label htmlFor="privacy-accept-checkbox" className="text-[11px] leading-tight font-bold text-sds-text-sec cursor-pointer select-none">
+                      {isRtl ? (
+                        <>
+                          أوافق وأقر بأنني قد قرأت وفهمت{" "}
+                          <button
+                            type="button"
+                            onClick={() => setShowPrivacyModal(true)}
+                            className="text-[#10B981] hover:underline focus:outline-none font-black"
+                          >
+                            سياسة الخصوصية الخاصة بساري ريميت (المتوافقة مع نظام حماية البيانات السعودي PDPL)
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          I have read and agree to the{" "}
+                          <button
+                            type="button"
+                            onClick={() => setShowPrivacyModal(true)}
+                            className="text-[#10B981] hover:underline focus:outline-none font-black inline"
+                          >
+                            SariRemit Privacy Policy (Saudi PDPL Compliant)
+                          </button>
+                        </>
+                      )}
+                    </label>
                   </div>
 
                   <button
@@ -1051,6 +1101,133 @@ export default function UserProfile({
 
           </div>
 
+        </div>
+      )}
+
+      {showPrivacyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="bg-[#0C2547] border border-sds-border w-full max-w-2xl h-[85vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-[#071A35] border-b border-sds-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[#10B981]" />
+                <h3 className="font-extrabold text-xs sm:text-sm text-white uppercase tracking-wider font-mono">
+                  {isRtl ? 'سياسة الخصوصية لساري ريميت (متوافقة مع نظام حماية البيانات PDPL)' : 'SariRemit Privacy Policy (PDPL Compliant)'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPrivacyModal(false)}
+                className="p-1.5 rounded-lg bg-[#0C2547] hover:bg-[#071A35] border border-sds-border/40 text-sds-text-sec hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs text-sds-text-sec text-left leading-relaxed">
+              <div className="p-4 bg-emerald-500/10 border-l-4 border-emerald-500 rounded-xl text-emerald-300 font-semibold leading-normal">
+                {isRtl ? 
+                  'سياسة الخصوصية هذه مخصصة لمنصة ساري ريميت ومتوافقة تماماً مع نظام حماية البيانات الشخصية (PDPL) في المملكة العربية السعودية. تصف السياسة كيفية جمع بياناتك، ومعالجتها، وحمايتها عند استخدام المنصة.' :
+                  'This Privacy Policy has been written specifically for SariRemit and is fully aligned with the Saudi Personal Data Protection Law (PDPL) issued by Royal Decree No. (M/19). It describes how we collect, process, and safeguard your personal information.'
+                }
+              </div>
+
+              <div className="space-y-4">
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">1. Introduction</h4>
+                  <p>SariRemit helps expatriates compare different remittance channels, estimate transaction savings, and make informed choices. Protecting your data and respecting your privacy is one of our absolute core principles.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">2. Information We Collect</h4>
+                  <p>We collect Account Information (name, email, phone, credentials), Profile Information (preferences, saved corridors), Transfer Records (estimated savings, transfer dates), Community Submissions (voluntary screenshots, exchange rates), Support requests, and technical details (cookies, session logs).</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">3. Why We Collect Information</h4>
+                  <p>Data is used to securely register and authenticate you, allow corridor comparisons, calculate estimated savings, verify community rate submissions, prevent rate seeding fraud, distribute notifications, and respond to support requests.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">4. Legal Basis for Processing</h4>
+                  <p>Under KSA PDPL, we process data based on: your active consent when registering, performance of the remittance comparative analysis service, our legitimate interest in securing the system and verifying rates, and compliance with local legal requirements.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">5. How We Protect Information (SAF)</h4>
+                  <p>We apply the SariRemit Security & Audit Framework (SAF) which uses TLS/SSL data encryption, Row Level Security (RLS) to keep your personal records private, strict administrative audit logs, anti-fraud screenshot controls, and secure tokenized authentication.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">6. Who Can Access Your Data</h4>
+                  <p>Only you have access to your private profile. Verified SRCMC administrators can access submissions and support tickets strictly to perform reviews or fix issues. Individual records are completely shielded from public view; only fully anonymized rates are published.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">7. Third Party Services</h4>
+                  <p>We use Supabase for hosting our database, storing screenshots, and providing authentication. All third parties must maintain equal compliance with Saudi security baselines.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">8. Cookies</h4>
+                  <p>Essential session cookies are used to keep you authenticated and remember your language preference (English/Arabic).</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">9. Data Retention</h4>
+                  <p>We retain active accounts while they are in use. If deleted, all associated personal records are purged or anonymized. Verification screenshots are destroyed immediately after rate audits complete.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">10. Your Rights Under KSA PDPL</h4>
+                  <p>You have powerful rights: the right to know and access your records, correct inaccuracies immediately, destroy/delete your records, export your transfer logs to an electronic file, and withdraw consent anytime.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">11. Children's Privacy</h4>
+                  <p>SariRemit does not knowingly collect personal information from individuals under the legal age of majority in Saudi Arabia.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">12. International Users</h4>
+                  <p>We operate inside Saudi Arabia to serve local expatriate residents. Any cloud backups or processing conform strictly to PDPL guidelines.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">13. Policy Updates</h4>
+                  <p>We notify users of policy changes. Continued use represents agreement to any updated terms.</p>
+                </section>
+
+                <section className="space-y-1">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">14. Contact Compliance Desk</h4>
+                  <p>Reach out to us at <span className="text-[#10B981] font-bold">support@sariremit.com</span> for any compliance or privacy queries.</p>
+                </section>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-[#071A35] border-t border-sds-border flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPrivacyModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#0C2547] hover:bg-[#071A35] text-sds-text-sec text-xs font-bold transition-all border border-sds-border/40 cursor-pointer"
+              >
+                {isRtl ? 'إغلاق' : 'Close'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPrivacyAccepted(true);
+                  setShowPrivacyModal(false);
+                }}
+                className="px-5 py-2 rounded-xl bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center gap-1 cursor-pointer"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>{isRtl ? 'أوافق وأغلق' : 'Accept & Close'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

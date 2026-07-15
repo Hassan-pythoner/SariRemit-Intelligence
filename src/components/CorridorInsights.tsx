@@ -152,23 +152,29 @@ export default function CorridorInsights({
         
         {/* Metric 1 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-left">
-          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">Best Rate Provider</span>
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">
+            {language === 'en' ? 'Highest Rate Provider' : 'مزود أعلى سعر'}
+          </span>
           <span className="text-sm font-black text-slate-800 block truncate">{bestRateProvider}</span>
           <span className="text-xs text-emerald-600 font-bold font-mono">1 SAR = {highestRate}</span>
         </div>
 
         {/* Metric 2 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-left">
-          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">Cheapest Fees</span>
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">
+            {language === 'en' ? 'Lowest Transfer Fee' : 'أقل رسوم تحويل'}
+          </span>
           <span className="text-sm font-black text-slate-800 block truncate">{bestFeeProvider}</span>
           <span className="text-xs text-emerald-600 font-bold font-mono">{lowestFee === 0 ? '0 SAR Fee' : `${lowestFee} SAR Fee`}</span>
         </div>
 
         {/* Metric 3 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-left">
-          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">Best Day to Send</span>
+          <span className="text-[10px] font-extrabold text-slate-400 block uppercase tracking-wider">
+            {language === 'en' ? 'Optimal Day to Transfer' : 'اليوم الأمثل للتحويل'}
+          </span>
           <span className="text-sm font-black text-indigo-700 block">{language === 'en' ? tips.bestDay : tips.bestDayAr}</span>
-          <span className="text-xs text-slate-400 font-semibold">Historically higher rates</span>
+          <span className="text-xs text-slate-400 font-semibold">{language === 'en' ? 'Historically higher rates' : 'أسعار تاريخية أفضل'}</span>
         </div>
 
         {/* Metric 4 */}
@@ -272,7 +278,7 @@ export default function CorridorInsights({
           }`}>
             <Zap className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
             <p className="leading-relaxed font-bold">
-              {t.trendUp} Use <strong>{bestRateProvider}</strong> inside your digital app today for the maximum savings.
+              {t.trendUp} {language === 'en' ? "Consider using " : "يمكنك دراسة استخدام "} <strong>{bestRateProvider}</strong> {language === 'en' ? "based on the highest estimated resolved rate." : "بناءً على أعلى سعر صرف مُقدَّر اليوم."}
             </p>
           </div>
 

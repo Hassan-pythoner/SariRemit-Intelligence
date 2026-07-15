@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress, BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission } from '../types';
+import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress, BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission, SupportCategory, SupportFeedbackRequest, SupportRequestMessage, SriReferenceBenchmark } from '../types';
 import { PROVIDERS, CORRIDORS } from './constants';
 
 // Interfaces for Supabase tables
@@ -872,8 +872,7 @@ export async function fetchCommunitySubmissions(): Promise<DbCommunitySubmission
         updated_at: row.updated_at,
       })) as DbCommunitySubmission[];
     } else {
-      console.error('Supabase fetch community submissions error details:', error);
-      console.warn('Supabase fetch community error, using emulated storage:', error);
+      console.warn('Supabase fetch community submissions warning details:', error);
       rows = getLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, initialCommunitySubmissions);
     }
   } else {
@@ -1177,17 +1176,69 @@ export async function saveSisWeights(weights: DbSisWeights): Promise<DbSisWeight
 }
 
 /**
+ * SIC Subsystem: SariRemit Reference Intelligence (SRI)
+ * Purpose: Collect, aggregate, and normalize trusted publicly available reference information.
+ */
+export const SRI = {
+  name: "SariRemit Reference Intelligence",
+  version: "v1.2",
+  purpose: "Collect and normalize trusted publicly available reference information.",
+  async getReferenceBenchmark(corridorId: string): Promise<SriReferenceBenchmark> {
+    const marketRates = await fetchMarketReferenceRates();
+    const marketRef = marketRates.find(m => m.corridor_id === corridorId);
+    const rate = marketRef ? marketRef.rate : CORRIDORS.find(c => c.id === corridorId)?.baseExchangeRate || 1.0;
+    const lastUpdated = marketRef ? marketRef.last_updated : new Date().toISOString();
+    
+    const ageHrs = (Date.now() - new Date(lastUpdated).getTime()) / 3600000;
+    let sourceConfidence: 'Very High' | 'High' | 'Moderate' | 'Low' | 'Reference Unavailable' = 'Moderate';
+    if (!marketRef) {
+      sourceConfidence = 'Reference Unavailable';
+    } else if (ageHrs <= 1) {
+      sourceConfidence = 'Very High';
+    } else if (ageHrs <= 6) {
+      sourceConfidence = 'High';
+    } else if (ageHrs <= 24) {
+      sourceConfidence = 'Moderate';
+    } else {
+      sourceConfidence = 'Low';
+    }
+
+    return {
+      corridorId,
+      rate,
+      lastRefreshed: lastUpdated,
+      sourceConfidence,
+      sources: ["ExchangeRate-API V6", "ExchangeRate-API V4", "Frankfurter API (USD-base conversion)", "Public Financial Datasets"],
+      explanation: "This benchmark is generated using trusted publicly available financial reference information. It provides a neutral comparison point. Actual provider rates may differ."
+    };
+  },
+  
+  async getAllBenchmarks(): Promise<SriReferenceBenchmark[]> {
+    const results: SriReferenceBenchmark[] = [];
+    for (const corridor of CORRIDORS) {
+      const benchmark = await this.getReferenceBenchmark(corridor.id);
+      results.push(benchmark);
+    }
+    return results;
+  }
+};
+
+/**
  * SIC: 1. Rate Resolution Engine — RRE
  * Resolves optimal exchange rates for all available providers in a corridor using strict priority:
  * 1. Active Admin Override (rate_overrides)
  * 2. Approved Community Verified Rate (community_rate_submissions)
- * 3. Live Market Reference Rate (market_reference_rates)
+ * 3. Live Reference Benchmark (market_reference_rates via SRI)
  * 4. Last Known Valid Rate (corridor defaults)
  */
 export async function resolveRatesWithRRE(
   corridorId: string,
   sendAmount: number = 1000
 ): Promise<ResolvedRate[]> {
+  // Sync the latest channels and corridor coverage records from Supabase
+  await fetchRemittanceChannels().catch(err => console.warn('Failed to fetch channels in RRE:', err));
+  await fetchChannelCoverage().catch(err => console.warn('Failed to fetch coverage in RRE:', err));
+
   const corridor = CORRIDORS.find(c => c.id === corridorId) || CORRIDORS[0];
   const overrides = await fetchOverrides();
   const communitySubmissions = await fetchCommunitySubmissions();
@@ -1273,9 +1324,9 @@ export async function resolveRatesWithRRE(
         sourceType = 'community_verified';
         sourceLabel = 'Community Verified Rate';
         
-        // Calculate dynamic trust confidence via Trust Engine
-        const marketRef = marketRates.find(m => m.corridor_id === corridorId);
-        const trustScore = computeCommunityTrustConfidence(approvedCommunity, communitySubmissions, marketRef?.rate);
+        // Calculate dynamic trust confidence via Trust Engine using SRI
+        const sriBenchmark = await SRI.getReferenceBenchmark(corridorId);
+        const trustScore = computeCommunityTrustConfidence(approvedCommunity, communitySubmissions, sriBenchmark.rate);
         confidence = trustScore >= 90 ? 'high' : (trustScore >= 70 ? 'medium' : 'low');
         
         lastUpdated = approvedCommunity.submitted_at;
@@ -1294,9 +1345,9 @@ export async function resolveRatesWithRRE(
         lastUpdated = coverage.updated_at || new Date().toISOString();
         reason = 'This rate was saved in the channel coverage settings.';
       } else {
-        // 4. Live Market Reference Rate
-        const marketRef = marketRates.find(m => m.corridor_id === corridorId);
-        if (marketRef) {
+        // 4. Live Reference Benchmark via SRI
+        const sriBenchmark = await SRI.getReferenceBenchmark(corridorId);
+        if (sriBenchmark && sriBenchmark.sourceConfidence !== 'Reference Unavailable') {
           let providerModifier = 1.0;
           let feeModifier = 0;
           switch (provider.id) {
@@ -1312,7 +1363,7 @@ export async function resolveRatesWithRRE(
               feeModifier = ch.category === 'wallet' ? -4 : 0;
               break;
           }
-          resolvedRate = parseFloat((marketRef.rate * providerModifier).toFixed(4));
+          resolvedRate = parseFloat((sriBenchmark.rate * providerModifier).toFixed(4));
           
           if (coverage && (coverage.transfer_fee !== null && coverage.transfer_fee !== undefined)) {
             transferFee = coverage.transfer_fee;
@@ -1330,10 +1381,10 @@ export async function resolveRatesWithRRE(
           }
 
           sourceType = 'market_reference';
-          sourceLabel = 'Market Reference Rate';
-          confidence = 'medium';
-          lastUpdated = marketRef.last_updated;
-          reason = 'No active override, approved community rate, or manual channel rate exists. Public market reference rate is used.';
+          sourceLabel = 'Reference Benchmark';
+          confidence = sriBenchmark.sourceConfidence === 'Very High' || sriBenchmark.sourceConfidence === 'High' ? 'high' : 'medium';
+          lastUpdated = sriBenchmark.lastRefreshed;
+          reason = 'No active override, approved community rate, or manual channel rate exists. Public reference benchmark is used.';
         } else {
           // 5. Last Known Valid Rate (Emergency fallback)
           let baseProviderModifier = 1.0;
@@ -1413,7 +1464,7 @@ export async function resolveRatesWithRRE(
 
 /**
  * SIC: True Cost Engine — TCE
- * Calculates detailed cost components, hidden exchange-rate margins, and transparency ratings.
+ * Calculates detailed cost components, estimated exchange-rate differentials, and comparison confidence.
  */
 export async function calculateTrueCost(
   resolvedRates: ResolvedRate[],
@@ -1430,9 +1481,11 @@ export async function calculateTrueCost(
     
     let idealRecipientAmount: number | null = null;
     let exchangeRateLoss: number | null = null;
+    let estimatedRateImpact: number | null = null;
     let hiddenCost: number | null = null;
     let trueCost: number | null = null;
     let trueCostPercent: number | null = null;
+    let comparisonConfidence: "Very High" | "High" | "Moderate" | "Low" | "Reference Unavailable" = "Reference Unavailable";
     let transparencyRating: "excellent" | "good" | "fair" | "poor" | "unknown" = "unknown";
     let explanation = "";
 
@@ -1440,18 +1493,30 @@ export async function calculateTrueCost(
       idealRecipientAmount = parseFloat((input.sendAmount * marketReferenceRate).toFixed(4));
       const rawLoss = idealRecipientAmount - (input.sendAmount * resolved.resolvedRate);
       exchangeRateLoss = parseFloat(Math.max(0, rawLoss).toFixed(4));
+      estimatedRateImpact = exchangeRateLoss;
       hiddenCost = exchangeRateLoss;
       trueCost = parseFloat((visibleFeesInDest + exchangeRateLoss).toFixed(4));
       trueCostPercent = parseFloat(((trueCost / idealRecipientAmount) * 100).toFixed(4));
 
-      if (trueCostPercent <= 0.5) transparencyRating = "excellent";
-      else if (trueCostPercent <= 1.0) transparencyRating = "good";
-      else if (trueCostPercent <= 2.0) transparencyRating = "fair";
-      else transparencyRating = "poor";
+      if (trueCostPercent <= 0.5) {
+        transparencyRating = "excellent";
+        comparisonConfidence = "Very High";
+      } else if (trueCostPercent <= 1.0) {
+        transparencyRating = "good";
+        comparisonConfidence = "High";
+      } else if (trueCostPercent <= 2.0) {
+        transparencyRating = "fair";
+        comparisonConfidence = "Moderate";
+      } else {
+        transparencyRating = "poor";
+        comparisonConfidence = "Low";
+      }
 
-      explanation = `True cost is ${trueCost.toFixed(2)} ${resolved.destinationCurrency} (${trueCostPercent.toFixed(2)}% of transfer value). Visible fees: ${visibleFees.toFixed(2)} SAR. Exchange rate markup: ${hiddenCost.toFixed(2)} ${resolved.destinationCurrency}.`;
+      explanation = `Estimated overall cost of transfer is ${trueCost.toFixed(2)} ${resolved.destinationCurrency} (${trueCostPercent.toFixed(2)}% of transfer value). Visible fees: ${visibleFees.toFixed(2)} SAR. Estimated Rate Impact: ${estimatedRateImpact.toFixed(2)} ${resolved.destinationCurrency}.`;
     } else {
-      explanation = "Market reference rate is currently unavailable. Hidden exchange-rate markup cannot be computed, but visible fees are fully disclosed.";
+      transparencyRating = "unknown";
+      comparisonConfidence = "Reference Unavailable";
+      explanation = "Reference Benchmark is currently unavailable. Estimated Rate Impact cannot be computed, but visible fees are fully disclosed.";
     }
 
     const actualRecipientAmount = parseFloat(((input.sendAmount - visibleFees) * resolved.resolvedRate).toFixed(4));
@@ -1470,9 +1535,11 @@ export async function calculateTrueCost(
       idealRecipientAmount,
       actualRecipientAmount,
       exchangeRateLoss,
+      estimatedRateImpact,
       hiddenCost,
       trueCost,
       trueCostPercent,
+      comparisonConfidence,
       transparencyRating,
       explanation
     };
@@ -1588,13 +1655,13 @@ export function calculateSISForResolvedRates(
 
     let sisReason = `SIS ${sisScore} — ${sisLabel}. `;
     if (sisScore >= 90) {
-      sisReason += `Outstanding option. Extremely high payout and premium true cost transparency rating of "${transparency.toUpperCase()}".`;
+      sisReason += `Outstanding overall recipient value. Highly competitive exchange rates and excellent comparison confidence.`;
     } else if (sisScore >= 75) {
-      sisReason += `Highly competitive option. Solid exchange rates, reasonable visible fees, and verified true cost structure.`;
+      sisReason += `Competitive recipient value. Consistent exchange rates, standard fees, and reliable comparison confidence.`;
     } else if (sisScore >= 60) {
-      sisReason += `Fair pricing. Exchange rates are average, and hidden margins may affect overall true cost value.`;
+      sisReason += `Standard recipient value. Exchange rates are consistent with general market trends.`;
     } else {
-      sisReason += `Suboptimal conditions. High hidden markup or excessive fees detected. Consider safer, more cost-effective alternatives.`;
+      sisReason += `Alternative pricing structure. Exchange rate impacts or fee schedules may yield a lower overall recipient value. Consider other verified channels.`;
     }
 
     results.push({
@@ -1716,8 +1783,7 @@ export function generateRecommendation(
     ? 'community verified rate'
     : 'live market reference rate';
 
-  const transparencyLabel = best.tcResult.transparencyRating.toUpperCase();
-  const reason = `${best.resolved.providerName} via ${best.resolved.transferMethod} is recommended today. Recipient receives ${best.actualRecipientAmount.toFixed(2)} ${best.resolved.destinationCurrency}, securing an SIS of ${best.sis.sisScore} (${best.sis.sisLabel}) with a "${transparencyLabel}" true cost transparency rating.`;
+  const reason = "Based on currently available information, this provider is estimated to provide the highest recipient value for your selected transfer.";
 
   return {
     bestProviderId: best.resolved.providerId,
@@ -1770,7 +1836,7 @@ export async function getSariRemitIntelligence(input: {
       recommendation: recommendation,
       engine_status: 'active',
       generated_at: new Date().toISOString(),
-      sic_version: 'v1.1'
+      sic_version: 'v1.2'
     };
     saveLocalStorageItem<any[]>('sr_sic_snapshots', [newSnapshot, ...snapshots.slice(0, 49)]);
   }
@@ -1787,7 +1853,7 @@ export async function getSariRemitIntelligence(input: {
         true_cost_results: trueCostResults,
         recommendation: recommendation,
         engine_status: 'active',
-        sic_version: 'v1.1'
+        sic_version: 'v1.2'
       }]);
     } catch (err) {
       // Ignored if table doesn't exist yet
@@ -2080,7 +2146,9 @@ export async function signUpWithSupabase(
   name: string,
   phone: string,
   preferredCorridorId: string,
-  password: string
+  password: string,
+  privacyPolicyVersion?: string,
+  privacyPolicyAcceptedAt?: string
 ): Promise<SignUpResponse> {
   const normalizedEmail = email.trim().toLowerCase();
   let authUserId = `user-${Date.now()}`;
@@ -2093,6 +2161,8 @@ export async function signUpWithSupabase(
     preferredCorridorId,
     language: 'en' as const,
     onboarding_completed: false,
+    privacy_policy_version: privacyPolicyVersion || 'v1.2',
+    privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString(),
   };
 
   if (isSupabaseConfigured && supabaseClient) {
@@ -2147,7 +2217,9 @@ export async function signUpWithSupabase(
           preferred_corridor_id: preferredCorridorId,
           language: 'en',
           onboarding_completed: false,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          privacy_policy_version: privacyPolicyVersion || 'v1.2',
+          privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString()
         });
 
         if (profileError && !profileError.message.includes('duplicate key')) {
@@ -2166,7 +2238,9 @@ export async function signUpWithSupabase(
             preferred_corridor_id: preferredCorridorId,
             language: 'en',
             onboarding_completed: false,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            privacy_policy_version: privacyPolicyVersion || 'v1.2',
+            privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString()
           });
           saveLocalStorageItem('sr_supabase_registered_users', allUsers);
         }
@@ -2190,7 +2264,9 @@ export async function signUpWithSupabase(
         phone,
         preferredCorridorId,
         language: 'en' as const,
-        onboarding_completed: false
+        onboarding_completed: false,
+        privacy_policy_version: privacyPolicyVersion || 'v1.2',
+        privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString()
       }
     };
     saveAuthSession(session);
@@ -2670,6 +2746,8 @@ export async function updateUserProfileInDb(profile: {
   admin_notifications_enabled?: boolean;
   push_notifications_enabled?: boolean;
   email_notifications_enabled?: boolean;
+  privacy_policy_version?: string;
+  privacy_policy_accepted_at?: string;
 }): Promise<void> {
   const targetId = profile.id;
   const userEmail = (profile.email || getAuthSession().user?.email || '').trim().toLowerCase();
@@ -2701,6 +2779,8 @@ export async function updateUserProfileInDb(profile: {
         admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : true,
         push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : false,
         email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : false,
+        privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : undefined,
+        privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : undefined,
         updated_at: new Date().toISOString()
       };
 
@@ -2754,6 +2834,8 @@ export async function updateUserProfileInDb(profile: {
               admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : u.admin_notifications_enabled,
               push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : u.push_notifications_enabled,
               email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : u.email_notifications_enabled,
+              privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : u.privacy_policy_version,
+              privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : u.privacy_policy_accepted_at,
               updated_at: new Date().toISOString()
             }
           : u
@@ -2769,6 +2851,8 @@ export async function updateUserProfileInDb(profile: {
             preferred_corridor_id: profile.preferredCorridorId,
             language: profile.language,
             onboarding_completed: profile.onboarding_completed || false,
+            privacy_policy_version: profile.privacy_policy_version || 'v1.2',
+            privacy_policy_accepted_at: profile.privacy_policy_accepted_at || new Date().toISOString(),
             created_at: new Date().toISOString()
           }
         ];
@@ -2807,6 +2891,8 @@ export async function updateUserProfileInDb(profile: {
           admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : u.admin_notifications_enabled,
           push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : u.push_notifications_enabled,
           email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : u.email_notifications_enabled,
+          privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : u.privacy_policy_version,
+          privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : u.privacy_policy_accepted_at,
           updated_at: new Date().toISOString()
         }
       : u
@@ -2842,6 +2928,8 @@ export async function updateUserProfileInDb(profile: {
       admin_notifications_enabled: profile.admin_notifications_enabled !== undefined ? profile.admin_notifications_enabled : currentSession.user.admin_notifications_enabled,
       push_notifications_enabled: profile.push_notifications_enabled !== undefined ? profile.push_notifications_enabled : currentSession.user.push_notifications_enabled,
       email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : currentSession.user.email_notifications_enabled,
+      privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : currentSession.user.privacy_policy_version,
+      privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : currentSession.user.privacy_policy_accepted_at,
     };
     saveAuthSession(currentSession);
   }
@@ -4093,28 +4181,9 @@ const initialCorridorSettings: CorridorSetting[] = [
   { id: 'cs-et', corridor_code: 'sa-et', destination_country: 'Ethiopia', destination_currency: 'ETB', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
 ];
 
-const initialChannels: any[] = [
-  { id: 'stc-pay', providerName: 'STC Pay / STC Bank', providerCode: 'stc-pay', displayName: 'STC Pay / STC Bank', category: 'wallet', status: 'active', supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], supportedTransferMethods: ['Mobile Wallet', 'Bank Transfer'], defaultTransferFee: 10, defaultVatRate: 0.15, feeCurrency: 'SAR', notes: 'STC digital payment division.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'urpay', providerName: 'Urpay', providerCode: 'urpay', displayName: 'Urpay', category: 'wallet', status: 'active', supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], supportedTransferMethods: ['Mobile Wallet', 'Bank Transfer'], defaultTransferFee: 12, defaultVatRate: 0.15, feeCurrency: 'SAR', notes: 'Al Rajhi digital banking.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'mobily-pay', providerName: 'Mobily Pay', providerCode: 'mobily-pay', displayName: 'Mobily Pay', category: 'wallet', status: 'active', supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], supportedTransferMethods: ['Mobile Wallet', 'Bank Transfer'], defaultTransferFee: 8, defaultVatRate: 0.15, feeCurrency: 'SAR', notes: 'Mobily financial ecosystem.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'enjaz', providerName: 'Enjaz (Bank Albilad)', providerCode: 'enjaz', displayName: 'Enjaz (Bank Albilad)', category: 'exchange_house', status: 'active', supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], supportedTransferMethods: ['Cash Pickup', 'Bank Transfer'], defaultTransferFee: 15, defaultVatRate: 0.15, feeCurrency: 'SAR', notes: 'Physical branch and kiosk payments.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'quickpay', providerName: 'QuickPay (SNB)', providerCode: 'quickpay', displayName: 'QuickPay (SNB)', category: 'bank', status: 'active', supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], supportedTransferMethods: ['Bank Transfer'], defaultTransferFee: 15, defaultVatRate: 0.15, feeCurrency: 'SAR', notes: 'SNB remittance services.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'western-union', providerName: 'Western Union', providerCode: 'western-union', displayName: 'Western Union', category: 'money_transfer_operator', status: 'active', supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], supportedTransferMethods: ['Cash Pickup', 'Bank Transfer'], defaultTransferFee: 15, defaultVatRate: 0.15, feeCurrency: 'SAR', notes: 'Traditional cash out.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-  { id: 'al-rajhi-tahweel', providerName: 'Al Rajhi Tahweel', providerCode: 'al-rajhi-tahweel', displayName: 'Al Rajhi Tahweel', category: 'bank', status: 'active', supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], supportedTransferMethods: ['Bank Transfer', 'Cash Pickup'], defaultTransferFee: 15, defaultVatRate: 0.15, feeCurrency: 'SAR', notes: 'Tahweel branches.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-];
+const initialChannels: any[] = [];
 
-const initialCoverages: ChannelCorridorCoverage[] = initialChannels.flatMap(ch => 
-  ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'].map(corr => ({
-    id: `cov-${ch.id}-${corr}`,
-    channel_id: ch.id,
-    corridor_id: corr,
-    status: 'active',
-    supported_transfer_methods: ch.supportedTransferMethods,
-    custom_transfer_fee: ch.defaultTransferFee,
-    custom_vat_rate: ch.defaultVatRate,
-    notes: ''
-  }))
-);
+const initialCoverages: ChannelCorridorCoverage[] = [];
 
 // 1. Admin Access Control Methods
 export async function fetchAdminAccess(): Promise<SRCMCAdminAccess[]> {
@@ -4270,34 +4339,55 @@ export function getActiveCorridorsSync(): Corridor[] {
 export async function fetchRemittanceChannels(): Promise<any[]> {
   if (supabaseClient) {
     try {
-      const { data, error } = await supabaseClient.from('remittance_channels').select('*');
-      if (!error && data) {
-        const mapped = data.map((r: any) => ({
-          id: r.id,
-          providerName: r.provider_name,
-          providerCode: r.provider_code,
-          displayName: r.display_name,
-          category: r.category,
-          status: r.status,
-          supportedCorridors: r.supported_corridors || [],
-          supportedTransferMethods: r.supported_transfer_methods || [],
-          defaultTransferFee: r.default_transfer_fee !== null ? parseFloat(r.default_transfer_fee) : null,
-          defaultVatRate: r.default_vat_rate !== null ? parseFloat(r.default_vat_rate) : null,
-          feeCurrency: r.fee_currency || 'SAR',
-          logoUrl: r.logo_url,
-          websiteUrl: r.website_url,
-          notes: r.notes,
-          createdBy: r.created_by,
-          createdAt: r.created_at,
-          updatedAt: r.updated_at,
-          brandAssetId: r.brand_asset_id,
-          brandingStatus: r.branding_status || 'placeholder'
-        }));
+      // Perform a left join on brand_assets
+      let { data, error } = await supabaseClient
+        .from('remittance_channels')
+        .select('*, brand_assets(*)');
+      
+      if (error) {
+        console.warn('Supabase fetch channels with left join failed, falling back to simple select:', error);
+        const fallbackRes = await supabaseClient.from('remittance_channels').select('*');
+        if (fallbackRes.error) {
+          console.warn('Supabase simple select channels failed fallback details:', fallbackRes.error);
+          return getLocalStorageItem<any[]>(CHANNELS_KEY, initialChannels);
+        }
+        data = fallbackRes.data;
+      }
+
+      if (data) {
+        const mapped = data.map((r: any) => {
+          const joinedAsset = Array.isArray(r.brand_assets)
+            ? (r.brand_assets[0] || null)
+            : (r.brand_assets || null);
+
+          return {
+            id: r.id,
+            providerName: r.provider_name,
+            providerCode: r.provider_code,
+            displayName: r.display_name,
+            category: r.category,
+            status: r.status,
+            supportedCorridors: r.supported_corridors || [],
+            supportedTransferMethods: r.supported_transfer_methods || [],
+            defaultTransferFee: r.default_transfer_fee !== null ? parseFloat(r.default_transfer_fee) : null,
+            defaultVatRate: r.default_vat_rate !== null ? parseFloat(r.default_vat_rate) : null,
+            feeCurrency: r.fee_currency || 'SAR',
+            logoUrl: r.logo_url,
+            websiteUrl: r.website_url,
+            notes: r.notes,
+            createdBy: r.created_by,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+            brandAssetId: r.brand_asset_id,
+            brandingStatus: joinedAsset ? (joinedAsset.approval_status || 'placeholder') : 'placeholder',
+            brandAsset: joinedAsset
+          };
+        });
         saveLocalStorageItem<any[]>(CHANNELS_KEY, mapped);
         return mapped;
       }
     } catch (err) {
-      console.warn('Supabase fetch channels failed, falling back:', err);
+      console.warn('Supabase fetch channels failed entirely, falling back:', err);
     }
   }
   return getLocalStorageItem<any[]>(CHANNELS_KEY, initialChannels);
@@ -4317,6 +4407,27 @@ export async function saveRemittanceChannel(channel: any): Promise<any> {
     throw new Error(`Provider code '${pCode}' is already registered for channel '${existingWithCode.displayName}'. Unique lowercase stable codes are required.`);
   }
 
+  // Double check uniqueness in Supabase if client is active
+  if (supabaseClient) {
+    try {
+      const { data: dbMatches, error: matchErr } = await supabaseClient
+        .from('remittance_channels')
+        .select('id, display_name, provider_code')
+        .eq('provider_code', pCode);
+      if (!matchErr && dbMatches && dbMatches.length > 0) {
+        const otherMatch = dbMatches.find((c: any) => c.id !== channel.id);
+        if (otherMatch) {
+          throw new Error(`Provider code '${pCode}' is already registered in Supabase for channel '${otherMatch.display_name}'. Unique lowercase stable codes are required.`);
+        }
+      }
+    } catch (dbErr: any) {
+      if (dbErr.message && dbErr.message.includes('already registered')) {
+        throw dbErr;
+      }
+      console.warn('[SariRemit DB] Supabase uniqueness check bypassed:', dbErr);
+    }
+  }
+
   const updatedChannel = {
     ...channel,
     providerCode: pCode
@@ -4324,13 +4435,15 @@ export async function saveRemittanceChannel(channel: any): Promise<any> {
 
   if (supabaseClient) {
     try {
-      const dbRow = {
+      const dbRow: any = {
         id: updatedChannel.id,
         provider_name: updatedChannel.providerName,
         provider_code: updatedChannel.providerCode,
         display_name: updatedChannel.displayName,
         category: updatedChannel.category,
         status: updatedChannel.status,
+        supported_corridors: updatedChannel.supportedCorridors || [],
+        supported_transfer_methods: updatedChannel.supportedTransferMethods || [],
         default_transfer_fee: updatedChannel.defaultTransferFee,
         default_vat_rate: updatedChannel.defaultVatRate,
         fee_currency: updatedChannel.feeCurrency,
@@ -4340,12 +4453,48 @@ export async function saveRemittanceChannel(channel: any): Promise<any> {
         created_by: updatedChannel.createdBy,
         created_at: updatedChannel.createdAt,
         updated_at: new Date().toISOString(),
-        brand_asset_id: updatedChannel.brandAssetId || null,
-        branding_status: updatedChannel.brandingStatus || 'placeholder'
+        brand_asset_id: updatedChannel.brandAssetId || null
       };
-      await supabaseClient.from('remittance_channels').upsert(dbRow);
-    } catch (err) {
-      console.warn('Supabase save channel failed, falling back:', err);
+      
+      let upsertErr: any = null;
+      const res1 = await supabaseClient.from('remittance_channels').upsert(dbRow);
+      upsertErr = res1.error;
+      
+      // BAM failure must not prevent channel registration unless the admin explicitly requires a logo.
+      if (upsertErr && !updatedChannel.logoRequired) {
+        console.warn('[SariRemit DB] First upsert attempt failed, attempting self-healing pruning...', upsertErr);
+        
+        const cleanRow = { ...dbRow };
+        let modified = false;
+        const errMessage = (upsertErr.message || '').toLowerCase();
+        
+        if (
+          errMessage.includes('brand_asset_id') || 
+          errMessage.includes('smallint') || 
+          errMessage.includes('not-null') ||
+          errMessage.includes('uuid') ||
+          errMessage.includes('foreign key') ||
+          errMessage.includes('violates') ||
+          errMessage.includes('key constraint')
+        ) {
+          console.warn('[SariRemit DB Prune] Dropping brand_asset_id column from payload due to schema/type issue...');
+          delete cleanRow.brand_asset_id;
+          modified = true;
+        }
+        
+        if (modified) {
+          const res2 = await supabaseClient.from('remittance_channels').upsert(cleanRow);
+          upsertErr = res2.error;
+        }
+      }
+      
+      if (upsertErr) {
+        console.error('[SariRemit DB] Supabase upsert channels failed after pruning:', upsertErr);
+        throw new Error(upsertErr.message || 'Database write failed during channel registration.');
+      }
+    } catch (err: any) {
+      console.error('Supabase save channel failed, aborted save:', err);
+      throw err;
     }
   }
 
@@ -4390,6 +4539,7 @@ export async function saveRemittanceChannel(channel: any): Promise<any> {
     if (supabaseClient) {
       try {
         const payload = newCoverages.filter(cov => cov.id.startsWith(`cov-${updatedChannel.id}-`)).map(c => ({
+          id: c.id,
           channel_id: c.channel_id,
           corridor_id: c.corridor_id,
           status: c.status,
@@ -4398,9 +4548,14 @@ export async function saveRemittanceChannel(channel: any): Promise<any> {
           custom_vat_rate: c.custom_vat_rate,
           notes: c.notes
         }));
-        await supabaseClient.from('channel_corridor_coverage').upsert(payload);
-      } catch (e) {
-        console.warn('Supabase save coverage rows failed:', e);
+        const { error: covErr } = await supabaseClient.from('channel_corridor_coverage').upsert(payload);
+        if (covErr) {
+          console.error('[SariRemit DB] Supabase save coverage rows failed:', covErr);
+          throw new Error(covErr.message || 'Database write failed during corridor coverage auto-provisioning.');
+        }
+      } catch (e: any) {
+        console.error('Supabase save coverage rows failed, aborted save:', e);
+        throw e;
       }
     }
   }
@@ -4452,21 +4607,11 @@ export async function fetchChannelCoverage(channelId?: string): Promise<ChannelC
 
         const current = getLocalStorageItem<ChannelCorridorCoverage[]>(CHANNEL_COVERAGE_KEY, initialCoverages);
         let updated: ChannelCorridorCoverage[];
-        if (fetched.length === 0) {
-          updated = current;
+        if (channelId) {
+          const filtered = current.filter(c => c.channel_id !== channelId);
+          updated = [...filtered, ...fetched];
         } else {
-          const fetchedMap = new Map(fetched.map(f => [`${f.channel_id}-${f.corridor_id}`, f]));
-          updated = current.map(item => {
-            const match = fetchedMap.get(`${item.channel_id}-${item.corridor_id}`);
-            return match ? match : item;
-          });
-          const existingKeys = new Set(current.map(c => `${c.channel_id}-${c.corridor_id}`));
-          for (const f of fetched) {
-            const key = `${f.channel_id}-${f.corridor_id}`;
-            if (!existingKeys.has(key)) {
-              updated.push(f);
-            }
-          }
+          updated = fetched;
         }
         saveLocalStorageItem<ChannelCorridorCoverage[]>(CHANNEL_COVERAGE_KEY, updated);
         return fetched;
@@ -4639,22 +4784,22 @@ export async function syncSupabaseToLocal(): Promise<void> {
       fetchMarketReferenceRates(),
     ]);
 
-    if (channels && channels.length > 0) {
+    if (channels) {
       saveLocalStorageItem(CHANNELS_KEY, channels);
     }
-    if (coverages && coverages.length > 0) {
+    if (coverages) {
       saveLocalStorageItem(CHANNEL_COVERAGE_KEY, coverages);
     }
-    if (corridors && corridors.length > 0) {
+    if (corridors) {
       saveLocalStorageItem(CORRIDOR_SETTINGS_KEY, corridors);
     }
-    if (overrides && overrides.length > 0) {
+    if (overrides) {
       saveLocalStorageItem(OVERRIDES_KEY, overrides);
     }
-    if (submissions && submissions.length > 0) {
+    if (submissions) {
       saveLocalStorageItem(COMMUNITY_KEY, submissions);
     }
-    if (marketRates && marketRates.length > 0) {
+    if (marketRates) {
       saveLocalStorageItem(MARKET_KEY, marketRates);
     }
   } catch (err) {
@@ -4949,6 +5094,590 @@ function getFallbackColor(providerCode: string): string {
     default: return '#10B981';
   }
 }
+
+// =========================================================================
+// SUPPORT & FEEDBACK MODULE SERVICES (Durable Real + Emulated Fallbacks)
+// =========================================================================
+
+const SUPPORT_REQUESTS_KEY = 'sr_support_requests';
+const SUPPORT_MESSAGES_KEY = 'sr_support_messages';
+const SUPPORT_AUDIT_LOGS_KEY = 'sr_support_audit_logs';
+
+function generateEmulatedTicketNumber(): string {
+  const year = new Date().getFullYear();
+  const currentRequests = getLocalStorageItem<any[]>(SUPPORT_REQUESTS_KEY, []);
+  const yearPrefix = `SR-${year}-`;
+  const countInYear = currentRequests.filter(r => r.ticket_number?.startsWith(yearPrefix)).length;
+  const nextSeq = countInYear + 1;
+  return `SR-${year}-${String(nextSeq).padStart(6, '0')}`;
+}
+
+export async function runSupportSafChecks(input: {
+  userId?: string | null;
+  email: string;
+  message: string;
+  subject: string;
+  name: string;
+}): Promise<{
+  riskScore: number;
+  riskLevel: 'low' | 'moderate' | 'high' | 'blocked';
+  flags: string[];
+}> {
+  const flags: string[] = [];
+  let score = 0;
+
+  // Fetch all requests for frequency analysis
+  const allRequests = await fetchAllSupportRequestsInternal();
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  let recentSubmissions = 0;
+  if (input.userId) {
+    recentSubmissions = allRequests.filter(r => r.user_id === input.userId && new Date(r.created_at) >= oneDayAgo).length;
+    if (recentSubmissions >= 5) {
+      flags.push('FREQUENCY_EXCEEDED: Authenticated user exceeded 5 posts in 24h');
+      score += 65;
+    } else if (recentSubmissions >= 3) {
+      score += 25;
+    }
+  } else {
+    recentSubmissions = allRequests.filter(r => r.email.toLowerCase() === input.email.toLowerCase() && new Date(r.created_at) >= oneDayAgo).length;
+    if (recentSubmissions >= 3) {
+      flags.push('FREQUENCY_EXCEEDED: Guest email exceeded 3 posts in 24h');
+      score += 85;
+    } else if (recentSubmissions >= 2) {
+      score += 35;
+    }
+  }
+
+  // Duplicate check
+  const hasDuplicate = allRequests.some(r => 
+    r.email.toLowerCase() === input.email.toLowerCase() && 
+    r.message.trim().toLowerCase() === input.message.trim().toLowerCase()
+  );
+  if (hasDuplicate) {
+    flags.push('DUPLICATE_SUBMISSION: Identical message already exists');
+    score += 45;
+  }
+
+  // Script injection check
+  const scriptRegex = /<script|javascript:|onload=|onerror=/i;
+  if (scriptRegex.test(input.message) || scriptRegex.test(input.subject) || scriptRegex.test(input.name)) {
+    flags.push('SCRIPT_INJECTION_SUSPECTED: Input contains script-like tags');
+    score += 95;
+  }
+
+  // Malicious link spam check
+  const urlRegex = /https?:\/\/[^\s]+/gi;
+  const urls = input.message.match(urlRegex) || [];
+  if (urls.length > 2) {
+    flags.push('EXCESSIVE_LINKS: More than 2 external URLs in message');
+    score += 35;
+  }
+
+  // Payload size check
+  if (input.message.length > 5000) {
+    flags.push('OVERSIZED_PAYLOAD: Message exceeds 5,000 characters');
+    score += 50;
+  }
+
+  // Simple keyword filters
+  const abusiveWords = ['spam', 'abuse', 'scam', 'hacker', 'exploit', 'select * from'];
+  const lowercaseMsg = input.message.toLowerCase();
+  const lowercaseSubj = input.subject.toLowerCase();
+  const matchedAbusive = abusiveWords.filter(w => lowercaseMsg.includes(w) || lowercaseSubj.includes(w));
+  if (matchedAbusive.length > 0) {
+    flags.push(`SUSPICIOUS_KEYWORD_MATCH: Msg contains terms: ${matchedAbusive.join(', ')}`);
+    score += 20 * matchedAbusive.length;
+  }
+
+  let riskLevel: 'low' | 'moderate' | 'high' | 'blocked' = 'low';
+  if (score >= 90) {
+    riskLevel = 'blocked';
+  } else if (score >= 60) {
+    riskLevel = 'high';
+  } else if (score >= 30) {
+    riskLevel = 'moderate';
+  }
+
+  return {
+    riskScore: Math.min(score, 100),
+    riskLevel,
+    flags
+  };
+}
+
+export async function fetchAllSupportRequestsInternal(): Promise<SupportFeedbackRequest[]> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('support_feedback_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) return data as SupportFeedbackRequest[];
+    } catch (err) {
+      console.warn('Failed to fetch from Supabase, using local:', err);
+    }
+  }
+  return getLocalStorageItem<SupportFeedbackRequest[]>(SUPPORT_REQUESTS_KEY, []);
+}
+
+export async function fetchUserSupportRequests(): Promise<SupportFeedbackRequest[]> {
+  const session = getAuthSession();
+  const email = session.user?.email || '';
+  const userId = session.user?.id || '';
+
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      let query = supabaseClient.from('support_feedback_requests').select('*');
+      if (userId) {
+        query = query.or(`user_id.eq.${userId},email.eq.${email}`);
+      } else if (email) {
+        query = query.eq('email', email);
+      } else {
+        return [];
+      }
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (!error && data) return data as SupportFeedbackRequest[];
+    } catch (err) {
+      console.warn('Failed to fetch user support requests from Supabase, using local:', err);
+    }
+  }
+
+  const all = getLocalStorageItem<SupportFeedbackRequest[]>(SUPPORT_REQUESTS_KEY, []);
+  if (userId) {
+    return all.filter(r => r.user_id === userId || r.email.toLowerCase() === email.toLowerCase());
+  } else if (email) {
+    return all.filter(r => r.email.toLowerCase() === email.toLowerCase());
+  }
+  return [];
+}
+
+export async function fetchAllSupportRequestsAdmin(): Promise<SupportFeedbackRequest[]> {
+  return fetchAllSupportRequestsInternal();
+}
+
+export async function submitSupportRequest(input: {
+  name: string;
+  email: string;
+  category: SupportCategory;
+  subject: string;
+  message: string;
+  related_channel_id?: string | null;
+  related_corridor_id?: string | null;
+  related_transfer_id?: string | null;
+  related_submission_id?: string | null;
+  preferred_language?: string;
+  submitted_from?: string;
+}): Promise<{ success: boolean; ticketNumber: string; request: SupportFeedbackRequest }> {
+  
+  // Validate input
+  if (!input.name || input.name.trim().length < 2 || input.name.trim().length > 100) {
+    throw new Error('Name must be between 2 and 100 characters.');
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!input.email || !emailRegex.test(input.email)) {
+    throw new Error('Please provide a valid email address.');
+  }
+  if (!input.subject || input.subject.trim().length < 5 || input.subject.trim().length > 150) {
+    throw new Error('Subject must be between 5 and 150 characters.');
+  }
+  if (!input.message || input.message.trim().length < 20 || input.message.trim().length > 5000) {
+    throw new Error('Message must be between 20 and 5,000 characters.');
+  }
+
+  const session = getAuthSession();
+  const userId = session.user?.id || null;
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  // Execute SAF checks
+  const safResult = await runSupportSafChecks({
+    userId,
+    email: normalizedEmail,
+    message: input.message,
+    subject: input.subject,
+    name: input.name
+  });
+
+  if (safResult.riskLevel === 'blocked') {
+    throw new Error('This submission was flagged by our security filters. Please check your message for repetitive phrases or suspicious links and try again.');
+  }
+
+  // Generate ticket number
+  let ticketNumber = '';
+  const nowStr = new Date().toISOString();
+
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.rpc('generate_ticket_number');
+      if (!error && data) {
+        ticketNumber = data;
+      }
+    } catch (e) {
+      console.warn('Error calling rpc generate_ticket_number:', e);
+    }
+  }
+
+  if (!ticketNumber) {
+    ticketNumber = generateEmulatedTicketNumber();
+  }
+
+  const requestId = `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+  const newRequest: SupportFeedbackRequest = {
+    id: requestId,
+    ticket_number: ticketNumber,
+    user_id: userId,
+    name: input.name.trim(),
+    email: normalizedEmail,
+    category: input.category,
+    subject: input.subject.trim(),
+    message: input.message.trim(),
+    related_channel_id: input.related_channel_id || null,
+    related_corridor_id: input.related_corridor_id || null,
+    related_transfer_id: input.related_transfer_id || null,
+    related_submission_id: input.related_submission_id || null,
+    preferred_language: input.preferred_language || 'en',
+    status: 'new',
+    priority: safResult.riskScore >= 60 ? 'high' : 'normal',
+    spam_risk_level: safResult.riskLevel,
+    spam_flags: safResult.flags,
+    created_at: nowStr,
+    updated_at: nowStr
+  };
+
+  // Insert support request
+  let savedRequest = newRequest;
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('support_feedback_requests')
+        .insert({
+          id: newRequest.id,
+          ticket_number: newRequest.ticket_number,
+          user_id: newRequest.user_id,
+          name: newRequest.name,
+          email: newRequest.email,
+          category: newRequest.category,
+          subject: newRequest.subject,
+          message: newRequest.message,
+          related_channel_id: newRequest.related_channel_id,
+          related_corridor_id: newRequest.related_corridor_id,
+          related_transfer_id: newRequest.related_transfer_id,
+          related_submission_id: newRequest.related_submission_id,
+          preferred_language: newRequest.preferred_language,
+          status: newRequest.status,
+          priority: newRequest.priority,
+          spam_risk_level: newRequest.spam_risk_level,
+          spam_flags: newRequest.spam_flags,
+          created_at: newRequest.created_at,
+          updated_at: newRequest.updated_at
+        })
+        .select()
+        .single();
+      if (!error && data) {
+        savedRequest = data as SupportFeedbackRequest;
+      }
+    } catch (err) {
+      console.warn('Failed to insert support request into Supabase, using local:', err);
+    }
+  }
+
+  // Sync to local storage
+  const currentRequests = getLocalStorageItem<SupportFeedbackRequest[]>(SUPPORT_REQUESTS_KEY, []);
+  saveLocalStorageItem(SUPPORT_REQUESTS_KEY, [savedRequest, ...currentRequests]);
+
+  // Log audit
+  await logSupportAudit({
+    requestId: savedRequest.id,
+    ticketNumber: savedRequest.ticket_number,
+    actor: userId ? `user:${userId}` : 'guest',
+    previousState: 'none',
+    newState: 'new',
+    action: 'Request created',
+    timestamp: nowStr
+  });
+
+  // SNS triggers
+  try {
+    const { createNotification } = await import('./notificationService');
+    
+    // User receipt notification
+    if (userId) {
+      await createNotification({
+        userId,
+        audienceType: 'user',
+        category: 'security',
+        priority: 'normal',
+        title: 'Message received',
+        message: `Your support request ${ticketNumber} has been received.`,
+        actionLabel: 'View request',
+        actionUrl: `/support/requests/${savedRequest.id}`,
+        sourceSystem: 'Support',
+        sourceEvent: 'support_request_created',
+        sourceId: savedRequest.id,
+        idempotencyKey: `support_request_received:${savedRequest.id}`
+      });
+    }
+
+    // Admin alert
+    await createNotification({
+      audienceType: 'srcmc_permission',
+      category: 'security',
+      priority: savedRequest.priority === 'high' ? 'high' : 'normal',
+      title: 'New support request',
+      message: `A new ${input.category.replace('_', ' ')} support request ${ticketNumber} has been submitted.`,
+      actionLabel: 'Review Request',
+      actionUrl: `/srcmc/support`,
+      payload: { requiredPermission: 'manage_support_requests' },
+      sourceSystem: 'Support',
+      sourceEvent: 'support_request_admin_alert',
+      sourceId: savedRequest.id,
+      idempotencyKey: `support_request_admin:${savedRequest.id}`
+    });
+  } catch (notifErr) {
+    console.warn('[SNS] Failed to trigger support notifications:', notifErr);
+  }
+
+  return {
+    success: true,
+    ticketNumber,
+    request: savedRequest
+  };
+}
+
+export async function updateSupportRequestAdmin(
+  requestId: string,
+  updates: Partial<SupportFeedbackRequest>,
+  adminEmail: string
+): Promise<SupportFeedbackRequest> {
+  const allRequests = await fetchAllSupportRequestsInternal();
+  const requestIndex = allRequests.findIndex(r => r.id === requestId);
+  if (requestIndex === -1) {
+    throw new Error('Support request not found.');
+  }
+
+  const original = allRequests[requestIndex];
+  const nowStr = new Date().toISOString();
+
+  const updatedRequest: SupportFeedbackRequest = {
+    ...original,
+    ...updates,
+    updated_at: nowStr
+  };
+
+  if (updates.status && updates.status !== original.status) {
+    await logSupportAudit({
+      requestId,
+      ticketNumber: original.ticket_number,
+      actor: `admin:${adminEmail}`,
+      previousState: original.status,
+      newState: updates.status,
+      action: 'Status changed',
+      timestamp: nowStr
+    });
+
+    // Notify user via SNS
+    if (original.user_id) {
+      try {
+        const { createNotification } = await import('./notificationService');
+        await createNotification({
+          userId: original.user_id,
+          audienceType: 'user',
+          category: 'security',
+          priority: 'normal',
+          title: `Request update: ${updates.status}`,
+          message: `Your support request ${original.ticket_number} status has been updated to ${updates.status}.`,
+          actionLabel: 'View request',
+          actionUrl: `/support/requests/${requestId}`,
+          sourceSystem: 'Support',
+          sourceEvent: 'support_status_updated',
+          sourceId: requestId,
+          idempotencyKey: `support_status_update:${requestId}:${updates.status}`
+        });
+      } catch (e) {
+        console.warn('Failed to notify user of status update in SNS:', e);
+      }
+    }
+  }
+
+  if (updates.priority && updates.priority !== original.priority) {
+    await logSupportAudit({
+      requestId,
+      ticketNumber: original.ticket_number,
+      actor: `admin:${adminEmail}`,
+      previousState: original.priority,
+      newState: updates.priority,
+      action: 'Priority changed',
+      timestamp: nowStr
+    });
+  }
+
+  if (updates.assigned_to && updates.assigned_to !== original.assigned_to) {
+    await logSupportAudit({
+      requestId,
+      ticketNumber: original.ticket_number,
+      actor: `admin:${adminEmail}`,
+      previousState: original.assigned_to || 'unassigned',
+      newState: updates.assigned_to,
+      action: 'Assigned',
+      timestamp: nowStr
+    });
+  }
+
+  if (updates.admin_notes && updates.admin_notes !== original.admin_notes) {
+    await logSupportAudit({
+      requestId,
+      ticketNumber: original.ticket_number,
+      actor: `admin:${adminEmail}`,
+      previousState: original.admin_notes || 'none',
+      newState: updates.admin_notes,
+      action: 'Admin note added',
+      timestamp: nowStr
+    });
+  }
+
+  if (updates.resolution_summary && updates.resolution_summary !== original.resolution_summary) {
+    await logSupportAudit({
+      requestId,
+      ticketNumber: original.ticket_number,
+      actor: `admin:${adminEmail}`,
+      previousState: original.resolution_summary || 'none',
+      newState: updates.resolution_summary,
+      action: 'Resolved',
+      timestamp: nowStr
+    });
+  }
+
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { error } = await supabaseClient
+        .from('support_feedback_requests')
+        .update({
+          status: updatedRequest.status,
+          priority: updatedRequest.priority,
+          assigned_to: updatedRequest.assigned_to,
+          admin_notes: updatedRequest.admin_notes,
+          resolution_summary: updatedRequest.resolution_summary,
+          updated_at: updatedRequest.updated_at,
+          acknowledged_at: updates.status === 'acknowledged' ? nowStr : original.acknowledged_at,
+          resolved_at: updates.status === 'resolved' ? nowStr : original.resolved_at,
+          closed_at: updates.status === 'closed' ? nowStr : original.closed_at
+        })
+        .eq('id', requestId);
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Failed to update support request in Supabase, using local:', err);
+    }
+  }
+
+  allRequests[requestIndex] = updatedRequest;
+  saveLocalStorageItem(SUPPORT_REQUESTS_KEY, allRequests);
+
+  return updatedRequest;
+}
+
+export async function addSupportMessage(
+  requestId: string,
+  senderUserId: string | null,
+  senderType: 'user' | 'admin' | 'system',
+  messageText: string,
+  isInternal: boolean = false
+): Promise<SupportRequestMessage> {
+  const nowStr = new Date().toISOString();
+  const newMessage: SupportRequestMessage = {
+    id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    request_id: requestId,
+    sender_user_id: senderUserId,
+    sender_type: senderType,
+    message: messageText.trim(),
+    is_internal: isInternal,
+    created_at: nowStr
+  };
+
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { error } = await supabaseClient
+        .from('support_request_messages')
+        .insert({
+          id: newMessage.id,
+          request_id: newMessage.request_id,
+          sender_user_id: newMessage.sender_user_id,
+          sender_type: newMessage.sender_type,
+          message: newMessage.message,
+          is_internal: newMessage.is_internal,
+          created_at: newMessage.created_at
+        });
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Failed to insert support message into Supabase, using local:', err);
+    }
+  }
+
+  const currentMessages = getLocalStorageItem<SupportRequestMessage[]>(SUPPORT_MESSAGES_KEY, []);
+  saveLocalStorageItem(SUPPORT_MESSAGES_KEY, [...currentMessages, newMessage]);
+
+  // Log audit
+  const allRequests = await fetchAllSupportRequestsInternal();
+  const request = allRequests.find(r => r.id === requestId);
+  if (request) {
+    await logSupportAudit({
+      requestId,
+      ticketNumber: request.ticket_number,
+      actor: senderUserId ? `${senderType}:${senderUserId}` : senderType,
+      previousState: request.status,
+      newState: request.status,
+      action: isInternal ? 'Admin note added' : 'User contacted',
+      timestamp: nowStr
+    });
+  }
+
+  return newMessage;
+}
+
+export async function fetchSupportMessages(requestId: string): Promise<SupportRequestMessage[]> {
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('support_request_messages')
+        .select('*')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: true });
+      if (!error && data) return data as SupportRequestMessage[];
+    } catch (err) {
+      console.warn('Failed to fetch support messages from Supabase, using local:', err);
+    }
+  }
+
+  const all = getLocalStorageItem<SupportRequestMessage[]>(SUPPORT_MESSAGES_KEY, []);
+  return all.filter(m => m.request_id === requestId).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}
+
+export interface SupportAuditLog {
+  id: string;
+  requestId: string;
+  ticketNumber: string;
+  actor: string;
+  previousState: string;
+  newState: string;
+  action: string;
+  timestamp: string;
+}
+
+export async function logSupportAudit(log: Omit<SupportAuditLog, 'id'>): Promise<void> {
+  const newLog: SupportAuditLog = {
+    id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    ...log
+  };
+  const currentLogs = getLocalStorageItem<SupportAuditLog[]>(SUPPORT_AUDIT_LOGS_KEY, []);
+  saveLocalStorageItem(SUPPORT_AUDIT_LOGS_KEY, [newLog, ...currentLogs]);
+}
+
+export async function fetchSupportAuditLogs(requestId: string): Promise<SupportAuditLog[]> {
+  const currentLogs = getLocalStorageItem<SupportAuditLog[]>(SUPPORT_AUDIT_LOGS_KEY, []);
+  return currentLogs.filter(l => l.requestId === requestId).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
 
 
 

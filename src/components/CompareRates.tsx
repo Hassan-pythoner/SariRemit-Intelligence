@@ -1002,7 +1002,7 @@ export default function CompareRates({
                                     </div>
                                     <div className="space-y-0.5">
                                       <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
-                                        <span>Transparency Score</span>
+                                        <span>Comparison Confidence</span>
                                         <span className="font-mono text-white">{opt.sis.true_cost_score ?? 80}/100</span>
                                       </div>
                                       <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
@@ -1166,7 +1166,7 @@ export default function CompareRates({
                                   </div>
                                   <div className="space-y-1 text-left">
                                     <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
-                                      <span>Transparency Score</span>
+                                      <span>Comparison Confidence</span>
                                       <span className="font-mono text-white">{opt.sis.true_cost_score ?? 85}/100</span>
                                     </div>
                                     <div className="w-full h-1.5 bg-[#071A35] rounded-full overflow-hidden">

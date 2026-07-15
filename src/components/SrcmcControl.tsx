@@ -49,8 +49,13 @@ import {
   fetchBrandAssetPermissions,
   saveBrandAssetPermission,
   logBamAudit,
-  resolveProviderBranding
+  resolveProviderBranding,
+  fetchAllSupportRequestsAdmin,
+  updateSupportRequestAdmin,
+  fetchSupportMessages,
+  addSupportMessage
 } from '../services/supabaseService';
+import { getBamFeatureFlags, saveBamFeatureFlags } from '../services/bamAssetResolver';
 import { 
   Settings, ShieldCheck, Database, FileText, CheckCircle2, 
   XCircle, Trash2, PlusCircle, RefreshCw, AlertTriangle, HelpCircle, 
@@ -90,6 +95,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [channels, setChannels] = useState<any[]>([]);
   const [coverages, setCoverages] = useState<ChannelCorridorCoverage[]>([]);
   const [auditLogs, setAuditLogs] = useState<SRCMCAuditLog[]>([]);
+  const [adminSupportRequests, setAdminSupportRequests] = useState<any[]>([]);
 
   // Selection & Forms states
   const [selectedChannelForCoverage, setSelectedChannelForCoverage] = useState<any | null>(null);
@@ -110,6 +116,16 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [overrideReason, setOverrideReason] = useState<string>('Operational override adjustment');
   const [formError, setFormError] = useState<string>('');
   const [formSuccess, setFormSuccess] = useState<string>('');
+
+  // Form Fields: Privacy Policy Manager
+  const [policies, setPolicies] = useState<any[]>([
+    { version: 'v1.2', status: 'Active', publishDate: '2026-07-15', description: 'Saudi PDPL compliant 14-section Privacy Policy written in Simple English & Arabic.' },
+    { version: 'v1.1', status: 'Archived', publishDate: '2026-06-10', description: 'Basic Comparative analysis framework guidelines (archived).' },
+    { version: 'v1.0', status: 'Archived', publishDate: '2026-05-01', description: 'Initial seed platform structure (archived).' }
+  ]);
+  const [newPolicyVersion, setNewPolicyVersion] = useState<string>('v1.3');
+  const [newPolicyDesc, setNewPolicyDesc] = useState<string>('Updated to include recent feedback loops and enhanced security controls for BAM screenshots.');
+  const [privacySuccess, setPrivacySuccess] = useState<string>('');
 
   // Form Fields: Weights
   const [weightsForm, setWeightsForm] = useState<any>({
@@ -164,6 +180,15 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [covVat, setCovVat] = useState<string>('0.15');
   const [covExchangeRate, setCovExchangeRate] = useState<string>('');
   const [covVatAmount, setCovVatAmount] = useState<string>('');
+
+  // Support & Feedback Administrative States
+  const [selectedAdminTicket, setSelectedAdminTicket] = useState<any | null>(null);
+  const [adminTicketMessages, setAdminTicketMessages] = useState<any[]>([]);
+  const [adminReplyText, setAdminReplyText] = useState<string>('');
+  const [adminResolutionNotes, setAdminResolutionNotes] = useState<string>('');
+  const [isAdminReplying, setIsAdminReplying] = useState<boolean>(false);
+  const [supportFilterStatus, setSupportFilterStatus] = useState<string>('all');
+  const [supportFilterCategory, setSupportFilterCategory] = useState<string>('all');
   const [covOtherCosts, setCovOtherCosts] = useState<string>('');
   const [covNotes, setCovNotes] = useState<string>('');
   const [covError, setCovError] = useState<string>('');
@@ -192,6 +217,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [brandAssetPermissions, setBrandAssetPermissions] = useState<BrandAssetPermission[]>([]);
   const [chanBrandAssetId, setChanBrandAssetId] = useState<string>('');
   const [chanBrandingStatus, setChanBrandingStatus] = useState<string>('placeholder');
+  const [chanLogoRequired, setChanLogoRequired] = useState<boolean>(false);
 
   // BAM Subtab states
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
@@ -210,7 +236,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [assetMetadataJson, setAssetMetadataJson] = useState<string>('{}');
 
   // BAM Phase 2 state hooks
-  const [bamSubView, setBamSubView] = useState<'overview' | 'directory' | 'upload' | 'diagnostics' | 'migration'>('overview');
+  const [bamFlags, setBamFlags] = useState(() => getBamFeatureFlags());
+  const [bamSubView, setBamSubView] = useState<'overview' | 'directory' | 'upload' | 'diagnostics' | 'migration' | 'release'>('overview');
   const [bamSearch, setBamSearch] = useState<string>('');
   const [bamTypeFilter, setBamTypeFilter] = useState<string>('all');
   const [bamProviderFilter, setBamProviderFilter] = useState<string>('all');
@@ -665,7 +692,9 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     { key: 'resolved', label: 'RRE Resolution Inspect', permission: 'monitor_rates' },
     { key: 'weights', label: 'SIS Formula Weights', permission: 'view_sic' },
     { key: 'audit_logs', label: 'Audit Logs Feed', permission: 'view_audit_logs' },
-    { key: 'users', label: 'Registered Users', permission: 'manage_admins' }
+    { key: 'users', label: 'Registered Users', permission: 'manage_admins' },
+    { key: 'privacy', label: 'Privacy Policy Manager', permission: 'manage_admins' },
+    { key: 'support', label: 'Support & Compliance Desk', permission: 'manage_overrides' }
   ];
 
   const allowedSubtabs = subtabs.filter(tab => 
@@ -699,11 +728,12 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
       fetchAuditLogs(),
       fetchFraudIntegrityEvents(),
       fetchBrandAssets(),
-      fetchBrandAssetPermissions()
+      fetchBrandAssetPermissions(),
+      fetchAllSupportRequestsAdmin()
     ]).then(([
       overridesData, submissionsData, weightsData, usersData, 
       adminsData, corridorsData, channelsData, coveragesData, auditData, fraudData,
-      brandAssetsData, permissionsData
+      brandAssetsData, permissionsData, supportRequestsData
     ]) => {
       if (isMounted) {
         setOverrides(overridesData);
@@ -717,6 +747,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         setFraudEvents(fraudData);
         setBrandAssets(brandAssetsData || []);
         setBrandAssetPermissions(permissionsData || []);
+        setAdminSupportRequests(supportRequestsData || []);
 
         // Fetch and load CRVS Setup config parameters
         const crvsData = fetchCrvsConfig();
@@ -1005,15 +1036,24 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
           updated_at: new Date().toISOString()
         };
 
-        await saveBrandAsset(newAsset);
-        await logBamAudit('CREATE_BRAND_ASSET_VIA_CHANNEL', assetId, { key: cCode }, loggedInEmail);
+        try {
+          await saveBrandAsset(newAsset);
+          await logBamAudit('CREATE_BRAND_ASSET_VIA_CHANNEL', assetId, { key: cCode }, loggedInEmail);
 
-        // Refresh assets
-        const list = await fetchBrandAssets();
-        setBrandAssets(list);
+          // Refresh assets
+          const list = await fetchBrandAssets();
+          setBrandAssets(list);
 
-        finalBrandAssetId = assetId;
-        finalBrandingStatus = chanBrandApprovalStatus;
+          finalBrandAssetId = assetId;
+          finalBrandingStatus = chanBrandApprovalStatus;
+        } catch (bamErr: any) {
+          console.warn('[BAM Failure] Failed to save brand asset, continuing gracefully:', bamErr);
+          if (chanLogoRequired) {
+            throw new Error(`BAM asset upload failed, and a logo is explicitly required for this channel: ${bamErr?.message || bamErr}`);
+          }
+          finalBrandAssetId = null;
+          finalBrandingStatus = 'placeholder';
+        }
       }
 
       const channelPayload = {
@@ -1033,15 +1073,16 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         brandAssetId: finalBrandAssetId,
-        brandingStatus: finalBrandingStatus
+        brandingStatus: finalBrandingStatus,
+        logoRequired: chanLogoRequired
       };
 
       await saveRemittanceChannel(channelPayload);
       if (isEdit) {
-        await logAuditAction(loggedInEmail, `UPDATE_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee, brandAssetId: finalBrandAssetId, brandingStatus: finalBrandingStatus });
+        await logAuditAction(loggedInEmail, `UPDATE_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee, brandAssetId: finalBrandAssetId, brandingStatus: finalBrandingStatus, logoRequired: chanLogoRequired });
         setChanSuccess(`Remittance channel '${chanDisplayName}' was successfully updated live!`);
       } else {
-        await logAuditAction(loggedInEmail, `REGISTER_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee, brandAssetId: finalBrandAssetId, brandingStatus: finalBrandingStatus });
+        await logAuditAction(loggedInEmail, `REGISTER_REMITTANCE_CHANNEL`, 'REMITTANCE_CHANNEL', cCode, { category: chanCategory, defaultFee: chanFee, brandAssetId: finalBrandAssetId, brandingStatus: finalBrandingStatus, logoRequired: chanLogoRequired });
         setChanSuccess(`Remittance channel '${chanDisplayName}' was successfully registered! Unique constraints verified.`);
       }
       
@@ -1063,6 +1104,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
       setChanBrandAltText('');
       setChanBrandPermissionNote('');
       setChanBrandInternalNotes('');
+      setChanLogoRequired(false);
       setEditingChannelId(null);
       
       // Re-fetch channels to update table UI
@@ -1095,6 +1137,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         setChanNotes('');
         setChanBrandAssetId('');
         setChanBrandingStatus('placeholder');
+        setChanLogoRequired(false);
         setEditingChannelId(null);
       }
 
@@ -1122,6 +1165,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     setChanNotes(chan.notes || '');
     setChanBrandAssetId(chan.brandAssetId || '');
     setChanBrandingStatus(chan.brandingStatus || 'placeholder');
+    setChanLogoRequired(chan.logoRequired || false);
     setChanError('');
     setChanSuccess('');
   };
@@ -1183,7 +1227,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
       return;
     }
     if (isNaN(parsedOtherCosts) || parsedOtherCosts < 0) {
-      setFormError('Please enter valid hidden/other costs.');
+      setFormError('Please enter valid other costs / rate impact.');
       return;
     }
     if (isNaN(parsedExpiry) || parsedExpiry <= 0) {
@@ -1257,6 +1301,72 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
       await logAuditAction(loggedInEmail, `REJECT_COMMUNITY_SUBMISSION`, 'COMMUNITY_SUBMISSION', id, { reviewerNotes, rejectionReason, evidenceStatus });
     };
     dispatchAction(`Reject Submission ${id}`, action);
+  };
+
+  // Support & Compliance Desk administrative handlers
+  const handleSelectAdminTicket = async (ticket: any) => {
+    setSelectedAdminTicket(ticket);
+    setAdminResolutionNotes(ticket.resolution_notes || '');
+    try {
+      const msgs = await fetchSupportMessages(ticket.id);
+      const sorted = [...msgs].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      setAdminTicketMessages(sorted);
+    } catch (err) {
+      console.error('Error fetching admin support messages:', err);
+    }
+  };
+
+  const handleAdminUpdateStatus = async (status: 'new' | 'in_review' | 'resolved' | 'closed') => {
+    if (!selectedAdminTicket) return;
+    const action = async () => {
+      const updated = await updateSupportRequestAdmin(selectedAdminTicket.id, {
+        status,
+        resolution_summary: adminResolutionNotes || null
+      }, loggedInEmail);
+
+      // Update locally
+      setSelectedAdminTicket(updated);
+      setAdminSupportRequests(prev => prev.map(t => t.id === updated.id ? updated : t));
+      await logAuditAction(loggedInEmail, 'UPDATE_SUPPORT_STATUS', 'SUPPORT_TICKET', selectedAdminTicket.id, { status, resolution_notes: adminResolutionNotes });
+    };
+    dispatchAction(`Update Ticket Status to ${status.replace('_', ' ')}`, action);
+  };
+
+  const handleAdminSubmitReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAdminTicket || !adminReplyText.trim() || isAdminReplying) return;
+
+    setIsAdminReplying(true);
+    try {
+      const session = getAuthSession();
+      const senderUserId = session.user?.id || null;
+
+      const msg = await addSupportMessage(
+        selectedAdminTicket.id,
+        senderUserId,
+        'admin',
+        adminReplyText.trim(),
+        false
+      );
+
+      setAdminTicketMessages(prev => [...prev, msg]);
+      setAdminReplyText('');
+      
+      // Auto transition status to 'in_review' if it was 'new'
+      if (selectedAdminTicket.status === 'new') {
+        const updated = await updateSupportRequestAdmin(selectedAdminTicket.id, {
+          status: 'in_review'
+        }, loggedInEmail);
+        setSelectedAdminTicket(updated);
+        setAdminSupportRequests(prev => prev.map(t => t.id === updated.id ? updated : t));
+      }
+
+      await logAuditAction(loggedInEmail, 'ADD_SUPPORT_REPLY', 'SUPPORT_TICKET', selectedAdminTicket.id, {});
+    } catch (err) {
+      console.error('Error sending support reply:', err);
+    } finally {
+      setIsAdminReplying(false);
+    }
   };
 
   // Handle updating formula weights
@@ -1661,7 +1771,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1.5">Hidden Costs (SAR)</label>
+                      <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1.5">Estimated Rate Impact (SAR)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -2576,6 +2686,20 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                     )}
                   </div>
 
+                  {/* Explicit Logo Requirement Toggle */}
+                  <div className="flex items-center gap-2 px-1 bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl">
+                    <input
+                      type="checkbox"
+                      id="chanLogoRequired"
+                      checked={chanLogoRequired}
+                      onChange={(e) => setChanLogoRequired(e.target.checked)}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                    />
+                    <label htmlFor="chanLogoRequired" className="text-[10px] uppercase font-black tracking-wider text-slate-600 cursor-pointer select-none">
+                      Require Logo & Validation (Disables self-healing fallback)
+                    </label>
+                  </div>
+
                   <div>
                     <label className="block text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Internal Notes</label>
                     <textarea
@@ -3300,7 +3424,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                         <th className="py-3 px-5">Resolved Rate (SAR)</th>
                         <th className="py-3 px-5">Fees (Fee+VAT+Other)</th>
                         <th className="py-3 px-5">RRE Resolution Source</th>
-                        <th className="py-3 px-5">Transparency Index (TCE)</th>
+                        <th className="py-3 px-5">Comparison Confidence (TCE)</th>
                         <th className="py-3 px-5 font-mono">SIS Score</th>
                       </tr>
                     </thead>
@@ -3319,7 +3443,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                             ? 'bg-indigo-100 text-indigo-800 font-bold border-indigo-200'
                             : 'bg-slate-100 text-slate-700 border-slate-200';
 
-                          const tColor = row.trueCost?.transparencyRating === 'excellent' 
+                          const confidenceLabel = row.trueCost?.comparisonConfidence || (row.trueCost?.transparencyRating === 'excellent' ? 'Very High' : 'High');
+                          const tColor = (confidenceLabel === 'Very High' || confidenceLabel === 'High') 
                             ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
                             : 'bg-amber-100 text-amber-800 border-amber-200';
 
@@ -3345,7 +3470,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                               </td>
                               <td className="py-4 px-5">
                                 <span className={`px-2 py-0.5 rounded text-[9px] uppercase border font-black ${tColor}`}>
-                                  {row.trueCost?.transparencyRating || 'Excellent'}
+                                  {confidenceLabel}
                                 </span>
                               </td>
                               <td className="py-4 px-5 font-mono text-slate-900 font-black text-xs">
@@ -3730,7 +3855,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                     { key: 'directory', label: 'Asset Library' },
                     { key: 'upload', label: 'Register / Edit' },
                     { key: 'diagnostics', label: 'Brand Health' },
-                    { key: 'migration', label: 'Logo Migration' }
+                    { key: 'migration', label: 'Logo Migration' },
+                    { key: 'release', label: 'Release & Docs' }
                   ].map(tab => (
                     <button
                       key={tab.key}
@@ -4723,6 +4849,188 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                 </div>
               )}
 
+              {/* BAM View 6: Release & Docs (Feature Flags, Rollback & Operational Manuals) */}
+              {bamSubView === 'release' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-xs animate-in fade-in duration-150 font-sans text-xs">
+                  {/* Part A: Header */}
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                      SDS BAM Release Readiness, Feature Flags & Operating Guides
+                    </h3>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Control the phased rollout of the Brand Asset Manager across all channels and view production operational manuals.
+                    </p>
+                  </div>
+
+                  {/* Part B: Feature Flags & Rollback Strategy */}
+                  <div className="p-5 bg-slate-50 border border-slate-150 rounded-2xl space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="font-extrabold text-slate-800 text-[12px] uppercase">BAM Dynamic Feature Flags (Emergency Rollback)</h4>
+                        <p className="text-[10px] text-slate-400">Toggle active modules instantly without rebuilding or redeploying code.</p>
+                      </div>
+                      <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded text-[9px] font-black uppercase">
+                        {bamFlags.ENABLE_BAM_UI ? 'BAM Serving Live' : 'BAM Bypassed'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Flag 1: ENABLE_BAM */}
+                      <div className="bg-white border border-slate-150 p-3.5 rounded-xl flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px]">ENABLE_BAM</span>
+                          <span className="text-[10px] text-slate-400 block">Enable core asset resolution and background loading schemas.</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={bamFlags.ENABLE_BAM}
+                          onChange={(e) => {
+                            const newFlags = { ...bamFlags, ENABLE_BAM: e.target.checked };
+                            setBamFlags(newFlags);
+                            saveBamFeatureFlags(newFlags);
+                          }}
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Flag 2: ENABLE_BAM_UI */}
+                      <div className="bg-white border border-slate-150 p-3.5 rounded-xl flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px]">ENABLE_BAM_UI</span>
+                          <span className="text-[10px] text-slate-400 block">Render BAM assets on the client. Unchecking rolls back to legacy logo strings.</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={bamFlags.ENABLE_BAM_UI}
+                          onChange={(e) => {
+                            const newFlags = { ...bamFlags, ENABLE_BAM_UI: e.target.checked };
+                            setBamFlags(newFlags);
+                            saveBamFeatureFlags(newFlags);
+                          }}
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Flag 3: ENABLE_BAM_PUBLIC_ASSETS */}
+                      <div className="bg-white border border-slate-150 p-3.5 rounded-xl flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px]">ENABLE_BAM_PUBLIC_ASSETS</span>
+                          <span className="text-[10px] text-slate-400 block">Allow public-safe views to consume official, placeholder, or verified assets.</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={bamFlags.ENABLE_BAM_PUBLIC_ASSETS}
+                          onChange={(e) => {
+                            const newFlags = { ...bamFlags, ENABLE_BAM_PUBLIC_ASSETS: e.target.checked };
+                            setBamFlags(newFlags);
+                            saveBamFeatureFlags(newFlags);
+                          }}
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Flag 4: ENABLE_BAM_SRCMC */}
+                      <div className="bg-white border border-slate-150 p-3.5 rounded-xl flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px]">ENABLE_BAM_SRCMC</span>
+                          <span className="text-[10px] text-slate-400 block">Expose the BAM administration console to authorized SRCMC staff.</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={bamFlags.ENABLE_BAM_SRCMC}
+                          onChange={(e) => {
+                            const newFlags = { ...bamFlags, ENABLE_BAM_SRCMC: e.target.checked };
+                            setBamFlags(newFlags);
+                            saveBamFeatureFlags(newFlags);
+                          }}
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Flag 5: ENABLE_BAM_ASSET_VERSIONING */}
+                      <div className="bg-white border border-slate-150 p-3.5 rounded-xl flex items-center justify-between col-span-1 md:col-span-2">
+                        <div className="space-y-0.5">
+                          <span className="font-extrabold text-slate-800 block text-[11px]">ENABLE_BAM_ASSET_VERSIONING</span>
+                          <span className="text-[10px] text-slate-400 block">Enforce asset version increment logic and enable rollback of active provider-logos to historical versions.</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={bamFlags.ENABLE_BAM_ASSET_VERSIONING}
+                          onChange={(e) => {
+                            const newFlags = { ...bamFlags, ENABLE_BAM_ASSET_VERSIONING: e.target.checked };
+                            setBamFlags(newFlags);
+                            saveBamFeatureFlags(newFlags);
+                          }}
+                          className="w-4 h-4 text-indigo-600 accent-indigo-600 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Part C: Documentation and Guides Accordion */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Admin Guide */}
+                    <div className="border border-slate-200 rounded-2xl p-5 space-y-4 bg-white shadow-xs">
+                      <div className="flex items-center gap-2 text-indigo-700 font-extrabold">
+                        <FileText className="w-4 h-4" />
+                        <span className="uppercase text-[11px] tracking-wider">I. Administrator Operating Guide</span>
+                      </div>
+                      <div className="space-y-3 font-sans text-slate-600 text-[11px] leading-relaxed">
+                        <p>This operating guide describes how administrators utilize SRCMC controls to perform brand asset management:</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li><strong>Upload Logo:</strong> Visit 'Register/Edit', select 'provider_logo', provide a code (e.g., <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">stc-pay</code>), assign colors, and drag file.</li>
+                          <li><strong>Placeholders:</strong> Mark as <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">placeholder</code> under legal approval status if you have not acquired verified trademarks.</li>
+                          <li><strong>Official Approval:</strong> Set status to <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">official</code> once trademark permission is obtained and recorded.</li>
+                          <li><strong>Safe Replacement:</strong> Register a new version rather than modifying existing versions. Older versions remain in history for seamless rollbacks.</li>
+                          <li><strong>Archive safely:</strong> Change status to <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">inactive</code> or <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">archived</code>. Never force-delete if linked to transactional records.</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Developer Guide */}
+                    <div className="border border-slate-200 rounded-2xl p-5 space-y-4 bg-white shadow-xs">
+                      <div className="flex items-center gap-2 text-emerald-700 font-extrabold">
+                        <FileText className="w-4 h-4" />
+                        <span className="uppercase text-[11px] tracking-wider">II. Developer Integration Guide</span>
+                      </div>
+                      <div className="space-y-3 font-sans text-slate-600 text-[11px] leading-relaxed">
+                        <p>Guidelines for engineering brand-consistent views using the SDS Brand Asset Manager API:</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li><strong>No Raw Assets:</strong> Never import provider-logo image files directly or query <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-[9px]">brand_assets</code> inside presentation code.</li>
+                          <li><strong>SDS Components:</strong> Always use <code className="bg-slate-100 px-1 rounded font-mono text-[10px] text-slate-800">&lt;ProviderLogo&gt;</code> or <code className="bg-slate-100 px-1 rounded font-mono text-[10px] text-slate-800">&lt;ProviderBrandBlock&gt;</code>.</li>
+                          <li><strong>Theme Adaptability:</strong> Provide <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">surface="dark"|"light"</code> to automatically resolve color variants.</li>
+                          <li><strong>Fail-Safe Fallbacks:</strong> If an asset fails to load, components default to initials styled with computed brand-colors. Do not implement manual try-catches.</li>
+                          <li><strong>Alt Labels:</strong> Screen readers must identify the provider. Components automatically inject the defined alt text.</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Incident Playbook */}
+                    <div className="border border-slate-200 rounded-2xl p-5 space-y-4 bg-white shadow-xs">
+                      <div className="flex items-center gap-2 text-rose-700 font-extrabold">
+                        <ShieldAlert className="w-4 h-4" />
+                        <span className="uppercase text-[11px] tracking-wider">III. Incident Response Playbook</span>
+                      </div>
+                      <div className="space-y-3 font-sans text-slate-600 text-[11px] leading-relaxed">
+                        <p>Pre-approved runbooks for resolving brand asset anomalies during production operations:</p>
+                        <ul className="list-disc pl-4 space-y-1 text-[11px]">
+                          <li><strong>Scenario A: Logo breaks or is corrupt</strong> <br />
+                              Action: Use the 'Brand Health' diagnostics panel to trigger 'Deactivate Older Versions' or edit approval status, or revert version. If critical, uncheck <strong>ENABLE_BAM_UI</strong> to trigger immediate legacy/fallback failover.
+                          </li>
+                          <li><strong>Scenario B: Restricted logo leaks publicly</strong> <br />
+                              Action: Edit the asset directly. Set status to <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">restricted</code> or <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">pending_permission</code>. RLS policies instantly block client access.
+                          </li>
+                          <li><strong>Scenario C: Storage object goes missing</strong> <br />
+                              Action: The asset resolver automatically catches empty URLs and renders text-based initials fallbacks to avoid layout shifting or broken-image icons. Use the 'Brand Health' panel to re-upload.
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* BAP Licensing grant dialog modal */}
               {showPermissionModal && selectedAssetForPermission && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
@@ -4993,6 +5301,532 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: PRIVACY POLICY MANAGER (SLCF COMPLIANCE ENGINE) */}
+          {activeSubTab === 'privacy' && (
+            <div className="space-y-6 text-slate-800">
+              
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <Shield className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">Compliance Framework</span>
+                    <span className="text-sm font-black text-slate-850">KSA PDPL</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <Users className="w-5 h-5 text-[#10B981]" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">Consented Users</span>
+                    <span className="text-sm font-black text-slate-850">
+                      {registeredUsers.filter(u => !!u.privacy_policy_version).length} / {registeredUsers.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">Acceptance Rate</span>
+                    <span className="text-sm font-black text-slate-850">
+                      {registeredUsers.length > 0 
+                        ? Math.round((registeredUsers.filter(u => !!u.privacy_policy_version).length / registeredUsers.length) * 100) 
+                        : 100}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <Clock3 className="w-5 h-5 text-[#F59E0B]" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">Active Version</span>
+                    <span className="text-sm font-black text-slate-850">v1.2 (Active)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Content Panels */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Left: Version Publisher (Col span 5) */}
+                <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-sm text-slate-800">
+                  <div className="text-left">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-850 font-mono">
+                      Publish & Version Control
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
+                      Issue a new Privacy Policy version. The system will archive the previous version and enforce acceptance for all new signups.
+                    </p>
+                  </div>
+
+                  {privacySuccess && (
+                    <div className="p-3.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200/50 text-[11px] font-bold text-left">
+                      {privacySuccess}
+                    </div>
+                  )}
+
+                  <div className="space-y-4 text-left">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">
+                        Target Version Identifier
+                      </label>
+                      <input
+                        type="text"
+                        value={newPolicyVersion}
+                        onChange={(e) => setNewPolicyVersion(e.target.value)}
+                        placeholder="v1.3"
+                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">
+                        Version Changelog / Description
+                      </label>
+                      <textarea
+                        value={newPolicyDesc}
+                        onChange={(e) => setNewPolicyDesc(e.target.value)}
+                        placeholder="Describe what changed in this version..."
+                        rows={3}
+                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] resize-none"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newPolicyVersion) return;
+                        const updated = policies.map(p => ({ ...p, status: 'Archived' }));
+                        setPolicies([
+                          { version: newPolicyVersion, status: 'Active', publishDate: new Date().toISOString().split('T')[0], description: newPolicyDesc },
+                          ...updated
+                        ]);
+                        setPrivacySuccess(`Successfully published Privacy Policy version ${newPolicyVersion}! Older versions archived.`);
+                        setTimeout(() => setPrivacySuccess(''), 4000);
+                      }}
+                      className="w-full py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Publish & Enforce Version</span>
+                    </button>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-4 space-y-3">
+                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono text-left">
+                      Policy Version Log
+                    </h4>
+
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {policies.map((p, idx) => (
+                        <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-150 text-xs flex items-center justify-between">
+                          <div className="space-y-0.5 text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-slate-800">{p.version}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${p.status === 'Active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-200 text-slate-600'}`}>
+                                {p.status}
+                              </span>
+                            </div>
+                            <span className="text-[9px] text-slate-400 font-bold font-mono block">Released {p.publishDate}</span>
+                            <p className="text-[9.5px] text-slate-500 leading-normal mt-1 line-clamp-2">{p.description}</p>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                            {p.status === 'Active' ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = policies.map((item, i) => i === idx ? { ...item, status: 'Archived' } : item);
+                                  setPolicies(updated);
+                                }}
+                                className="px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[9px] font-bold text-slate-700 transition-colors cursor-pointer"
+                              >
+                                Archive
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = policies.map((item, i) => {
+                                    if (i === idx) return { ...item, status: 'Active' };
+                                    return { ...item, status: 'Archived' };
+                                  });
+                                  setPolicies(updated);
+                                }}
+                                className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 rounded text-[9px] font-bold text-emerald-800 transition-colors cursor-pointer"
+                              >
+                                Publish
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Acceptance Directory & Records (Col span 7) */}
+                <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm text-slate-800">
+                  <div className="text-left">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-850 font-mono">
+                      Compliance Audit Logs (PDPL Consents)
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
+                      Verify individual consent records required by the Saudi Personal Data Protection Law (PDPL).
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-100/50 border-b border-slate-200 text-slate-550 font-extrabold uppercase text-[9px] tracking-wider font-mono">
+                          <th className="py-2.5 px-4">Member</th>
+                          <th className="py-2.5 px-4">Consent Status</th>
+                          <th className="py-2.5 px-4">Version</th>
+                          <th className="py-2.5 px-4 text-right">Accepted At</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {registeredUsers.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="py-12 text-center font-bold text-slate-400 uppercase bg-slate-50/20">
+                              No members registered in database yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          registeredUsers.map((user, idx) => {
+                            const acceptedVersion = user.privacy_policy_version || 'v1.2 (Legacy Accept)';
+                            const acceptedTime = user.privacy_policy_accepted_at || user.createdAt || new Date().toISOString();
+                            const hasAccepted = !!user.privacy_policy_version;
+
+                            return (
+                              <tr key={user.id || idx} className="hover:bg-slate-50/20">
+                                <td className="py-3 px-4 font-bold text-left">
+                                  <span className="text-slate-800 block text-xs leading-none">{user.name}</span>
+                                  <span className="text-[9px] text-slate-400 font-mono font-normal block mt-1">{user.email}</span>
+                                </td>
+                                <td className="py-3 px-4 text-left">
+                                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${hasAccepted ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200/50'}`}>
+                                    {hasAccepted ? 'CONSENTED' : 'ACCEPTED'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 font-mono font-bold text-slate-600 text-[10px] text-left">{acceptedVersion}</td>
+                                <td className="py-3 px-4 text-right text-slate-400 font-mono font-bold text-[10px]">
+                                  {new Date(acceptedTime).toLocaleDateString(undefined, {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 10: SUPPORT & COMPLIANCE DESK */}
+          {activeSubTab === 'support' && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-sm text-slate-800">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-slate-600" />
+                    Support & Compliance Ticket Desk
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Review and resolve user complaints, rate discrepancies, technical issues, and compliance requests.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="px-2.5 py-1 bg-slate-100 rounded-lg text-slate-700 font-bold text-[10px] uppercase font-mono">
+                    {adminSupportRequests.length} Total Tickets
+                  </span>
+                </div>
+              </div>
+
+              {/* FILTERS BAR */}
+              <div className="flex flex-wrap gap-4 items-center bg-slate-50 p-4 rounded-xl border border-slate-150 text-xs text-left">
+                <div className="flex items-center gap-2 text-left">
+                  <span className="font-bold text-slate-500 uppercase tracking-wider">Status:</span>
+                  <select 
+                    className="bg-white border border-slate-250 rounded-lg px-2 py-1.5 focus:outline-none"
+                    value={supportFilterStatus}
+                    onChange={(e) => setSupportFilterStatus(e.target.value)}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="under_review">Under Review</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 text-left">
+                  <span className="font-bold text-slate-500 uppercase tracking-wider">Category:</span>
+                  <select 
+                    className="bg-white border border-slate-250 rounded-lg px-2 py-1.5 focus:outline-none"
+                    value={supportFilterCategory}
+                    onChange={(e) => setSupportFilterCategory(e.target.value)}
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="general_feedback">General Feedback</option>
+                    <option value="technical_issue">Technical Issue</option>
+                    <option value="rate_discrepancy">Rate Discrepancy</option>
+                    <option value="compliance_query">Compliance Query</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* TWO PANEL WORKSPACE */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                
+                {/* LEFT PANEL: Ticket List */}
+                <div className="lg:col-span-1 border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-[600px] overflow-y-auto bg-white">
+                  {(() => {
+                    const filtered = adminSupportRequests.filter(req => {
+                      const matchesStatus = supportFilterStatus === 'all' || req.status === supportFilterStatus;
+                      const matchesCategory = supportFilterCategory === 'all' || req.category === supportFilterCategory;
+                      return matchesStatus && matchesCategory;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-8 text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
+                          No matching support requests.
+                        </div>
+                      );
+                    }
+
+                    return filtered.map(req => {
+                      const isSelected = selectedAdminTicket?.id === req.id;
+                      return (
+                        <div 
+                          key={req.id}
+                          onClick={() => handleSelectAdminTicket(req)}
+                          className={`p-4 cursor-pointer transition-colors text-left space-y-2 ${
+                            isSelected ? 'bg-slate-50 border-l-4 border-slate-800' : 'hover:bg-slate-50/45'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono font-bold text-[10px] text-amber-600">{req.ticket_number}</span>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                              req.status === 'open' ? 'bg-amber-100 text-amber-800' :
+                              req.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                              req.status === 'resolved' ? 'bg-emerald-100 text-emerald-800' :
+                              'bg-slate-100 text-slate-700'
+                            }`}>
+                              {req.status.replace('_', ' ')}
+                            </span>
+                          </div>
+
+                          <div>
+                            <h4 className="font-bold text-xs text-slate-800 line-clamp-1">{req.subject}</h4>
+                            <p className="text-[10px] text-slate-400 truncate font-bold">By {req.name} • {req.email}</p>
+                          </div>
+
+                          <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono pt-1">
+                            <span>{req.category.replace('_', ' ')}</span>
+                            <span>{new Date(req.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {/* RIGHT PANEL: Workspace Detail & Conversations */}
+                <div className="lg:col-span-2">
+                  {selectedAdminTicket ? (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30 space-y-4">
+                      {/* Section Header */}
+                      <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                        <div className="text-left">
+                          <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                            <span className="font-mono text-amber-600">{selectedAdminTicket.ticket_number}</span>
+                            <span>{selectedAdminTicket.subject}</span>
+                          </h4>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Submitter: <strong className="text-slate-600">{selectedAdminTicket.name}</strong> ({selectedAdminTicket.email})
+                          </p>
+                        </div>
+
+                        {/* Status controls */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {['new', 'in_review', 'resolved', 'closed'].map(st => {
+                            const active = selectedAdminTicket.status === st || 
+                                          (st === 'new' && selectedAdminTicket.status === 'open') || 
+                                          (st === 'in_review' && selectedAdminTicket.status === 'under_review');
+                            return (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() => handleAdminUpdateStatus(st as any)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition cursor-pointer ${
+                                  active 
+                                    ? 'bg-slate-800 text-white font-black' 
+                                    : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'
+                                }`}
+                              >
+                                {st.replace('_', ' ')}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Ticket Properties / SAF Integrity Metrics */}
+                      <div className="px-4 py-3 bg-white border-y border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-left">
+                        <div>
+                          <span className="text-slate-400 block font-medium">Linked Remittance Channel</span>
+                          <span className="font-bold text-slate-700">
+                            {selectedAdminTicket.related_channel_id 
+                              ? (PROVIDERS.find(p => p.id === selectedAdminTicket.related_channel_id)?.name || selectedAdminTicket.related_channel_id)
+                              : 'None'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block font-medium">Linked Corridor</span>
+                          <span className="font-bold text-slate-700">
+                            {selectedAdminTicket.related_corridor_id 
+                              ? `${CORRIDORS.find(c => c.id === selectedAdminTicket.related_corridor_id)?.flag} ${selectedAdminTicket.related_corridor_id.toUpperCase()}`
+                              : 'None'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block font-medium">SAF Risk Analysis Score</span>
+                          <span className={`font-bold font-mono ${
+                            selectedAdminTicket.saf_risk_score > 60 ? 'text-rose-600' :
+                            selectedAdminTicket.saf_risk_score > 30 ? 'text-amber-600' : 'text-emerald-600'
+                          }`}>
+                            {selectedAdminTicket.saf_risk_score} / 100
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Chronological Chat Messages Thread */}
+                      <div className="p-4 space-y-3 max-h-[300px] overflow-y-auto bg-slate-100/50 rounded-xl mx-4 border border-slate-200/50">
+                        {/* Original Submission */}
+                        <div className="flex flex-col items-start max-w-[85%] text-left">
+                          <div className="bg-slate-200 border border-slate-300 text-slate-800 rounded-2xl px-4 py-2.5 text-xs">
+                            <p className="font-extrabold text-[9px] text-slate-500 uppercase tracking-widest mb-1">
+                              {selectedAdminTicket.name} (Original Request)
+                            </p>
+                            <p className="whitespace-pre-wrap">{selectedAdminTicket.message}</p>
+                          </div>
+                          <span className="text-[9px] text-slate-400 font-mono mt-0.5 px-1">
+                            {new Date(selectedAdminTicket.created_at).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {/* Thread Replies */}
+                        {adminTicketMessages.map((msg) => {
+                          const isUser = msg.sender_role === 'user';
+                          return (
+                            <div 
+                              key={msg.id} 
+                              className={`flex flex-col max-w-[85%] text-left ${isUser ? 'mr-auto items-start' : 'ml-auto items-end'}`}
+                            >
+                              <div className={`rounded-2xl px-4 py-2.5 text-xs border ${
+                                isUser 
+                                  ? 'bg-slate-200 border-slate-300 text-slate-800' 
+                                  : 'bg-indigo-50 border-indigo-200 text-slate-800'
+                              }`}>
+                                <p className={`font-extrabold text-[9px] uppercase tracking-widest mb-1 ${
+                                  isUser ? 'text-slate-500' : 'text-indigo-600'
+                                }`}>
+                                  {msg.sender_name} ({isUser ? 'User' : 'Staff Reply'})
+                                </p>
+                                <p className="whitespace-pre-wrap">{msg.message}</p>
+                              </div>
+                              <span className="text-[9px] text-slate-400 font-mono mt-0.5 px-1">
+                                {new Date(msg.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Reply Input Form & Resolution Note Fields */}
+                      <div className="p-4 bg-white border-t border-slate-200 space-y-4 text-left">
+                        {/* Resolution Notes area */}
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider block">
+                            Internal Resolution Notes / Audit Logs Detail
+                          </label>
+                          <textarea
+                            rows={2}
+                            placeholder="Add compliance comments, resolution outcomes, or technical fix references..."
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none focus:border-slate-400 text-slate-700 text-left"
+                            value={adminResolutionNotes}
+                            onChange={(e) => setAdminResolutionNotes(e.target.value)}
+                          />
+                        </div>
+
+                        {/* Text reply input */}
+                        {selectedAdminTicket.status === 'closed' || selectedAdminTicket.status === 'resolved' ? (
+                          <div className="text-center p-3 bg-slate-100 rounded-xl text-xs font-mono font-bold text-slate-500">
+                            Ticket status is closed/resolved. Re-open to dispatch replies.
+                          </div>
+                        ) : (
+                          <form onSubmit={handleAdminSubmitReply} className="space-y-2">
+                            <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider block">
+                              Compose Message Dispatch to User App Feed
+                            </label>
+                            <div className="flex gap-2 items-center">
+                              <input 
+                                type="text"
+                                placeholder="Type support message response..."
+                                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:border-slate-400 text-slate-700 text-left"
+                                value={adminReplyText}
+                                onChange={(e) => setAdminReplyText(e.target.value)}
+                                disabled={isAdminReplying}
+                                required
+                              />
+                              <button
+                                type="submit"
+                                disabled={isAdminReplying || !adminReplyText.trim()}
+                                className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-50"
+                              >
+                                {isAdminReplying ? 'Sending...' : 'Reply'}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 border-dashed p-16 text-center text-slate-400 space-y-3">
+                      <HelpCircle className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="text-xs font-bold uppercase tracking-widest">
+                        No Ticket Selected
+                      </p>
+                      <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                        Please select a support ticket from the list on the left to begin active reviews and updates.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
               </div>
             </div>
           )}

@@ -1,8 +1,58 @@
 import { Corridor, Provider, RemittanceRate, RateSubmission, RateAlert, UserProfile } from '../types';
 import { getRemittanceChannelsSync, getChannelCoverageSync } from './supabaseService';
-import { PROVIDERS, CORRIDORS } from './constants';
+import { PROVIDERS as STATIC_PROVIDERS, CORRIDORS } from './constants';
 
-export { PROVIDERS, CORRIDORS };
+export { CORRIDORS };
+
+export function getMergedProviders(): Provider[] {
+  const channels = getRemittanceChannelsSync();
+  const list: Provider[] = [];
+  
+  STATIC_PROVIDERS.forEach(sp => {
+    list.push(sp);
+  });
+  
+  channels.forEach(ch => {
+    const exists = list.some(p => p.id === ch.providerCode || p.id === ch.id);
+    if (!exists) {
+      list.push({
+        id: ch.providerCode || ch.id,
+        name: ch.displayName || ch.providerName,
+        logoColor: ch.category === 'wallet' ? 'bg-indigo-600' : 'bg-slate-700',
+        logoText: (ch.displayName || ch.providerName || 'XX').substring(0, 2).toLowerCase(),
+        rating: 4.5
+      });
+    }
+  });
+  
+  return list;
+}
+
+export const PROVIDERS: Provider[] = new Proxy([] as Provider[], {
+  get(target, prop) {
+    const list = getMergedProviders();
+    const val = (list as any)[prop];
+    if (typeof val === 'function') {
+      return val.bind(list);
+    }
+    return val;
+  },
+  set(target, prop, value) {
+    return true;
+  },
+  has(target, prop) {
+    const list = getMergedProviders();
+    return prop in list;
+  },
+  ownKeys(target) {
+    const list = getMergedProviders();
+    return Reflect.ownKeys(list);
+  },
+  getOwnPropertyDescriptor(target, prop) {
+    const list = getMergedProviders();
+    return Reflect.getOwnPropertyDescriptor(list, prop);
+  }
+});
 
 // Helper to generate dynamic rates that look extremely realistic and fluctuate based on provider profile
 export function getRemittanceRates(corridorId: string, sendAmount: number): RemittanceRate[] {

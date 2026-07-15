@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TranslationDict, UserProfile, RecordedTransfer } from '../types';
 import { CORRIDORS } from '../services/ratesService';
-import { getRecommendations, getUserSavingsLedger } from '../services/supabaseService';
+import { getRecommendations, getUserSavingsLedger, getRemittanceChannelsSync } from '../services/supabaseService';
 import { slf } from '../services/slfService';
 import { 
   Sparkles, ArrowLeftRight, TrendingUp, Landmark, ShieldCheck, Zap, 
@@ -130,15 +130,9 @@ export default function Dashboard({
   };
 
   const getDynamicReason = () => {
-    if (sisScore >= 85) {
-      return isRtl 
-        ? `${bestProvider} يوفر أعلى سعر صرف مع رسوم تحويل منخفضة للغاية. ينصح بالإرسال الآن.`
-        : `${bestProvider} offers the highest exchange rate with very low fees. Highly recommended to send now.`;
-    } else {
-      return isRtl
-        ? `${bestProvider} هو الخيار الأمثل حالياً، ولكن السوق متقلب. ننصح بالتحقق المستمر.`
-        : `${bestProvider} is currently the optimal choice, but the market is volatile. Regular checks recommended.`;
-    }
+    return isRtl
+      ? "بناءً على المعلومات المتاحة حاليًا، يُقدَّر أن هذا المزود يوفر أعلى قيمة استلام لمعاملتك المختارة."
+      : "Based on currently available information, this provider is estimated to provide the highest recipient value for your selected transfer.";
   };
 
   const recommendedChannelObj = recommendedChannel || {
@@ -417,28 +411,35 @@ export default function Dashboard({
               <div className="mt-4">
                 {transfers.length > 0 ? (
                   <div className="space-y-3">
-                    {transfers.slice(0, 3).map((item) => (
-                      <div key={item.id} className="p-3 bg-[#091F3E] rounded-xl border border-sds-border/40 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-3">
-                          <CountryFlag country="" currency={item.currency_code} size="xs" />
-                          <ProviderLogo channel={{ providerCode: item.provider_id, displayName: item.provider_name }} size="xs" shape="circle" />
-                          <div>
-                            <span className="font-extrabold text-white block">
-                              {item.send_amount} SAR → {item.recipient_amount.toLocaleString()} {item.currency_code}
+                    {transfers.slice(0, 3).map((item) => {
+                      const channels = getRemittanceChannelsSync();
+                      const chan = channels.find(c => c.id === item.channelId);
+                      const providerName = chan?.displayName || chan?.providerName || item.channelId;
+                      const providerCode = chan?.providerCode || item.channelId;
+                      const savingsAmount = item.estimatedSavingsSAR || 0;
+                      return (
+                        <div key={item.id} className="p-3 bg-[#091F3E] rounded-xl border border-sds-border/40 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-3">
+                            <CountryFlag country="" currency={item.destinationCurrency} size="xs" />
+                            <ProviderLogo channel={{ providerCode: providerCode, displayName: providerName }} size="xs" shape="circle" />
+                            <div>
+                              <span className="font-extrabold text-white block">
+                                {item.sendAmountSAR} SAR → {item.estimatedRecipientAmount.toLocaleString()} {item.destinationCurrency}
+                              </span>
+                              <span className="text-[10px] text-sds-text-sec font-mono font-bold">
+                                {new Date(item.recordedAt!).toLocaleDateString()} • {providerName}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[#10B981] font-black font-mono block">
+                              +{savingsAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })} SAR
                             </span>
-                            <span className="text-[10px] text-sds-text-sec font-mono font-bold">
-                              {new Date(item.recorded_at!).toLocaleDateString()} • {item.provider_name}
-                            </span>
+                            <span className="text-[9px] text-sds-text-sec uppercase font-bold">{isRtl ? 'توفير' : 'Saved'}</span>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-[#10B981] font-black font-mono block">
-                            +{item.computed_savings} SAR
-                          </span>
-                          <span className="text-[9px] text-sds-text-sec uppercase font-bold">{isRtl ? 'توفير' : 'Saved'}</span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-6 bg-[#091F3E] border border-dashed border-sds-border rounded-2xl">
@@ -524,11 +525,11 @@ export default function Dashboard({
               {/* Conversion Breakdown Meta */}
               <div className="flex items-center justify-between text-[11px] pt-3 border-t border-sds-border/60">
                 <div>
-                  <span className="text-[9px] text-sds-text-sec block font-black uppercase">{isRtl ? 'أفضل مزود' : 'BEST PROVIDER'}</span>
+                  <span className="text-[9px] text-sds-text-sec block font-black uppercase">{isRtl ? 'المزود الموصى به' : 'RECOMMENDED PROVIDER'}</span>
                   <span className="font-extrabold text-white">{bestProvider}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-sds-text-sec block font-black uppercase text-right">{isRtl ? 'التوفير المتوقع' : 'EST SAVINGS'}</span>
+                  <span className="text-[9px] text-sds-text-sec block font-black uppercase text-right">{isRtl ? 'التوفير المحتمل' : 'POTENTIAL SAVINGS'}</span>
                   <span className="font-mono text-[#10B981] font-black">+{estimatedSavings} SAR</span>
                 </div>
               </div>

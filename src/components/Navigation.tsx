@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { TranslationDict, UserProfile } from '../types';
 import { 
   ArrowLeftRight, Bell, Compass, PlusCircle, User, UserPlus, Globe2, Sparkles, 
-  LayoutDashboard, PiggyBank, Info, CheckCircle2, Home, Plus, Menu, X, ArrowRight, ShieldCheck
+  LayoutDashboard, PiggyBank, Info, CheckCircle2, Home, Plus, Menu, X, ArrowRight, ShieldCheck,
+  MessageSquare
 } from 'lucide-react';
 import { SariRemitLogo } from './SdsBamComponents';
 import NotificationCenter from './NotificationCenter';
@@ -91,6 +92,7 @@ export default function Navigation({
     navItems.push({ id: 'compare', label: isRtl ? 'مقارنة الأسعار' : 'Compare', icon: ArrowLeftRight });
     navItems.push({ id: 'submit', label: isRtl ? 'توثيق الحوالات' : 'Verify', icon: PlusCircle });
     navItems.push({ id: 'savings', label: isRtl ? 'المدخرات' : 'Savings', icon: PiggyBank });
+    navItems.push({ id: 'support', label: isRtl ? 'الدعم الفني' : 'Support', icon: MessageSquare });
     if (canSeeSrcmcNav) {
       navItems.push({ id: 'srcmc', label: isRtl ? 'لوحة التحكم' : 'SRCMC', icon: ShieldCheck });
     }

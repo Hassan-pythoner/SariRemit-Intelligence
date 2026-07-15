@@ -116,6 +116,8 @@ export interface UserProfile {
   admin_notifications_enabled?: boolean;
   push_notifications_enabled?: boolean;
   email_notifications_enabled?: boolean;
+  privacy_policy_version?: string;
+  privacy_policy_accepted_at?: string;
 }
 
 export type NotificationCategory =
@@ -303,13 +305,24 @@ export type TrueCostResult = {
   actualRecipientAmount: number;
 
   exchangeRateLoss?: number | null;
+  estimatedRateImpact?: number | null;
   hiddenCost?: number | null;
   trueCost?: number | null;
   trueCostPercent?: number | null;
 
+  comparisonConfidence: "Very High" | "High" | "Moderate" | "Low" | "Reference Unavailable";
   transparencyRating: "excellent" | "good" | "fair" | "poor" | "unknown";
   explanation: string;
 };
+
+export interface SriReferenceBenchmark {
+  corridorId: string;
+  rate: number;
+  lastRefreshed: string;
+  sourceConfidence: "Very High" | "High" | "Moderate" | "Low" | "Reference Unavailable";
+  sources: string[];
+  explanation: string;
+}
 
 export interface SicSnapshot {
   id?: string;
@@ -521,7 +534,7 @@ export interface BrandAsset {
   archived_at?: string | null;
 }
 
-export interface BrandAssetPermission {
+export type BrandAssetPermission = {
   id: string;
   brand_asset_id: string;
   permission_status: string;
@@ -537,6 +550,59 @@ export interface BrandAssetPermission {
   created_at: string;
   updated_at: string;
 }
+
+export type SupportCategory =
+  | "general_feedback"
+  | "technical_issue"
+  | "rate_enquiry"
+  | "channel_enquiry"
+  | "corridor_enquiry"
+  | "account_issue"
+  | "verification_issue"
+  | "savings_issue"
+  | "feature_suggestion"
+  | "partnership_enquiry"
+  | "other";
+
+export interface SupportFeedbackRequest {
+  id: string;
+  ticket_number: string;
+  user_id?: string | null;
+  name: string;
+  email: string;
+  category: SupportCategory;
+  subject: string;
+  message: string;
+  related_channel_id?: string | null;
+  related_corridor_id?: string | null;
+  related_transfer_id?: string | null;
+  related_submission_id?: string | null;
+  preferred_language?: string;
+  status: 'new' | 'acknowledged' | 'in_review' | 'waiting_for_user' | 'resolved' | 'closed' | 'spam' | 'rejected';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  spam_risk_level: 'low' | 'moderate' | 'high' | 'blocked';
+  spam_flags: string[];
+  assigned_to?: string | null;
+  admin_notes?: string | null;
+  resolution_summary?: string | null;
+  submitted_from?: string | null;
+  created_at: string;
+  updated_at: string;
+  acknowledged_at?: string | null;
+  resolved_at?: string | null;
+  closed_at?: string | null;
+}
+
+export interface SupportRequestMessage {
+  id: string;
+  request_id: string;
+  sender_user_id?: string | null;
+  sender_type: 'user' | 'admin' | 'system';
+  message: string;
+  is_internal: boolean;
+  created_at: string;
+}
+
 
 
 

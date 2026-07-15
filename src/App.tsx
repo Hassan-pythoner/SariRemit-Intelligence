@@ -21,6 +21,7 @@ import Dashboard from './components/Dashboard';
 import Savings from './components/Savings';
 import Onboarding from './components/Onboarding';
 import LegalPages from './components/LegalPages';
+import SupportHistory from './components/SupportHistory';
 import { Bell, Sparkles, CheckCircle2, MessageSquare, Landmark, Info } from 'lucide-react';
 
 export default function App() {
@@ -235,7 +236,7 @@ export default function App() {
 
   // Protect routes and redirect unauthorized users
   useEffect(() => {
-    const restrictedTabs = ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'srcmc', 'profile'];
+    const restrictedTabs = ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'srcmc', 'profile', 'support'];
     if (!isLoggedIn && restrictedTabs.includes(activeTab)) {
       setActiveTab('sign-in');
       triggerToast(language === 'en' ? "Please sign in or sign up to access S." : "يرجى تسجيل الدخول أو إنشاء حساب للوصول.");
@@ -359,7 +360,7 @@ export default function App() {
                     SariRemit is a community-driven, crowd-sourced remittance monitoring and analysis platform built for expatriates and migrant workers in the Kingdom of Saudi Arabia.
                   </p>
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    By pulling live, verified rates from major financial channels—such as STC Pay, UrPay, Enjaz, QuickPay, and Al Rajhi Tahweel—we empower you to avoid high hidden markups and make every Saudi Riyal go the maximum distance for your family back home.
+                    By pulling live, verified rates from major financial channels—such as STC Pay, UrPay, Enjaz, QuickPay, and Al Rajhi Tahweel—we empower you to identify the most competitive exchange rate terms and fee options to make every Saudi Riyal go the maximum distance for your family back home.
                   </p>
                 </div>
               )}
@@ -428,7 +429,7 @@ export default function App() {
               )}
 
               {/* Guarded/Authenticated Views */}
-              {!isLoggedIn && ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'srcmc'].includes(activeTab) && (
+              {!isLoggedIn && ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'srcmc', 'support'].includes(activeTab) && (
                 <div className="max-w-md mx-auto my-12 p-8 bg-white border border-slate-200 rounded-3xl text-center shadow-xl space-y-5">
                   <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
                     <CheckCircle2 className="w-8 h-8" />
@@ -538,6 +539,14 @@ export default function App() {
                         Access Denied.
                       </div>
                     )
+                  )}
+
+                  {activeTab === 'support' && (
+                    <SupportHistory
+                      language={language}
+                      t={t}
+                      onBack={() => setActiveTab('dashboard')}
+                    />
                   )}
                 </>
               )}

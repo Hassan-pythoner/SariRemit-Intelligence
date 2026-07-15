@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { TranslationDict } from '../types';
 import { CORRIDORS } from '../services/ratesService';
-import { getRecommendations, getAuthSession } from '../services/supabaseService';
+import { getRecommendations, getAuthSession, submitSupportRequest } from '../services/supabaseService';
+import { PROVIDERS } from '../services/constants';
 import { 
   HeartHandshake, ShieldCheck, Zap, Sparkles, ArrowRight, ArrowLeft, 
   ChevronDown, ChevronUp, Landmark, FileText, CheckCircle2, AlertTriangle, 
@@ -41,6 +42,27 @@ export default function LandingPage({
   
   // Accordion state
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  // Support & Feedback states
+  const [supportName, setSupportName] = useState<string>('');
+  const [supportEmail, setSupportEmail] = useState<string>('');
+  const [supportSubject, setSupportSubject] = useState<string>('');
+  const [supportCategory, setSupportCategory] = useState<string>('general_feedback');
+  const [supportMessage, setSupportMessage] = useState<string>('');
+  const [supportChannelId, setSupportChannelId] = useState<string>('');
+  const [supportCorridorId, setSupportCorridorId] = useState<string>('');
+  const [isSupportSubmitting, setIsSupportSubmitting] = useState<boolean>(false);
+  const [supportSuccessTicket, setSupportSuccessTicket] = useState<string | null>(null);
+  const [supportErrorMsg, setSupportErrorMsg] = useState<string | null>(null);
+
+  // Synchronize name/email with session when logged in
+  useEffect(() => {
+    const session = getAuthSession();
+    if (session.user) {
+      setSupportName(session.user.name || '');
+      setSupportEmail(session.user.email || '');
+    }
+  }, [isLoggedIn]);
 
   // Synchronize with user's preferred country when logged in
   useEffect(() => {
@@ -102,6 +124,42 @@ export default function LandingPage({
     setActiveTab('compare');
   };
 
+  const handleSupportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSupportSubmitting(true);
+    setSupportErrorMsg(null);
+    setSupportSuccessTicket(null);
+
+    try {
+      const res = await submitSupportRequest({
+        name: supportName,
+        email: supportEmail,
+        category: supportCategory as any,
+        subject: supportSubject,
+        message: supportMessage,
+        related_channel_id: supportChannelId || null,
+        related_corridor_id: supportCorridorId || null,
+        submitted_from: 'landing_contact_form'
+      });
+
+      if (res.success) {
+        setSupportSuccessTicket(res.ticketNumber);
+        // Clear non-user specific inputs
+        setSupportSubject('');
+        setSupportMessage('');
+        setSupportChannelId('');
+        setSupportCorridorId('');
+      } else {
+        setSupportErrorMsg('We could not submit your support request. Please try again later.');
+      }
+    } catch (err: any) {
+      console.error('Support submit error:', err);
+      setSupportErrorMsg(err.message || 'An error occurred while submitting your message. Please check the fields and try again.');
+    } finally {
+      setIsSupportSubmitting(false);
+    }
+  };
+
   // Dedicated Bilingual Dictionary for Redesign
   const dict = {
     en: {
@@ -134,13 +192,13 @@ export default function LandingPage({
       step2Title: "Compare Providers",
       step2Desc: "SariRemit evaluates exchange rates, fees, VAT, and expected family payout.",
       step3Title: "Review the Recommendation",
-      step3Desc: "See the best available option, confidence level, and an explanation of why it is recommended.",
+      step3Desc: "See the recommended option, confidence level, and an explanation of why it is recommended.",
       step4Title: "Transfer Through Your Provider",
       step4Desc: "Complete the transaction directly with the chosen bank, wallet, or remittance provider.",
       howNote: "SariRemit is an independent intelligence platform and does not process, receive, or hold customer funds.",
       
       aboutTitle: "Why SariRemit Exists",
-      aboutBody: "Millions of expatriates work far from home and regularly support the people they care about. Yet choosing a remittance provider can involve confusing rates, hidden costs, different fees, VAT, and uncertainty about the final payout. SariRemit was created to replace that uncertainty with clear, transparent, and trusted remittance intelligence.",
+      aboutBody: "Millions of expatriates work far from home and regularly support the people they care about. Yet choosing a remittance provider can involve confusing rates, varying rate impacts, different fees, VAT, and uncertainty about the final payout. SariRemit was created to replace that uncertainty with clear, transparent, and trusted remittance intelligence.",
       missionTitle: "Our Mission",
       mission: "Our mission is to help expatriates make confident remittance decisions through trusted intelligence.",
       visionTitle: "Our Vision",
@@ -220,7 +278,7 @@ export default function LandingPage({
       
       contactTitle: "Contact Our Intelligence Team",
       contactSub: "Have questions, feedback, or need support? Drop us a message below.",
-      contactFormNote: "Future contact form placeholder. This form will connect to our database once configuration completes.",
+      contactFormNote: "Complete and submit this form to open an official Support Ticket. Our compliance and support team will respond to your ticket promptly.",
       contactDirect: "For immediate assistance, please email support@sariremit.com or click below to file an issue report.",
       contactBtn: "Send Message"
     },
@@ -340,7 +398,7 @@ export default function LandingPage({
       
       contactTitle: "اتصل بفريق معلومات ساري ريميت",
       contactSub: "هل لديك أي استفسارات أو ملاحظات؟ يسعدنا تواصلك معنا.",
-      contactFormNote: "نموذج اتصال تجريبي للمستقبل. سيتم ربطه بقواعد البيانات السحابية قريباً عند اكتمال البناء.",
+      contactFormNote: "يرجى ملء النموذج لإرسال طلب دعم أو بلاغ امتثال رسمي. سيقوم فريق الدعم بمراجعة التذكرة والرد فوراً.",
       contactDirect: "للمساعدة الفورية، يرجى مراسلتنا عبر البريد الإلكتروني support@sariremit.com أو الإبلاغ عن مشكلة أدناه.",
       contactBtn: "إرسال الرسالة"
     }
@@ -1157,53 +1215,221 @@ export default function LandingPage({
             </p>
           </div>
 
-          <div className="space-y-6 bg-[#0C2547]/50 backdrop-blur-md p-6 sm:p-8 rounded-2xl border border-slate-750/50 shadow-xl">
-            <div className="text-xs text-amber-300 font-mono bg-amber-400/5 p-4 rounded-xl border border-amber-400/10 text-center font-bold">
-              📝 {lt.contactFormNote}
-            </div>
+          <div className="space-y-6 bg-[#0C2547]/50 backdrop-blur-md p-6 sm:p-8 rounded-2xl border border-slate-750/50 shadow-xl text-slate-200">
+            {supportSuccessTicket ? (
+              <div className="text-center py-8 space-y-6 animate-fadeIn">
+                <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/30">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight">
+                    {language === 'en' ? 'Support Ticket Created!' : 'تم إنشاء تذكرة الدعم!'}
+                  </h3>
+                  <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                    {language === 'en' 
+                      ? 'Your request has been registered in the SariRemit Support System. Use the ticket number below to track your request.'
+                      : 'تم تسجيل طلبك بنجاح في نظام دعم ساري ريميت. يرجى استخدام رقم التذكرة أدناه لمتابعة حالة الطلب.'}
+                  </p>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <SDSInput label={language === 'en' ? 'Your Name' : 'الاسم'} placeholder="Hassan Ahmed" disabled />
-              <SDSInput label={language === 'en' ? 'Email Address' : 'البريد الإلكتروني'} placeholder="hassan@example.com" disabled />
-            </div>
-            <SDSInput label={language === 'en' ? 'Subject' : 'الموضوع'} placeholder="Corridor Enquiry" disabled />
-            <div className="space-y-1.5 text-left">
-              <label className="text-xs font-bold text-slate-300 block">{language === 'en' ? 'Your Message' : 'رسالتك'}</label>
-              <textarea 
-                rows={4} 
-                className="w-full bg-[#071A35]/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-400 cursor-not-allowed" 
-                placeholder="Your inquiry message..." 
-                disabled
-              />
-            </div>
+                <div className="bg-[#071A35] border border-slate-700 rounded-xl p-4 max-w-sm mx-auto flex items-center justify-between font-mono">
+                  <span className="text-sm font-bold text-amber-400">{supportSuccessTicket}</span>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(supportSuccessTicket);
+                    }}
+                    className="text-xs text-emerald-400 hover:underline font-sans font-bold cursor-pointer"
+                  >
+                    {language === 'en' ? 'Copy Ticket #' : 'نسخ رقم التذكرة'}
+                  </button>
+                </div>
 
-            <div className="flex justify-end">
-              <SDSButton disabled variant="secondary" className="opacity-50 cursor-not-allowed bg-slate-800/20 border-slate-750 text-slate-400">
-                {lt.contactBtn}
-              </SDSButton>
-            </div>
+                <div className="text-xs text-slate-400 max-w-md mx-auto space-y-1">
+                  <p>
+                    {language === 'en'
+                      ? '• A confirmation alert was dispatched to your notifications feed.'
+                      : '• تم إرسال تنبيه تأكيد إلى موجز الإشعارات الخاص بك.'}
+                  </p>
+                  <p>
+                    {language === 'en'
+                      ? '• Our team typically responds within 2-4 hours.'
+                      : '• يقوم فريقنا بالرد عادة خلال ساعتين إلى 4 ساعات.'}
+                  </p>
+                </div>
 
-            <div className="border-t border-slate-800/60 pt-6 text-center space-y-3">
-              <p className="text-xs text-slate-300 font-medium">
-                📬 {lt.contactDirect}
-              </p>
-              <div className="flex justify-center gap-4 text-xs font-bold">
-                <a href="mailto:support@sariremit.com" className="text-emerald-400 hover:underline flex items-center gap-1">
-                  <Mail className="w-3.5 h-3.5" />
-                  support@sariremit.com
-                </a>
-                <span className="text-slate-700">|</span>
-                <a 
-                  href="https://github.com" 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="text-amber-400 hover:underline flex items-center gap-1"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Report an Issue
-                </a>
+                <div className="pt-4">
+                  <SDSButton 
+                    onClick={() => {
+                      setSupportSuccessTicket(null);
+                      setSupportSubject('');
+                      setSupportMessage('');
+                    }}
+                    variant="primary"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs tracking-wider uppercase px-6 py-3 rounded-xl shadow-lg transition-all"
+                  >
+                    {language === 'en' ? 'Submit Another Request' : 'إرسال طلب آخر'}
+                  </SDSButton>
+                </div>
               </div>
-            </div>
+            ) : (
+              <form onSubmit={handleSupportSubmit} className="space-y-5">
+                <div className="text-xs text-emerald-300 font-mono bg-emerald-400/5 p-4 rounded-xl border border-emerald-400/10 text-center font-bold">
+                  📝 {lt.contactFormNote}
+                </div>
+
+                {supportErrorMsg && (
+                  <div className="text-xs text-rose-400 bg-rose-500/10 p-4 rounded-xl border border-rose-500/20 font-bold text-left">
+                    ⚠️ {supportErrorMsg}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SDSInput 
+                    label={language === 'en' ? 'Your Name' : 'الاسم'} 
+                    placeholder="Hassan Ahmed" 
+                    value={supportName}
+                    onChange={(e) => setSupportName(e.target.value)}
+                    required
+                  />
+                  <SDSInput 
+                    label={language === 'en' ? 'Email Address' : 'البريد الإلكتروني'} 
+                    placeholder="hassan@example.com" 
+                    type="email"
+                    value={supportEmail}
+                    onChange={(e) => setSupportEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs font-bold text-slate-300 block">
+                      {language === 'en' ? 'Support Category' : 'فئة الدعم'}
+                    </label>
+                    <select
+                      className="w-full bg-[#071A35] border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-slate-500 h-[42px]"
+                      value={supportCategory}
+                      onChange={(e) => {
+                        setSupportCategory(e.target.value);
+                        if (e.target.value !== 'rate_discrepancy' && e.target.value !== 'technical_issue') {
+                          setSupportChannelId('');
+                          setSupportCorridorId('');
+                        }
+                      }}
+                    >
+                      <option value="general_feedback">{language === 'en' ? 'General Feedback' : 'ملاحظات عامة'}</option>
+                      <option value="technical_issue">{language === 'en' ? 'Technical Issue' : 'مشكلة تقنية'}</option>
+                      <option value="rate_discrepancy">{language === 'en' ? 'Rate Discrepancy' : 'اختلاف في سعر الصرف'}</option>
+                      <option value="compliance_query">{language === 'en' ? 'Compliance Query' : 'استفسار امتثال'}</option>
+                      <option value="other">{language === 'en' ? 'Other' : 'أخرى'}</option>
+                    </select>
+                  </div>
+
+                  <SDSInput 
+                    label={language === 'en' ? 'Subject' : 'الموضوع'} 
+                    placeholder={language === 'en' ? 'e.g. Rate Update Issue' : 'مثال: تحديث أسعار الصرف'} 
+                    value={supportSubject}
+                    onChange={(e) => setSupportSubject(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Optional linked fields for rate discrepancy or tech issues */}
+                {(supportCategory === 'rate_discrepancy' || supportCategory === 'technical_issue') && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#071A35]/30 p-4 rounded-xl border border-slate-750/50 animate-fadeIn">
+                    <div className="space-y-1.5 text-left">
+                      <label className="text-xs font-bold text-slate-300 block">
+                        {language === 'en' ? 'Related Remittance Channel (Optional)' : 'قناة التحويل ذات الصلة (اختياري)'}
+                      </label>
+                      <select
+                        className="w-full bg-[#071A35] border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-slate-500 h-[42px]"
+                        value={supportChannelId}
+                        onChange={(e) => setSupportChannelId(e.target.value)}
+                      >
+                        <option value="">{language === 'en' ? '-- Select Channel --' : '-- اختر القناة --'}</option>
+                        {PROVIDERS.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5 text-left">
+                      <label className="text-xs font-bold text-slate-300 block">
+                        {language === 'en' ? 'Related Corridor (Optional)' : 'ممر التحويل ذو الصلة (اختياري)'}
+                      </label>
+                      <select
+                        className="w-full bg-[#071A35] border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-slate-500 h-[42px]"
+                        value={supportCorridorId}
+                        onChange={(e) => setSupportCorridorId(e.target.value)}
+                      >
+                        <option value="">{language === 'en' ? '-- Select Corridor --' : '-- اختر الممر --'}</option>
+                        {CORRIDORS.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.flag} {language === 'en' ? `${c.fromCountry} ➔ ${c.toCountry} (${c.currencyCode})` : `${c.fromCountryAr} ➔ ${c.toCountryAr} (${c.currencyCode})`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 text-left">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    {language === 'en' ? 'Your Message' : 'رسالتك'}
+                  </label>
+                  <textarea 
+                    rows={4} 
+                    className="w-full bg-[#071A35]/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-slate-500" 
+                    placeholder={language === 'en' ? 'Please provide detailed context so we can assist you better (minimum 20 characters)...' : 'يرجى تقديم تفاصيل وافية لتمكين فريقنا من مساعدتك بشكل أفضل (20 حرفاً على الأقل)...'}
+                    value={supportMessage}
+                    onChange={(e) => setSupportMessage(e.target.value)}
+                    required
+                    minLength={20}
+                    maxLength={5000}
+                  />
+                  <div className="text-[10px] text-slate-400 font-mono flex justify-between">
+                    <span>{language === 'en' ? 'Min 20, Max 5,000 chars' : 'الحد الأدنى 20، الأقصى 5,000 حرف'}</span>
+                    <span>{supportMessage.length}/5000</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <SDSButton 
+                    type="submit" 
+                    disabled={isSupportSubmitting}
+                    variant="primary" 
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs tracking-wider uppercase px-6 py-3 rounded-xl shadow-lg transition-all duration-300 disabled:opacity-50"
+                  >
+                    {isSupportSubmitting 
+                      ? (language === 'en' ? 'Sending...' : 'جاري الإرسال...') 
+                      : lt.contactBtn}
+                  </SDSButton>
+                </div>
+
+                <div className="border-t border-slate-800/60 pt-6 text-center space-y-3">
+                  <p className="text-xs text-slate-300 font-medium">
+                    📬 {lt.contactDirect}
+                  </p>
+                  <div className="flex justify-center gap-4 text-xs font-bold">
+                    <a href="mailto:support@sariremit.com" className="text-emerald-400 hover:underline flex items-center gap-1">
+                      <Mail className="w-3.5 h-3.5" />
+                      support@sariremit.com
+                    </a>
+                    <span className="text-slate-700">|</span>
+                    <a 
+                      href="https://github.com" 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="text-amber-400 hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Report an Issue
+                    </a>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </section>

@@ -16,113 +16,489 @@ export default function LegalPages({ pageType, setActiveTab, language }: LegalPa
       titleEn: "Privacy Policy",
       titleAr: "سياسة الخصوصية",
       icon: Shield,
-      lastUpdatedEn: "Last updated: July 10, 2026",
-      lastUpdatedAr: "آخر تحديث: ١٠ يوليو ٢٠٢٦",
+      lastUpdatedEn: "Last updated: July 15, 2026 (v1.2)",
+      lastUpdatedAr: "آخر تحديث: ١٥ يوليو ٢٠٢٦ (إصدار ١.٢)",
       renderEn: () => (
         <div className="space-y-6 text-slate-700 leading-relaxed text-sm">
+          <div className="p-4 bg-emerald-50/60 border-l-4 border-emerald-500 rounded-xl text-emerald-950 text-xs font-semibold">
+            This Privacy Policy has been written specifically for SariRemit and is fully aligned with the Saudi Arabia Personal Data Protection Law (PDPL) issued by Royal Decree No. (M/19). It describes how we collect, process, and safeguard your personal information when you use our platform.
+          </div>
+
           <p className="font-semibold text-slate-900 text-base">
-            At SariRemit, we prioritize the privacy and security of our community members, especially the hardworking expatriates in Saudi Arabia. This policy explains what information we collect, how it is used, and how we protect it.
+            At SariRemit, we prioritize the privacy and security of our community members, especially the hardworking expatriates in Saudi Arabia. Protecting your personal information is one of our absolute core principles. We aim to keep your data safe and explain our practices in simple, plain English without confusing legal jargon.
           </p>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">1. Information We Collect</h3>
+            <h3 className="text-lg font-bold text-slate-900">1. Introduction</h3>
             <p>
-              We only collect information necessary to provide remittance intelligence and comparison analytics:
+              SariRemit is an independent decision-support platform designed to help expatriates compare different remittance channels (such as banks, digital wallets, and money transfer operators), estimate their transaction savings, and make informed remittance decisions. We do not process transactions or hold money. Protecting your data and respecting your privacy is a foundation of everything we build.
             </p>
-            <ul className="list-disc pl-5 space-y-1">
-              <li><strong>Account Credentials:</strong> Your name, email address, phone number, and password when you register.</li>
-              <li><strong>Preferences:</strong> Your primary destination countries, currencies, and preferred transfer channels.</li>
-              <li><strong>Activity Logs:</strong> Recorded transfers and estimated savings you enter to keep track of your personal savings history.</li>
-              <li><strong>Crowd-Sourced Rate Submissions:</strong> Uploaded rate screenshots, exchange rates, and fee data that you choose to share to help others.</li>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">2. Information We Collect</h3>
+            <p>
+              We collect only the essential information required to offer our comparison services, maintain security, and allow community contributions. This includes:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Account Information:</strong> Your full name, email address, phone number (such as a KSA mobile number), preferred language, default destination country, and secure authentication credentials.
+              </li>
+              <li>
+                <strong>Profile Information:</strong> Your custom preferences, saved transfer corridors, and alert notifications preferences.
+              </li>
+              <li>
+                <strong>Transfer Records:</strong> Historical recorded transfers, estimated transaction savings, and transfer dates you log inside your private dashboard to monitor your savings history.
+              </li>
+              <li>
+                <strong>Community Rate Submissions:</strong> Exchange rate values, transfer fees, destination currencies, and any screenshots of wallet quotes or remittance receipts you voluntarily upload to verify community rates.
+              </li>
+              <li>
+                <strong>Support Requests:</strong> Support tickets, feedback submissions, email correspondence, and any document attachments you submit to resolve operational issues.
+              </li>
+              <li>
+                <strong>Technical Information:</strong> Secure browser headers, device attributes, IP address, session identifiers, security log files, and cookies.
+              </li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">2. How We Use Your Information</h3>
+            <h3 className="text-lg font-bold text-slate-900">3. Why We Collect Information</h3>
             <p>
-              Your data is never sold or traded. We use it strictly to:
+              Your personal information is processed strictly for clear, legitimate purposes:
             </p>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Allow you to access personalized features such as savings tracking, custom rate alerts, and community contributions.</li>
-              <li>Calculate and aggregate average crowd-sourced rates in our Rate Resolution Engine (RRE) anonymously.</li>
-              <li>Verify the authenticity of community submissions.</li>
-              <li>Improve platform performance and user experience.</li>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>To register your profile and securely authenticate you upon login.</li>
+              <li>To allow comparing active remittance providers and estimating custom savings.</li>
+              <li>To generate personalized remittance corridor recommendations.</li>
+              <li>To verify user-submitted community rates and audit screenshots.</li>
+              <li>To protect the platform against fraud, system abuse, and malicious rate seeding.</li>
+              <li>To distribute requested notifications (such as rate updates and achievement progress).</li>
+              <li>To respond to your support queries and compliance requests.</li>
+              <li>To maintain audit trails of administrative activities to ensure compliance.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">3. No Financial Assets or Transaction Processing</h3>
+            <h3 className="text-lg font-bold text-slate-900">4. Legal Basis for Processing</h3>
             <p>
-              <strong>SariRemit is not a money transfer operator, bank, or financial institution.</strong> We do not hold, receive, or process any funds or transfers. Consequently, we never collect credit card details, bank account numbers, or money-sending transactions.
+              In accordance with the Saudi Personal Data Protection Law (PDPL), we only process your personal data under valid legal grounds:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Your Consent:</strong> When you register an account and choose to share optional preferences or community submissions, or accept notifications.
+              </li>
+              <li>
+                <strong>Performance of Services:</strong> Processing necessary to provide you with the comparative calculations, savings analysis, and recommendations you request.
+              </li>
+              <li>
+                <strong>Legitimate Operations & Anti-Fraud:</strong> Processing necessary for our legitimate interests to secure the platform, verify submissions, prevent fraud, and maintain compliance, provided these do not override your privacy rights.
+              </li>
+              <li>
+                <strong>Legal Obligations:</strong> Compliance with any official regulations or regulatory authorities operating within the Kingdom of Saudi Arabia.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">5. How We Protect Information</h3>
+            <p>
+              To keep your data safe, we implement the **SariRemit Security & Audit Framework (SAF)** which incorporates robust, industry-standard protections:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Encryption:</strong> All data is encrypted both while travelling across the internet (TLS/SSL encryption) and when stored on our secure servers.
+              </li>
+              <li>
+                <strong>Secure Authentication:</strong> Multi-factor capabilities and protected session tokens handled via Supabase Auth services.
+              </li>
+              <li>
+                <strong>Row Level Security (RLS):</strong> Granular database filters ensuring that you can only access and modify your own personal transfer records and profile preferences.
+              </li>
+              <li>
+                <strong>Audit Logs & Permissions:</strong> Strict administrator rules and complete logs of all admin changes to protect against unauthorized data views.
+              </li>
+              <li>
+                <strong>Anti-Fraud Screening:</strong> Smart screening filters that inspect submissions without exposing personal credentials.
+              </li>
+              <li>
+                <strong>Screenshot Privacy:</strong> We encourage and process screenshots by stripping or masking non-essential personal names and account numbers during verification.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">6. Who Can Access Your Data</h3>
+            <p>
+              SariRemit values strict data segregation. Access is restricted under strict rules:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>The User:</strong> You have exclusive, private access to your own personal profile, preferences, and transfer records. No other standard user can see your private data.
+              </li>
+              <li>
+                <strong>SRCMC Admin Staff:</strong> Only verified, authorized administrators can access community submissions or support tickets, strictly to perform audits or resolve tickets. They can never view your plain text password.
+              </li>
+              <li>
+                <strong>The System:</strong> Our Rate Resolution Engine (RRE) and True Cost Engine (TCE) process aggregated data automatically.
+              </li>
+              <li>
+                <strong>No Public Access:</strong> Your individual account details are completely shielded. Only fully anonymized, aggregated rate data is displayed publicly.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">7. Third Party Services</h3>
+            <p>
+              We integrate only with trusted infrastructure providers that guarantee equal or greater compliance with Saudi data security policies:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Supabase:</strong> Provides our secure user authentication service, hosting for our encrypted database, and storage for community rate verification screenshots.
+              </li>
+              <li>
+                <strong>Future Service Providers:</strong> Any future integrations with specialized email delivery systems, push notification services, or secure diagnostic analytics will be selected carefully and bound by strict confidentiality requirements.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">8. Cookies</h3>
+            <p>
+              We use standard cookies to make our platform work efficiently:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Essential Cookies:</strong> Cookies used to identify your session, maintain secure logins, and remember your language setting (English or Arabic).
+              </li>
+              <li>
+                <strong>Future Optional Cookies:</strong> Any future non-essential performance or analytics cookies will only be loaded with your explicit permission.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">9. Data Retention</h3>
+            <p>
+              In line with Saudi PDPL principles, we retain your information only as long as necessary:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Accounts:</strong> Retained while your account remains active. If you request account deletion, we purge or anonymize your personal files.
+              </li>
+              <li>
+                <strong>Transfer History:</strong> Saved to maintain your dashboard statistics, but deleted immediately upon your request.
+              </li>
+              <li>
+                <strong>Community Submissions & Screenshots:</strong> Rates are aggregated. The verification screenshots are permanently destroyed or deleted from storage as soon as the review cycle completes.
+              </li>
+              <li>
+                <strong>Support Tickets:</strong> Kept as active archives to manage support history and quality control.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">10. Your Rights Under Saudi PDPL</h3>
+            <p>
+              Under the Saudi Personal Data Protection Law, you hold powerful rights over your personal data. You may request:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Right to Know & Access:</strong> Request a description of what data of yours we process and view your records.
+              </li>
+              <li>
+                <strong>Right to Correction:</strong> Request immediate correction of inaccurate, outdated, or incomplete data.
+              </li>
+              <li>
+                <strong>Right to Deletion (Destruction):</strong> Request that your personal records be erased when no longer legally required.
+              </li>
+              <li>
+                <strong>Right to Export:</strong> Download a portable electronic copy of your recorded transfers and profile parameters.
+              </li>
+              <li>
+                <strong>Right to Withdraw Consent:</strong> Withdraw your consent at any time for features that rely on consent (such as promotional notification alerts).
+              </li>
+            </ul>
+            <p className="mt-2 text-xs text-slate-500">
+              *To exercise any of these rights, please write to us directly at support@sariremit.com. We respond to all verified requests promptly.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">4. Data Security</h3>
+            <h3 className="text-lg font-bold text-slate-900">11. Children's Privacy</h3>
             <p>
-              We implement industry-standard encryption and security measures to guard your personal credentials from unauthorized access, modification, or disclosure. We use secure cloud databases and secure hashing of passwords.
+              SariRemit is designed for adults who are sending international remittance transfers from Saudi Arabia. We do not knowingly solicit or collect any personal information from children under the applicable legal age of majority in KSA.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">5. Contact Us</h3>
+            <h3 className="text-lg font-bold text-slate-900">12. International Users and Data Transfers</h3>
             <p>
-              If you have any questions or concerns about your data, please contact us at <span className="font-bold text-emerald-650">support@sariremit.com</span>.
+              SariRemit is hosted and operated inside Saudi Arabia to serve local residents. When required for cloud routing, secure technical operations, or database backups, some information may be processed using secure partners located globally, under strict contractual protections that maintain PDPL security benchmarks.
             </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">13. Policy Updates</h3>
+            <p>
+              We may update this Privacy Policy as our features grow or as regulations evolve. If we make significant changes, we will alert you via email, post a notice on our dashboard, or request you to review the updated terms at login. Your continued use of the platform after an update represents agreement.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">14. Contact Us</h3>
+            <p>
+              If you have any questions, wish to exercise your rights, or want to speak with our compliance desk, please contact our data safety team:
+            </p>
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mt-2">
+              <p className="font-bold text-slate-900">SariRemit Legal & Compliance Framework (SLCF)</p>
+              <p className="text-xs text-slate-500 mt-0.5">Primary Support: <span className="font-bold text-emerald-650">support@sariremit.com</span></p>
+              <p className="text-xs text-slate-500">Riyadh, Kingdom of Saudi Arabia</p>
+            </div>
           </section>
         </div>
       ),
       renderAr: () => (
         <div className="space-y-6 text-slate-700 leading-relaxed text-sm text-right">
+          <div className="p-4 bg-emerald-50/60 border-r-4 border-emerald-500 rounded-xl text-emerald-950 text-xs font-semibold">
+            تمت صياغة سياسة الخصوصية هذه خصيصاً لمنصة ساري ريميت وهي متوافقة تماماً مع نظام حماية البيانات الشخصية (PDPL) الصادر بالمرسوم الملكي الكريم رقم (م/١٩) في المملكة العربية السعودية. توضح هذه السياسة كيف نجمع بياناتك الشخصية ونعالجها ونحميها.
+          </div>
+
           <p className="font-semibold text-slate-900 text-base">
-            في ساري ريميت، نضع خصوصية وأمان أعضاء مجتمعنا، وخاصة المغتربين الكادحين في المملكة العربية السعودية، على رأس أولوياتنا. توضح هذه السياسة البيانات التي نجمعها، وكيف نستخدمها، وكيف نحميها.
+            في ساري ريميت، نضع خصوصية وأمان أعضاء مجتمعنا، وخاصة المغتربين في المملكة العربية السعودية، على رأس أولوياتنا. إن حماية معلوماتك الشخصية هي أحد مبادئنا الأساسية المطلقة، ونسعى لتوضيح ممارساتنا بلغة بسيطة ومفهومة للجميع.
           </p>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">١. المعلومات التي نجمعها</h3>
+            <h3 className="text-lg font-bold text-slate-900">١. مقدمة</h3>
             <p>
-              نحن نجمع فقط المعلومات الضرورية لتقديم تحليلات مقارنة أسعار الصرف والتوفير:
+              ساري ريميت هي منصة مستقلة لدعم القرار مصممة لمساعدة المغتربين على مقارنة قنوات التحويل المختلفة (مثل البنوك، والمحافظ الرقمية، ومؤسسات التحويل)، وتقدير التوفير المالي، واتخاذ قرارات تحويل واعية. نحن لا نعالج معاملات مالية ولا نحتفظ بالأموال. إن حماية بياناتك واحترام خصوصيتك هي ركيزة أساسية لكل ما نبنيه.
             </p>
-            <ul className="list-disc pr-5 space-y-1">
-              <li><strong>بيانات الحساب:</strong> الاسم، والبريد الإلكتروني، ورقم الهاتف، وكلمة المرور عند تسجيلك.</li>
-              <li><strong>التفضيلات:</strong> بلد التحويل المفضل، العملة، وقنوات التحويل المفضلة لديك.</li>
-              <li><strong>سجلات النشاط:</strong> سجل التحويلات التي تدونها والوفر المتوقع لمساعدتك في تتبع مدخراتك الشخصية.</li>
-              <li><strong>مشاركات الأسعار:</strong> لقطات الشاشة المرفوعة لتأكيد الأسعار، وأسعار الصرف، والرسوم التي تختار مشاركتها لمساعدة الآخرين.</li>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">٢. المعلومات التي نجمعها</h3>
+            <p>
+              نحن نجمع فقط المعلومات الأساسية الضرورية لتقديم خدمات المقارنة، والحفاظ على أمان النظام، وتمكين المشاركة المجتمعية، وتشمل:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>بيانات الحساب:</strong> الاسم الكامل، والبريد الإلكتروني، ورقم الهاتف (رقم جوال سعودي)، واللغة المفضلة، وبلد التحويل الافتراضي، وبيانات التحقق الآمن من الهوية.
+              </li>
+              <li>
+                <strong>بيانات التفضيلات:</strong> إعداداتك المخصصة، وممرات التحويل المحفوظة، وتفضيلات تنبيهات الأسعار.
+              </li>
+              <li>
+                <strong>سجلات الحوالات:</strong> سجل التحويلات المدونة، والوفر المالي المالي المقدر، وتواريخ الحوالات التي تسجلها بنفسك لمراقبة مدخراتك.
+              </li>
+              <li>
+                <strong>مشاركات الأسعار المجتمعية:</strong> قيم أسعار الصرف، والرسوم، والعملات، ولقطات الشاشة التي ترفعها طواعية لتأكيد صحة الأسعار.
+              </li>
+              <li>
+                <strong>طلبات الدعم:</strong> تذاكر الدعم والامتثال، والملاحظات، والمراسلات البريدية، وأي مرفقات ترفعها لحل المشكلات.
+              </li>
+              <li>
+                <strong>المعلومات التقنية:</strong> نوع المتصفح، ومعلومات الجهاز، وعنوان الـ IP، ومعرفات الجلسة، وسجلات الأمان، وملفات تعريف الارتباط (Cookies).
+              </li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٢. كيف نستخدم معلوماتك</h3>
+            <h3 className="text-lg font-bold text-slate-900">٣. لماذا نجمع هذه المعلومات</h3>
             <p>
-              لا يتم بيع بياناتك أو المتاجرة بها أبداً. نحن نستخدمها بدقة من أجل:
+              يتم معالجة بياناتك الشخصية بدقة لأغراض مشروعة وواضحة فقط:
             </p>
-            <ul className="list-disc pr-5 space-y-1">
-              <li>تمكينك من الوصول إلى الميزات المخصصة مثل تتبع الوفر، وتنبيهات الأسعار، والمشاركات المجتمعية.</li>
-              <li>حساب ودمج معدلات الأسعار التشاركية في محرك تحديد الأسعار (RRE) بشكل مجهول الهوية.</li>
-              <li>التحقق من صحة مشاركات المجتمع.</li>
-              <li>تحسين أداء المنصة وتجربة المستخدم.</li>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>لإنشاء حسابك وتأمين تسجيل دخولك للمنصة.</li>
+              <li>لتمكينك من مقارنة قنوات التحويل وحساب التوفير المقدر.</li>
+              <li>لإنشاء توصيات مخصصة لممرات التحويل الخاصة بك.</li>
+              <li>للتحقق من صحة أسعار الصرف المشاركة من المجتمع وتدقيق لقطات الشاشة.</li>
+              <li>لحماية المنصة من الاحتيال، وإساءة استخدام النظام، وإدخال أسعار وهمية.</li>
+              <li>لإرسال التنبيهات المطلوبة منك (مثل إشعارات الأسعار وتحديثات الإنجازات).</li>
+              <li>للرد على استفسارات الدعم والامتثال الخاصة بك.</li>
+              <li>للاحتفاظ بسجلات التدقيق الإدارية لضمان الامتثال والشفافية.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٣. لا نقوم بمعالجة المعاملات المالية</h3>
+            <h3 className="text-lg font-bold text-slate-900">٤. المسوغ النظامي للمعالجة</h3>
             <p>
-              <strong>ساري ريميت ليس مشغلاً لتحويل الأموال أو بنكاً أو مؤسسة مالية.</strong> نحن لا نحتفظ بأي أموال أو نقوم بمعالجتها. وبالتالي، لا نطلب أو نجمع أبداً تفاصيل بطاقات الائتمان أو أرقام الحسابات البنكية.
+              وفقاً لنظام حماية البيانات الشخصية السعودي (PDPL)، نعتمد على المسوغات النظامية التالية لمعالجة بياناتك:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>موافقتك الصريحة:</strong> عند تسجيل حسابك واختيار مشاركة تفضيلاتك طواعية، أو تفعيل الإشعارات.
+              </li>
+              <li>
+                <strong>تنفيذ الخدمات المطلوبة:</strong> المعالجة الضرورية لتقديم الحسابات المقارنة وتحليلات التوفير والتوصيات التي تطلبها.
+              </li>
+              <li>
+                <strong>العمليات المشروعة ومكافحة الاحتيال:</strong> المعالجة الضرورية لحماية أمن المنصة، والتحقق من صحة المدخلات، ومنع إساءة الاستخدام، بما لا يتعارض مع حقوق خصوصيتك.
+              </li>
+              <li>
+                <strong>الالتزامات النظامية:</strong> الامتثال لأي أنظمة رسمية أو توجيهات من الجهات التنظيمية داخل المملكة العربية السعودية.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">٥. كيف نحمي معلوماتك</h3>
+            <p>
+              لحفظ أمان بياناتك، نطبق **إطار عمل ساري ريميت للأمن والتدقيق (SAF)** والذي يشمل معايير أمنية صارمة:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>التشفير:</strong> يتم تشفير جميع البيانات أثناء انتقالها عبر الإنترنت (تشفير TLS/SSL) وعند تخزينها في قواعد بياناتنا السحابية الآمنة.
+              </li>
+              <li>
+                <strong>المصادقة الآمنة:</strong> حماية متقدمة لإدارة الجلسات ورموز تسجيل الدخول عبر خدمات Supabase الآمنة.
+              </li>
+              <li>
+                <strong>أمان على مستوى الصف (RLS):</strong> قيود برمجية تضمن عدم قدرة أي مستخدم على الاطلاع على حوالاتك أو تفضيلاتك الخاصة أو تعديلها.
+              </li>
+              <li>
+                <strong>سجلات التدقيق والصلاحيات:</strong> قواعد صارمة للمشرفين وسجلات كاملة للتغييرات الإدارية لمنع الوصول غير المصرح به.
+              </li>
+              <li>
+                <strong>فحص مكافحة الاحتيال:</strong> خوارزميات ذكية لفحص المساهمات دون كشف بيانات الهوية الشخصية.
+              </li>
+              <li>
+                <strong>خصوصية لقطات الشاشة:</strong> نقوم بحث ومساعدة المستخدمين على قص أو إخفاء الأسماء الكاملة وأرقام الحسابات البنكية الحساسة من لقطات الشاشة قبل إتمام التدقيق.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">٦. من يمكنه الوصول إلى بياناتك</h3>
+            <p>
+              يقوم ساري ريميت على مبدأ عزل البيانات الصارم، ويتم تقييد الوصول وفقاً لقواعد صارمة:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>المستخدم:</strong> لديك حق الوصول الخاص والحصري إلى ملفك التعريفي وتفضيلاتك وسجل حوالاتك، ولا يمكن لأي مستخدم آخر رؤيتها.
+              </li>
+              <li>
+                <strong>مشرفو وإداريو SRCMC:</strong> يُسمح فقط للمشرفين الإداريين المعتمدين بالاطلاع على مساهمات المجتمع أو تذاكر الدعم للتدقيق والحل، ولا يمكنهم أبداً رؤية كلمة مرورك.
+              </li>
+              <li>
+                <strong>النظام الآلي:</strong> يقوم محرك تسوية الأسعار (RRE) ومحرك التكلفة الحقيقية (TCE) بمعالجة البيانات المجمعة آلياً.
+              </li>
+              <li>
+                <strong>لا إفصاح عام:</strong> بيانات حسابك الشخصي محمية بالكامل، ويتم فقط عرض أسعار الصرف المجمعة والمجهلة للعامة.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">٧. خدمات الطرف الثالث</h3>
+            <p>
+              نحن نتكامل فقط مع موفري البنية التحتية الموثوقين الذين يضمنون الالتزام التام بمعايير أمن البيانات السعودية:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>Supabase:</strong> يوفر خدمات المصادقة الآمنة، واستضافة قاعدة البيانات المشفرة، وتخزين لقطات الشاشة الخاصة بالتحقق المجتمعي.
+              </li>
+              <li>
+                <strong>مقدمو الخدمات المستقبليون:</strong> أي تكامل مستقبلي مع أنظمة البريد الإلكتروني أو الإشعارات اللحظية أو التحليلات سيخضع لاختيار دقيق واتفاقيات سرية وحماية بيانات صارمة.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">٨. ملفات تعريف الارتباط (Cookies)</h3>
+            <p>
+              نستخدم ملفات تعريف الارتباط الأساسية لضمان عمل المنصة بكفاءة:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>الملفات الأساسية:</strong> تستخدم لربط جلستك، وتأمين تسجيل دخولك، وتذكر لغتك المفضلة (العربية أو الإنجليزية).
+              </li>
+              <li>
+                <strong>الملفات الاختيارية المستقبلية:</strong> أي ملفات غير أساسية للتحليلات أو قياس الأداء لن يتم تحميلها إلا بعد موافقتك الصريحة.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">٩. الاحتفاظ بالبيانات</h3>
+            <p>
+              تماشياً مع مبادئ نظام حماية البيانات الشخصية السعودي (PDPL)، نحتفظ ببياناتك فقط للفترة الضرورية:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>الحسابات:</strong> يتم الاحتفاظ بها طالما أن حسابك نشط. وعند طلب حذف الحساب، نقوم فوراً بمسح أو تجهيل بياناتك بالكامل.
+              </li>
+              <li>
+                <strong>سجل الحوالات:</strong> يُحفظ لعرض إحصائيات لوحة التحكم الخاصة بك، ويتم حذفه فوراً بطلبك.
+              </li>
+              <li>
+                <strong>مشاركات المجتمع وصور الإيصالات:</strong> يتم دمج بيانات الأسعار، أما لقطات الشاشة المرفوعة فيتم تدميرها وحذفها نهائياً من وحدات التخزين بمجرد انتهاء عملية التدقيق والموافقة.
+              </li>
+              <li>
+                <strong>تذاكر الدعم:</strong> يتم الاحتفاظ بأرشيفها لمتابعة تاريخ الدعم وضمان جودة الخدمة والامتثال.
+              </li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">١٠. حقوقك بموجب نظام حماية البيانات الشخصية السعودي (PDPL)</h3>
+            <p>
+              منحك النظام حقوقاً قوية للتحكم في بياناتك الشخصية، ويمكنك تقديم طلب لممارسة هذه الحقوق وتشمل:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>
+                <strong>الحق في العلم والوصول:</strong> معرفة البيانات التي نعالجها عنك والاطلاع عليها.
+              </li>
+              <li>
+                <strong>الحق في التصحيح:</strong> طلب تصحيح أي بيانات غير دقيقة أو قديمة أو ناقصة فوراً.
+              </li>
+              <li>
+                <strong>الحق في الإتلاف (الحذف):</strong> طلب حذف بياناتك الشخصية عندما لا يعود هناك حاجة نظامية للاحتفاظ بها.
+              </li>
+              <li>
+                <strong>الحق في الحصول على البيانات (التصدير):</strong> تنزيل نسخة إلكترونية من سجل حوالاتك وبيانات حسابك.
+              </li>
+              <li>
+                <strong>الحق في سحب الموافقة:</strong> يمكنك سحب موافقتك في أي وقت للميزات التي تعتمد على الموافقة (مثل الإشعارات الاختيارية).
+              </li>
+            </ul>
+            <p className="mt-2 text-xs text-slate-500">
+              *لممارسة أي من هذه الحقوق، يرجى مراسلتنا مباشرة عبر البريد الإلكتروني support@sariremit.com وسيقوم فريق أمن البيانات بالرد على طلبك المؤكد فوراً.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٤. أمن البيانات</h3>
+            <h3 className="text-lg font-bold text-slate-900">١١. خصوصية الأطفال</h3>
             <p>
-              نحن نطبق معايير وتدابير أمنية متوافقة مع معايير الصناعة لحماية بياناتك الشخصية من الوصول غير المصرح به أو التعديل أو الإفصاح. نستخدم قواعد بيانات سحابية مشفرة وآمنة.
+              ساري ريميت مخصص للبالغين الذين يقومون بإجراء حوالات مالية دولية من المملكة العربية السعودية. ونحن لا نجمع أو نطلب عمداً أي بيانات شخصية من القاصرين أو الأطفال تحت السن القانوني في المملكة.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٥. اتصل بنا</h3>
+            <h3 className="text-lg font-bold text-slate-900">١٢. المستخدمون الدوليون ونقل البيانات</h3>
             <p>
-              إذا كانت لديك أي أسئلة أو استفسارات حول بياناتك، يرجى التواصل معنا عبر البريد الإلكتروني <span className="font-bold text-emerald-650">support@sariremit.com</span>.
+              يتم استضافة وتشغيل ساري ريميت داخل المملكة العربية السعودية لخدمة المقيمين محلياً. وعند الحاجة لعمليات التخزين السحابي الآمن أو النسخ الاحتياطي، قد يتم معالجة بعض البيانات المشفرة بالتعاون مع شركاء تقنيين عالميين تحت حماية تعاقدية صارمة تلتزم بضوابط نظام حماية البيانات الشخصية (PDPL).
             </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">١٣. تحديثات السياسة</h3>
+            <p>
+              قد نقوم بتحديث سياسة الخصوصية هذه من وقت لآخر لمواكبة تطور المنصة أو التغيرات التنظيمية. وفي حال حدوث تغييرات جوهرية، سنقوم بإخطارك عبر البريد الإلكتروني أو من خلال لوحة التحكم أو طلب مراجعتها عند تسجيل الدخول. إن استمرارك في استخدام المنصة بعد التحديث يُعتبر موافقة عليها.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900">١٤. اتصل بنا</h3>
+            <p>
+              إذا كانت لديك أي أسئلة أو رغبة في ممارسة حقوقك أو التواصل مع مكتب الامتثال لسلامة البيانات لدينا، يرجى مراسلة فريقنا:
+            </p>
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mt-2 text-right">
+              <p className="font-bold text-slate-900">إطار عمل ساري ريميت القانوني والامتثال (SLCF)</p>
+              <p className="text-xs text-slate-500 mt-0.5">الدعم الرئيسي: <span className="font-bold text-emerald-650">support@sariremit.com</span></p>
+              <p className="text-xs text-slate-500">الرياض، المملكة العربية السعودية</p>
+            </div>
           </section>
         </div>
       )
