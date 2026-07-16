@@ -60,7 +60,8 @@ import {
   Settings, ShieldCheck, Database, FileText, CheckCircle2, 
   XCircle, Trash2, PlusCircle, RefreshCw, AlertTriangle, HelpCircle, 
   ArrowRightLeft, Percent, Compass, Clock, Users, User, Lock, Sparkles,
-  Eye, EyeOff, Search, PlayCircle, ToggleLeft, ShieldAlert, Key, Globe, Layout, ListCollapse, CheckSquare
+  Eye, EyeOff, Search, PlayCircle, ToggleLeft, ShieldAlert, Key, Globe, Layout, ListCollapse, CheckSquare,
+  Shield, CheckCircle, Clock3
 } from 'lucide-react';
 
 interface SrcmcControlProps {
@@ -126,6 +127,14 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [newPolicyVersion, setNewPolicyVersion] = useState<string>('v1.3');
   const [newPolicyDesc, setNewPolicyDesc] = useState<string>('Updated to include recent feedback loops and enhanced security controls for BAM screenshots.');
   const [privacySuccess, setPrivacySuccess] = useState<string>('');
+
+  // Form Fields: Terms of Use Manager
+  const [termsPolicies, setTermsPolicies] = useState<any[]>([
+    { version: 'v1.0', status: 'Active', publishDate: '2026-07-16', description: 'Initial launch of production-ready 17-section Terms of Use under SariRemit Legal & Compliance Framework (SLCF).' }
+  ]);
+  const [newTermsVersion, setNewTermsVersion] = useState<string>('v1.1');
+  const [newTermsDesc, setNewTermsDesc] = useState<string>('Updated terms of community verification, anti-fraud screenshot controls, and general regulatory compliance.');
+  const [termsSuccess, setTermsSuccess] = useState<string>('');
 
   // Form Fields: Weights
   const [weightsForm, setWeightsForm] = useState<any>({
@@ -694,6 +703,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     { key: 'audit_logs', label: 'Audit Logs Feed', permission: 'view_audit_logs' },
     { key: 'users', label: 'Registered Users', permission: 'manage_admins' },
     { key: 'privacy', label: 'Privacy Policy Manager', permission: 'manage_admins' },
+    { key: 'terms', label: 'Terms of Use Manager', permission: 'manage_admins' },
     { key: 'support', label: 'Support & Compliance Desk', permission: 'manage_overrides' }
   ];
 
@@ -5520,6 +5530,247 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                                 <td className="py-3 px-4 text-left">
                                   <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${hasAccepted ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200/50'}`}>
                                     {hasAccepted ? 'CONSENTED' : 'ACCEPTED'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 font-mono font-bold text-slate-600 text-[10px] text-left">{acceptedVersion}</td>
+                                <td className="py-3 px-4 text-right text-slate-400 font-mono font-bold text-[10px]">
+                                  {new Date(acceptedTime).toLocaleDateString(undefined, {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB: TERMS OF USE MANAGER (SLCF COMPLIANCE ENGINE) */}
+          {activeSubTab === 'terms' && (
+            <div className="space-y-6 text-slate-800 animate-fadeIn">
+              
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <FileText className="w-5 h-5 text-[#10B981]" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">SLCF Compliance</span>
+                    <span className="text-sm font-black text-slate-850">KSA SAMA/SLCF</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <Users className="w-5 h-5 text-[#10B981]" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">Accepted Members</span>
+                    <span className="text-sm font-black text-slate-850">
+                      {registeredUsers.filter(u => !!u.terms_version).length} / {registeredUsers.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">Consent Rate</span>
+                    <span className="text-sm font-black text-slate-850">
+                      {registeredUsers.length > 0 
+                        ? Math.round((registeredUsers.filter(u => !!u.terms_version).length / registeredUsers.length) * 100) 
+                        : 100}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                    <Clock3 className="w-5 h-5 text-[#F59E0B]" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-mono">Current Version</span>
+                    <span className="text-sm font-black text-slate-850">
+                      {termsPolicies.find(p => p.status === 'Active')?.version || 'v1.0'} (Active)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Content Panels */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Left: Version Publisher (Col span 5) */}
+                <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-sm text-slate-800">
+                  <div className="text-left">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-850 font-mono">
+                      Terms Version Control
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
+                      Publish a new version of the SariRemit Terms of Use. New users will be required to accept this active version upon registration.
+                    </p>
+                  </div>
+
+                  {termsSuccess && (
+                    <div className="p-3.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200/50 text-[11px] font-bold text-left animate-fadeIn">
+                      {termsSuccess}
+                    </div>
+                  )}
+
+                  <div className="space-y-4 text-left">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">
+                        New Version Number
+                      </label>
+                      <input
+                        type="text"
+                        value={newTermsVersion}
+                        onChange={(e) => setNewTermsVersion(e.target.value)}
+                        placeholder="v1.1"
+                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981]"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">
+                        Release Changelog
+                      </label>
+                      <textarea
+                        value={newTermsDesc}
+                        onChange={(e) => setNewTermsDesc(e.target.value)}
+                        placeholder="Describe what has changed or updated in this version..."
+                        rows={3}
+                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] resize-none"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newTermsVersion) return;
+                        const updated = termsPolicies.map(p => ({ ...p, status: 'Archived' }));
+                        setTermsPolicies([
+                          { version: newTermsVersion, status: 'Active', publishDate: new Date().toISOString().split('T')[0], description: newTermsDesc },
+                          ...updated
+                        ]);
+                        setTermsSuccess(`Successfully published and enforced Terms of Use ${newTermsVersion}! Previous versions archived.`);
+                        setTimeout(() => setTermsSuccess(''), 4000);
+                      }}
+                      className="w-full py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Publish & Enforce Terms</span>
+                    </button>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-4 space-y-3">
+                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono text-left">
+                      Terms Version Logs
+                    </h4>
+
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {termsPolicies.map((p, idx) => (
+                        <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-150 text-xs flex items-center justify-between">
+                          <div className="space-y-0.5 text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-slate-800">{p.version}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${p.status === 'Active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-200 text-slate-600'}`}>
+                                {p.status}
+                              </span>
+                            </div>
+                            <span className="text-[9px] text-slate-400 font-bold font-mono block">Released {p.publishDate}</span>
+                            <p className="text-[9.5px] text-slate-500 leading-normal mt-1 line-clamp-2">{p.description}</p>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                            {p.status === 'Active' ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = termsPolicies.map((item, i) => i === idx ? { ...item, status: 'Archived' } : item);
+                                  setTermsPolicies(updated);
+                                }}
+                                className="px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[9px] font-bold text-slate-700 transition-colors cursor-pointer"
+                              >
+                                Archive
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = termsPolicies.map((item, i) => {
+                                    if (i === idx) return { ...item, status: 'Active' };
+                                    return { ...item, status: 'Archived' };
+                                  });
+                                  setTermsPolicies(updated);
+                                }}
+                                className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 rounded text-[9px] font-bold text-emerald-800 transition-colors cursor-pointer"
+                              >
+                                Publish
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Acceptance Directory & Records (Col span 7) */}
+                <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm text-slate-800">
+                  <div className="text-left">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-850 font-mono">
+                      Compliance Audit Logs (SLCF Terms of Use)
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
+                      Verify individual member agreements to the Terms of Use, matching Saudi financial intelligence guidelines.
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-100/50 border-b border-slate-200 text-slate-550 font-extrabold uppercase text-[9px] tracking-wider font-mono">
+                          <th className="py-2.5 px-4">Member</th>
+                          <th className="py-2.5 px-4">Agreement Status</th>
+                          <th className="py-2.5 px-4">Version</th>
+                          <th className="py-2.5 px-4 text-right">Accepted At</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {registeredUsers.length === 0 ? (
+                           <tr>
+                             <td colSpan={4} className="py-12 text-center font-bold text-slate-400 uppercase bg-slate-50/20">
+                               No members registered in database yet.
+                             </td>
+                           </tr>
+                        ) : (
+                          registeredUsers.map((user, idx) => {
+                            const acceptedVersion = user.terms_version || 'v1.0 (Legacy Accept)';
+                            const acceptedTime = user.terms_accepted_at || user.createdAt || new Date().toISOString();
+                            const hasAccepted = !!user.terms_version;
+
+                            return (
+                              <tr key={user.id || idx} className="hover:bg-slate-50/20">
+                                <td className="py-3 px-4 font-bold text-left">
+                                  <span className="text-slate-800 block text-xs leading-none">{user.name}</span>
+                                  <span className="text-[9px] text-slate-400 font-mono font-normal block mt-1">{user.email}</span>
+                                </td>
+                                <td className="py-3 px-4 text-left">
+                                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${hasAccepted ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200/50'}`}>
+                                    {hasAccepted ? 'AGREED' : 'ACCEPTED'}
                                   </span>
                                 </td>
                                 <td className="py-3 px-4 font-mono font-bold text-slate-600 text-[10px] text-left">{acceptedVersion}</td>

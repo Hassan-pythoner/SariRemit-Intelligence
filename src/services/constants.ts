@@ -1,5 +1,8 @@
 import { Corridor, Provider } from '../types';
 
+export const ENABLE_SDS_3_USER_SHELL = true;
+export const ENABLE_SDS_3_DASHBOARD = true;
+
 export const PROVIDERS: Provider[] = [
   { id: 'stc-pay', name: 'STC Pay / STC Bank', logoColor: 'bg-purple-600', logoText: 'stc', rating: 4.8 },
   { id: 'urpay', name: 'Urpay', logoColor: 'bg-blue-600', logoText: 'ur', rating: 4.7 },

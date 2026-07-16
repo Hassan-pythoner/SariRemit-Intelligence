@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { enTranslations, arTranslations } from './translations';
 import { getUserProfile, saveUserProfile } from './services/ratesService';
-import { getAuthSession, checkIsAdminSync, syncSupabaseToLocal } from './services/supabaseService';
+import { getAuthSession, checkIsAdminSync, syncSupabaseToLocal, signOutSession } from './services/supabaseService';
 import { UserProfile as UserProfileType, TranslationDict } from './types';
 import Navigation from './components/Navigation';
 import LandingPage from './components/LandingPage';
@@ -22,7 +22,13 @@ import Savings from './components/Savings';
 import Onboarding from './components/Onboarding';
 import LegalPages from './components/LegalPages';
 import SupportHistory from './components/SupportHistory';
-import { Bell, Sparkles, CheckCircle2, MessageSquare, Landmark, Info } from 'lucide-react';
+import { 
+  Bell, Sparkles, CheckCircle2, MessageSquare, Landmark, Info,
+  LayoutDashboard, ArrowLeftRight, PlusCircle, PiggyBank, Compass, User, ShieldCheck,
+  LogOut, ChevronLeft, ChevronRight, Menu, X, Globe
+} from 'lucide-react';
+import NotificationCenter from './components/NotificationCenter';
+import { ENABLE_SDS_3_USER_SHELL } from './services/constants';
 
 export default function App() {
   const [appLoading, setAppLoading] = useState<boolean>(true);
@@ -65,6 +71,24 @@ export default function App() {
   const [srcmcAccess, setSrcmcAccess] = useState<any | null>(null);
   const [srcmcAccessLoading, setSrcmcAccessLoading] = useState<boolean>(true);
   const isLoggedIn = !!profile.email;
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sds_sidebar_collapsed');
+      return saved === 'true';
+    }
+    return false;
+  });
+
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState<boolean>(false);
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sds_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   // Verify and fetch authentic Supabase session/profile on mount
   useEffect(() => {
@@ -281,6 +305,273 @@ export default function App() {
     }
   };
 
+  const handleLogout = async () => {
+    signOutSession();
+    await syncProfileWithSession();
+    triggerToast(language === 'en' ? "Signed out successfully!" : "تم تسجيل الخروج بنجاح!");
+  };
+
+  const isSidebarVisible = isLoggedIn && ENABLE_SDS_3_USER_SHELL && profile.onboarding_completed && !['landing', 'privacy-policy', 'terms-of-use', 'disclaimer', 'community-verification-policy', 'rate-update-policy'].includes(activeTab);
+
+  const canSeeSrcmc = srcmcAccess?.is_active === true;
+
+  const sidebarItems = [
+    { id: 'dashboard', label: language === 'en' ? 'Dashboard' : 'لوحة التحكم', icon: LayoutDashboard },
+    { id: 'compare', label: language === 'en' ? 'Compare Rates' : 'مقارنة الأسعار', icon: ArrowLeftRight },
+    { id: 'submit', label: language === 'en' ? 'Verify Rate' : 'توثيق الحوالات', icon: PlusCircle },
+    { id: 'savings', label: language === 'en' ? 'Savings Journey' : 'المدخرات والوفر', icon: PiggyBank },
+    { id: 'insights', label: language === 'en' ? 'Market Pulse' : 'نبض السوق', icon: Compass },
+    { id: 'alerts', label: language === 'en' ? 'Rate Alerts' : 'التنبيهات', icon: Bell },
+    { id: 'profile', label: language === 'en' ? 'Profile Settings' : 'الملف الشخصي', icon: User },
+    { id: 'support', label: language === 'en' ? 'Support Center' : 'الدعم والمساعدة', icon: MessageSquare },
+    ...(canSeeSrcmc ? [{ id: 'srcmc', label: language === 'en' ? 'SRCMC Control' : 'لوحة تحكم SRCMC', icon: ShieldCheck }] : []),
+  ];
+
+  const renderTabContent = (currentTab: string) => {
+    if (isLoggedIn && !profile.onboarding_completed) {
+      return (
+        <Onboarding
+          language={language}
+          t={language === 'en' ? enTranslations : arTranslations}
+          profile={profile}
+          onComplete={(updatedProfile) => {
+            setProfile(updatedProfile);
+            setActiveTab('dashboard');
+            triggerToast(language === 'en' ? "Onboarding completed! Welcome to your Dashboard." : "اكتمل الإعداد! مرحبًا بك في لوحة التحكم الخاصة بك.");
+          }}
+        />
+      );
+    }
+
+    const tDict = language === 'en' ? enTranslations : arTranslations;
+
+    switch (currentTab) {
+      case 'landing':
+        return (
+          <LandingPage
+            setActiveTab={setActiveTab}
+            language={language}
+            t={tDict}
+            setQuickSearch={setQuickSearch}
+            isLoggedIn={isLoggedIn}
+          />
+        );
+      case 'privacy-policy':
+      case 'terms-of-use':
+      case 'disclaimer':
+      case 'community-verification-policy':
+      case 'rate-update-policy':
+        return (
+          <LegalPages
+            pageType={currentTab as any}
+            setActiveTab={setActiveTab}
+            language={language}
+          />
+        );
+      case 'about':
+        return (
+          <div className="max-w-3xl mx-auto space-y-6 text-left p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-sm">
+            <h2 className="text-2xl font-black text-white uppercase">About SariRemit</h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              SariRemit is a community-driven, crowd-sourced remittance monitoring and analysis platform built for expatriates and migrant workers in the Kingdom of Saudi Arabia.
+            </p>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              By pulling live, verified rates from major financial channels—such as STC Pay, UrPay, Enjaz, QuickPay, and Al Rajhi Tahweel—we empower you to identify the most competitive exchange rate terms and fee options to make every Saudi Riyal go the maximum distance for your family back home.
+            </p>
+          </div>
+        );
+      case 'how-it-works':
+        return (
+          <div className="max-w-3xl mx-auto space-y-6 text-left p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-sm">
+            <h2 className="text-2xl font-black text-white uppercase border-b border-slate-800 pb-2">
+              {language === 'en' ? 'How It Works' : 'كيف يعمل ساري ريميت'}
+            </h2>
+            <div className="space-y-4">
+              <div className="flex gap-4 items-start">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 font-bold flex items-center justify-center shrink-0 border border-emerald-500/20">1</div>
+                <div>
+                  <h4 className="font-bold text-white">
+                    {language === 'en' ? 'Compare Live Rates' : 'قارن الأسعار المباشرة'}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {language === 'en' 
+                      ? "We aggregate exchange rates and fees across Saudi's most popular digital wallets and money counters daily." 
+                      : "نحن نجمع أسعار الصخ والرسوم اليومية لأكثر المحافظ الرقمية شعبية في المملكة."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-4 items-start">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 font-bold flex items-center justify-center shrink-0 border border-emerald-500/20">2</div>
+                <div>
+                  <h4 className="font-bold text-white">
+                    {language === 'en' ? "Understand What You'll Really Pay" : "افهم ما ستدفعه بالفعل"}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {language === 'en' 
+                      ? "Most channels make money on hidden exchange margins. We calculate the exact, finalized recipient amount so you know the real winner." 
+                      : "معظم قنوات التحويل تحقق أرباحاً خفية من فروق أسعار الصرف. نحن نحسب المبلغ النهائي المستلم بدقة لتعرف الخيار الأفضل لك."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-4 items-start">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 font-bold flex items-center justify-center shrink-0 border border-emerald-500/20">3</div>
+                <div>
+                  <h4 className="font-bold text-white">
+                    {language === 'en' ? 'Contribute & Trust' : 'شارك واكسب الثقة'}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {language === 'en' 
+                      ? "Our rates are verified using daily crowd-sourced screenshot uploads, audited by community verifiers to guarantee absolute accuracy." 
+                      : "يتم تأكيد أسعارنا يومياً من خلال لقطات الشاشة المرفوعة من المغتربين، وتدقيقها لضمان الدقة الكاملة."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      case 'profile':
+      case 'sign-in':
+      case 'sign-up':
+        return (
+          <UserProfile
+            language={language}
+            t={tDict}
+            profile={profile}
+            setProfile={(updatedProfile) => {
+              setProfile(updatedProfile);
+              triggerToast(language === 'en' ? "Profile settings updated!" : "تم تحديث إعدادات الملف الشخصي!");
+            }}
+            onSessionSync={syncProfileWithSession}
+            initialAuthTab={currentTab === 'sign-up' ? 'signup' : 'signin'}
+          />
+        );
+      default:
+        // Authenticated tabs
+        if (!isLoggedIn) {
+          return (
+            <div className="max-w-md mx-auto my-12 p-8 bg-slate-900 border border-slate-800 rounded-3xl text-center shadow-xl space-y-5">
+              <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-sm border border-emerald-500/20">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-white">
+                {language === 'en' ? 'Sign in to unlock full features' : 'سجل الدخول لفتح جميع الميزات'}
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {language === 'en' 
+                  ? "Create an account or sign in to access SariRemit's full suite of comparison analytics, verified rates, confidence scores, custom alerts, and savings tracking." 
+                  : "أنشئ حساباً أو سجل الدخول للوصول إلى مجموعة ساري ريميت الكاملة من تحليلات المقارنة والأسعار المؤكدة، ودرجات الثقة، والتنبيهات المخصصة، وتتبع الوفر."}
+              </p>
+              <button
+                onClick={() => setActiveTab('sign-in')}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                Go to Sign In / Sign Up
+              </button>
+            </div>
+          );
+        }
+
+        switch (currentTab) {
+          case 'dashboard':
+            return (
+              <Dashboard
+                language={language}
+                t={tDict}
+                profile={profile}
+                setActiveTab={setActiveTab}
+                setQuickSearch={setQuickSearch}
+              />
+            );
+          case 'compare':
+            return (
+              <CompareRates
+                language={language}
+                t={tDict}
+                quickSearch={quickSearch}
+                setQuickSearch={setQuickSearch}
+                setActiveTab={setActiveTab}
+              />
+            );
+          case 'submit':
+            return (
+              <SubmitRate
+                language={language}
+                t={tDict}
+                onSubmissionSuccess={() => {
+                  triggerToast(
+                    language === 'en' 
+                      ? "Rate contributed successfully! Verifying..." 
+                      : "تمت إضافة مشاركتك! جاري التحقق..."
+                  );
+                }}
+              />
+            );
+          case 'savings':
+            return (
+              <Savings
+                language={language}
+                t={tDict}
+                profile={profile}
+              />
+            );
+          case 'insights':
+            return (
+              <CorridorInsights
+                language={language}
+                t={tDict}
+              />
+            );
+          case 'alerts':
+            return (
+              <Alerts
+                language={language}
+                t={tDict}
+                onAlertCreated={() => {
+                  triggerToast(
+                    language === 'en' 
+                      ? "Live rate alert set successfully!" 
+                      : "تم تعيين تنبيه الأسعار بنجاح!"
+                  );
+                }}
+              />
+            );
+          case 'srcmc':
+            return srcmcAccessLoading ? (
+              <div className="min-h-[400px] flex flex-col items-center justify-center font-sans">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest animate-pulse">
+                    <div className="w-2 h-2 rounded-full bg-sds-secondary animate-ping" />
+                    Loading SRCMC Access Configuration...
+                  </div>
+                </div>
+              </div>
+            ) : srcmcAccess?.is_active ? (
+              <SrcmcControl
+                language={language}
+                t={tDict}
+                profile={profile}
+                onSessionSync={syncProfileWithSession}
+                srcmcAccess={srcmcAccess}
+              />
+            ) : (
+              <div className="text-center py-12 text-rose-400 font-bold uppercase tracking-wider font-mono">
+                Access Denied.
+              </div>
+            );
+          case 'support':
+            return (
+              <SupportHistory
+                language={language}
+                t={tDict}
+                onBack={() => setActiveTab('dashboard')}
+              />
+            );
+          default:
+            return null;
+        }
+    }
+  };
+
   const t: TranslationDict = language === 'en' ? enTranslations : arTranslations;
   const isRtl = language === 'ar';
   const isOnboardingRequired = isLoggedIn && !profile.onboarding_completed;
@@ -295,6 +586,334 @@ export default function App() {
             Loading App Session & Access Control...
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (isSidebarVisible) {
+    return (
+      <div 
+        dir={isRtl ? 'rtl' : 'ltr'} 
+        className={`min-h-screen flex bg-sds-bg-canvas text-sds-text-primary font-sans transition-all duration-300 ${isRtl ? 'text-right' : 'text-left'}`}
+      >
+        {/* Desktop Left Sidebar (hidden on mobile) */}
+        <aside 
+          className={`hidden md:flex flex-col border-r border-slate-800 bg-[#030c18] transition-all duration-300 shrink-0 select-none ${
+            isSidebarCollapsed ? 'w-20' : 'w-64'
+          }`}
+        >
+          {/* Sidebar Header */}
+          <div className="h-20 flex items-center justify-between px-4 border-b border-slate-800 bg-[#020a16]">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <SariRemitLogo 
+                variant={isSidebarCollapsed ? 'monogram' : 'primary'} 
+                size={isSidebarCollapsed ? 'sm' : 'md'} 
+                surface="dark" 
+              />
+              {!isSidebarCollapsed && (
+                <div className="flex flex-col text-left">
+                  <span className="font-sans font-black text-xs uppercase tracking-wider text-amber-400">SariRemit</span>
+                  <span className="text-[10px] text-slate-400 tracking-tight font-mono">Know before you send.</span>
+                </div>
+              )}
+            </div>
+            {!isSidebarCollapsed && (
+              <button 
+                onClick={toggleSidebar}
+                className="p-1 rounded-md bg-slate-900 border border-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
+
+          {/* Sidebar Navigation Links */}
+          <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+            {sidebarItems.map((item) => {
+              const isActive = activeTab === item.id;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  title={isSidebarCollapsed ? item.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+                    isActive 
+                      ? `bg-sds-emerald-soft text-white ${isRtl ? 'border-r-4 border-sds-emerald-primary' : 'border-l-4 border-sds-emerald-primary'}` 
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900/40'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-sds-mint' : 'text-slate-400'}`} />
+                  {!isSidebarCollapsed && <span>{item.label}</span>}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Sidebar Collapse Toggle for Collapsed State */}
+          {isSidebarCollapsed && (
+            <div className="p-4 border-t border-slate-800 flex justify-center bg-[#020a16]">
+              <button 
+                onClick={toggleSidebar}
+                className="p-1.5 rounded-md bg-slate-900 border border-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                {isRtl ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+            </div>
+          )}
+
+          {/* Sidebar Footer */}
+          <div className="p-4 border-t border-slate-800 bg-[#020a16]">
+            <div className="flex items-center justify-between gap-2.5">
+              <div 
+                onClick={() => setActiveTab('profile')}
+                className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                <div className="w-8 h-8 rounded-full bg-sds-emerald-soft text-sds-emerald-primary border border-sds-emerald-primary/20 flex items-center justify-center font-black text-xs shrink-0 font-mono uppercase">
+                  {profile.name.charAt(0).toUpperCase() || <User className="w-3.5 h-3.5" />}
+                </div>
+                {!isSidebarCollapsed && (
+                  <div className="text-left min-w-0">
+                    <p className="text-xs font-bold text-white truncate max-w-[120px]">{profile.name}</p>
+                    <p className="text-[10px] text-slate-400 font-mono truncate">{canSeeSrcmc ? (isRtl ? 'مشرف' : 'Admin') : (isRtl ? 'مستخدم' : 'Verified User')}</p>
+                  </div>
+                )}
+              </div>
+              {!isSidebarCollapsed && (
+                <button 
+                  onClick={handleLogout}
+                  title={isRtl ? 'تسجيل الخروج' : 'Sign Out'}
+                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-red-400 hover:border-red-500/20 transition-all cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* Content Panel Area */}
+        <div className="flex-1 flex flex-col min-w-0 bg-sds-bg-canvas relative pb-20 md:pb-0">
+          {/* Mobile compact header (hidden on desktop) */}
+          <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#030c18] border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-2">
+              <SariRemitLogo variant="monogram" size="sm" surface="dark" />
+              <span className="font-extrabold text-xs text-white uppercase tracking-wider font-sans">
+                {activeTab === 'dashboard' ? (isRtl ? 'الرئيسية' : 'Dashboard') : sidebarItems.find(i => i.id === activeTab)?.label}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2.5">
+              <NotificationCenter userId={profile.id} language={language} setActiveTab={setActiveTab} />
+              
+              <button 
+                onClick={() => setActiveTab('profile')}
+                className="w-7 h-7 rounded-full bg-[#0d2a22] text-[#10b981] border border-[#10b981]/20 flex items-center justify-center font-black text-xs"
+              >
+                {profile.name.charAt(0).toUpperCase() || <User className="w-3" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop Compact Top Utility Bar (hidden on mobile) */}
+          <header className="hidden md:flex h-16 border-b border-slate-800 bg-[#030c18]/40 backdrop-blur-md items-center justify-between px-6 shrink-0 select-none">
+            <div className="flex items-center gap-4">
+              <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-sds-emerald-primary animate-pulse" />
+                {isRtl ? 'نبض ساري ريميت - مباشر ومؤكد' : 'SariRemit Pulse - Live & Verified'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {/* Notifications bell */}
+              <NotificationCenter userId={profile.id} language={language} setActiveTab={setActiveTab} />
+
+              {/* Language Selector */}
+              <button
+                onClick={toggleLanguage}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-850 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-200 transition-colors cursor-pointer border border-slate-800 font-mono"
+              >
+                <Globe className="w-3.5 h-3.5 text-amber-400" />
+                <span>{language === 'en' ? 'EN | عربي' : 'عربي | EN'}</span>
+              </button>
+
+              {/* Profile Card trigger */}
+              <div 
+                onClick={() => setActiveTab('profile')}
+                className="flex items-center gap-2 px-2.5 py-1 bg-[#051326] border border-slate-800 hover:border-amber-400/40 rounded-xl cursor-pointer transition-all hover:scale-102"
+              >
+                <div className="w-6 h-6 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center font-black text-[10px] shrink-0 font-mono uppercase">
+                  {profile.name.charAt(0).toUpperCase() || <User className="w-3" />}
+                </div>
+                <span className="text-xs font-bold text-slate-200">{profile.name}</span>
+              </div>
+            </div>
+          </header>
+
+          {/* Scrollable Main content */}
+          <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-8 bg-sds-bg-canvas">
+            <div className="max-w-6xl mx-auto">
+              {renderTabContent(activeTab)}
+            </div>
+          </main>
+
+          {/* Mobile Bottom Navigation Bar (hidden on desktop) */}
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#030c18] border-t border-slate-800 shadow-xl px-2 pb-safe">
+            <div className="grid grid-cols-5 h-16 max-w-lg mx-auto items-center">
+              <button 
+                onClick={() => { setActiveTab('dashboard'); setIsMobileMoreOpen(false); }}
+                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'dashboard' ? 'text-amber-400' : 'text-slate-400'}`}
+              >
+                <LayoutDashboard className="w-4.5 h-4.5" />
+                <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'الرئيسية' : 'Home'}</span>
+              </button>
+              
+              <button 
+                onClick={() => { setActiveTab('compare'); setIsMobileMoreOpen(false); }}
+                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'compare' ? 'text-amber-400' : 'text-slate-400'}`}
+              >
+                <ArrowLeftRight className="w-4.5 h-4.5" />
+                <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'المقارنة' : 'Compare'}</span>
+              </button>
+              
+              <button 
+                onClick={() => { setActiveTab('submit'); setIsMobileMoreOpen(false); }}
+                className="flex flex-col items-center justify-center -mt-5 cursor-pointer"
+              >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all ${
+                  activeTab === 'submit' ? 'bg-amber-400 text-slate-900 scale-95' : 'bg-amber-400 text-slate-900'
+                }`}>
+                  <PlusCircle className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <span className={`text-[9px] font-black tracking-tight mt-1 ${activeTab === 'submit' ? 'text-amber-400' : 'text-slate-400'}`}>{isRtl ? 'توثيق' : 'Verify'}</span>
+              </button>
+              
+              <button 
+                onClick={() => { setActiveTab('savings'); setIsMobileMoreOpen(false); }}
+                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'savings' ? 'text-amber-400' : 'text-slate-400'}`}
+              >
+                <PiggyBank className="w-4.5 h-4.5" />
+                <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'المدخرات' : 'Savings'}</span>
+              </button>
+              
+              <button 
+                onClick={() => setIsMobileMoreOpen(true)}
+                className={`flex flex-col items-center justify-center cursor-pointer ${isMobileMoreOpen ? 'text-amber-400' : 'text-slate-400'}`}
+              >
+                <Menu className="w-4.5 h-4.5" />
+                <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'المزيد' : 'More'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile More Drawer overlay */}
+          {isMobileMoreOpen && (
+            <div className="fixed inset-0 z-50 bg-[#030c18]/85 backdrop-blur-sm flex justify-end flex-col animate-fadeIn md:hidden">
+              <div className="absolute inset-0 -z-10" onClick={() => setIsMobileMoreOpen(false)} />
+              
+              <div className="bg-[#051326] border-t border-slate-800 rounded-t-3xl max-w-lg w-full mx-auto px-6 pt-5 pb-8 space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
+                  <span className="text-sm font-black text-white uppercase tracking-wider">{isRtl ? 'خيارات إضافية' : 'More Options'}</span>
+                  <button 
+                    onClick={() => setIsMobileMoreOpen(false)}
+                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3.5">
+                  <button 
+                    onClick={() => { setActiveTab('alerts'); setIsMobileMoreOpen(false); }}
+                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
+                      activeTab === 'alerts' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                    }`}
+                  >
+                    <Bell className="w-5 h-5" />
+                    <span>{isRtl ? 'التنبيهات' : 'Rate Alerts'}</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => { setActiveTab('insights'); setIsMobileMoreOpen(false); }}
+                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
+                      activeTab === 'insights' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                    }`}
+                  >
+                    <Compass className="w-5 h-5" />
+                    <span>{isRtl ? 'نبض السوق' : 'Market Pulse'}</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => { setActiveTab('profile'); setIsMobileMoreOpen(false); }}
+                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
+                      activeTab === 'profile' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                    }`}
+                  >
+                    <User className="w-5 h-5" />
+                    <span>{isRtl ? 'الملف الشخصي' : 'Profile Settings'}</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => { setActiveTab('support'); setIsMobileMoreOpen(false); }}
+                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
+                      activeTab === 'support' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                    }`}
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                    <span>{isRtl ? 'الدعم الفني' : 'Support Center'}</span>
+                  </button>
+                  
+                  {canSeeSrcmc && (
+                    <button 
+                      onClick={() => { setActiveTab('srcmc'); setIsMobileMoreOpen(false); }}
+                      className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold col-span-2 ${
+                        activeTab === 'srcmc' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                      }`}
+                    >
+                      <ShieldCheck className="w-5 h-5" />
+                      <span>{isRtl ? 'لوحة تحكم SRCMC' : 'SRCMC Control Panel'}</span>
+                    </button>
+                  )}
+                </div>
+                
+                <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between gap-4">
+                  <button
+                    onClick={() => { toggleLanguage(); setIsMobileMoreOpen(false); }}
+                    className="flex items-center gap-2 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold text-slate-200 font-mono"
+                  >
+                    <Globe className="w-4 h-4 text-[#F59E0B]" />
+                    <span>{language === 'en' ? 'English | عربي' : 'عربي | English'}</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => { handleLogout(); setIsMobileMoreOpen(false); }}
+                    className="flex items-center gap-2 px-3.5 py-2 bg-red-950/20 border border-red-900/30 hover:bg-red-950/40 rounded-xl text-xs font-bold text-red-400"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>{isRtl ? 'تسجيل الخروج' : 'Sign Out'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Toast Notification HUD */}
+        {showToast && (
+          <div className={`fixed bottom-24 md:bottom-6 z-50 max-w-sm w-full mx-auto px-4 transition-all duration-300 ${
+            isRtl ? 'left-0 sm:left-6' : 'right-0 sm:right-6'
+          }`}>
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-xl p-4 shadow-2xl shadow-emerald-950/20 flex items-center gap-3 animate-bounce">
+              <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-xs font-bold font-mono tracking-wide text-emerald-400 uppercase">SariRemit System</p>
+                <p className="text-xs text-slate-200 font-medium mt-0.5">{toastMessage}</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -118,6 +118,8 @@ export interface UserProfile {
   email_notifications_enabled?: boolean;
   privacy_policy_version?: string;
   privacy_policy_accepted_at?: string;
+  terms_version?: string;
+  terms_accepted_at?: string;
 }
 
 export type NotificationCategory =

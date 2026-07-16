@@ -2091,6 +2091,10 @@ export interface AuthSession {
     admin_notifications_enabled?: boolean;
     push_notifications_enabled?: boolean;
     email_notifications_enabled?: boolean;
+    privacy_policy_version?: string;
+    privacy_policy_accepted_at?: string;
+    terms_version?: string;
+    terms_accepted_at?: string;
   } | null;
 }
 
@@ -2103,6 +2107,11 @@ const initialRegisteredUsers = [
     phone: '+966 50 123 4567',
     preferred_corridor_id: 'sa-pk',
     language: 'en',
+    onboarding_completed: true,
+    primary_destination_country: 'Pakistan',
+    primary_destination_currency: 'PKR',
+    preferred_channels: ['stc-pay', 'urpay'],
+    estimated_monthly_send_amount: 1500,
     created_at: new Date(Date.now() - 86400000 * 30).toISOString()
   },
   {
@@ -2113,6 +2122,11 @@ const initialRegisteredUsers = [
     phone: '+966 55 987 6543',
     preferred_corridor_id: 'sa-in',
     language: 'en',
+    onboarding_completed: true,
+    primary_destination_country: 'India',
+    primary_destination_currency: 'INR',
+    preferred_channels: ['stc-pay', 'mobily-pay'],
+    estimated_monthly_send_amount: 2000,
     created_at: new Date(Date.now() - 86400000 * 15).toISOString()
   },
   {
@@ -2123,6 +2137,11 @@ const initialRegisteredUsers = [
     phone: '+966 53 111 2222',
     preferred_corridor_id: 'sa-ph',
     language: 'en',
+    onboarding_completed: true,
+    primary_destination_country: 'Philippines',
+    primary_destination_currency: 'PHP',
+    preferred_channels: ['urpay', 'quickpay'],
+    estimated_monthly_send_amount: 1200,
     created_at: new Date(Date.now() - 86400000 * 5).toISOString()
   }
 ];
@@ -2148,7 +2167,9 @@ export async function signUpWithSupabase(
   preferredCorridorId: string,
   password: string,
   privacyPolicyVersion?: string,
-  privacyPolicyAcceptedAt?: string
+  privacyPolicyAcceptedAt?: string,
+  termsVersion?: string,
+  termsAcceptedAt?: string
 ): Promise<SignUpResponse> {
   const normalizedEmail = email.trim().toLowerCase();
   let authUserId = `user-${Date.now()}`;
@@ -2163,6 +2184,8 @@ export async function signUpWithSupabase(
     onboarding_completed: false,
     privacy_policy_version: privacyPolicyVersion || 'v1.2',
     privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString(),
+    terms_version: termsVersion || 'v1.0',
+    terms_accepted_at: termsAcceptedAt || new Date().toISOString(),
   };
 
   if (isSupabaseConfigured && supabaseClient) {
@@ -2219,7 +2242,9 @@ export async function signUpWithSupabase(
           onboarding_completed: false,
           created_at: new Date().toISOString(),
           privacy_policy_version: privacyPolicyVersion || 'v1.2',
-          privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString()
+          privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString(),
+          terms_version: termsVersion || 'v1.0',
+          terms_accepted_at: termsAcceptedAt || new Date().toISOString()
         });
 
         if (profileError && !profileError.message.includes('duplicate key')) {
@@ -2240,7 +2265,9 @@ export async function signUpWithSupabase(
             onboarding_completed: false,
             created_at: new Date().toISOString(),
             privacy_policy_version: privacyPolicyVersion || 'v1.2',
-            privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString()
+            privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString(),
+            terms_version: termsVersion || 'v1.0',
+            terms_accepted_at: termsAcceptedAt || new Date().toISOString()
           });
           saveLocalStorageItem('sr_supabase_registered_users', allUsers);
         }
@@ -2266,7 +2293,9 @@ export async function signUpWithSupabase(
         language: 'en' as const,
         onboarding_completed: false,
         privacy_policy_version: privacyPolicyVersion || 'v1.2',
-        privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString()
+        privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString(),
+        terms_version: termsVersion || 'v1.0',
+        terms_accepted_at: termsAcceptedAt || new Date().toISOString()
       }
     };
     saveAuthSession(session);
@@ -2294,6 +2323,10 @@ export async function signUpWithSupabase(
       preferred_corridor_id: newUser.preferredCorridorId,
       language: newUser.language,
       onboarding_completed: false,
+      privacy_policy_version: privacyPolicyVersion || 'v1.2',
+      privacy_policy_accepted_at: privacyPolicyAcceptedAt || new Date().toISOString(),
+      terms_version: termsVersion || 'v1.0',
+      terms_accepted_at: termsAcceptedAt || new Date().toISOString(),
       created_at: new Date().toISOString()
     };
     allUsers.push(emulatedUser);
@@ -2748,6 +2781,8 @@ export async function updateUserProfileInDb(profile: {
   email_notifications_enabled?: boolean;
   privacy_policy_version?: string;
   privacy_policy_accepted_at?: string;
+  terms_version?: string;
+  terms_accepted_at?: string;
 }): Promise<void> {
   const targetId = profile.id;
   const userEmail = (profile.email || getAuthSession().user?.email || '').trim().toLowerCase();
@@ -2781,6 +2816,8 @@ export async function updateUserProfileInDb(profile: {
         email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : false,
         privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : undefined,
         privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : undefined,
+        terms_version: profile.terms_version !== undefined ? profile.terms_version : undefined,
+        terms_accepted_at: profile.terms_accepted_at !== undefined ? profile.terms_accepted_at : undefined,
         updated_at: new Date().toISOString()
       };
 
@@ -2836,6 +2873,8 @@ export async function updateUserProfileInDb(profile: {
               email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : u.email_notifications_enabled,
               privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : u.privacy_policy_version,
               privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : u.privacy_policy_accepted_at,
+              terms_version: profile.terms_version !== undefined ? profile.terms_version : u.terms_version,
+              terms_accepted_at: profile.terms_accepted_at !== undefined ? profile.terms_accepted_at : u.terms_accepted_at,
               updated_at: new Date().toISOString()
             }
           : u
@@ -2853,6 +2892,8 @@ export async function updateUserProfileInDb(profile: {
             onboarding_completed: profile.onboarding_completed || false,
             privacy_policy_version: profile.privacy_policy_version || 'v1.2',
             privacy_policy_accepted_at: profile.privacy_policy_accepted_at || new Date().toISOString(),
+            terms_version: profile.terms_version || 'v1.0',
+            terms_accepted_at: profile.terms_accepted_at || new Date().toISOString(),
             created_at: new Date().toISOString()
           }
         ];
@@ -2893,6 +2934,8 @@ export async function updateUserProfileInDb(profile: {
           email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : u.email_notifications_enabled,
           privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : u.privacy_policy_version,
           privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : u.privacy_policy_accepted_at,
+          terms_version: profile.terms_version !== undefined ? profile.terms_version : u.terms_version,
+          terms_accepted_at: profile.terms_accepted_at !== undefined ? profile.terms_accepted_at : u.terms_accepted_at,
           updated_at: new Date().toISOString()
         }
       : u
@@ -2930,6 +2973,8 @@ export async function updateUserProfileInDb(profile: {
       email_notifications_enabled: profile.email_notifications_enabled !== undefined ? profile.email_notifications_enabled : currentSession.user.email_notifications_enabled,
       privacy_policy_version: profile.privacy_policy_version !== undefined ? profile.privacy_policy_version : currentSession.user.privacy_policy_version,
       privacy_policy_accepted_at: profile.privacy_policy_accepted_at !== undefined ? profile.privacy_policy_accepted_at : currentSession.user.privacy_policy_accepted_at,
+      terms_version: profile.terms_version !== undefined ? profile.terms_version : currentSession.user.terms_version,
+      terms_accepted_at: profile.terms_accepted_at !== undefined ? profile.terms_accepted_at : currentSession.user.terms_accepted_at,
     };
     saveAuthSession(currentSession);
   }
@@ -4560,6 +4605,13 @@ export async function saveRemittanceChannel(channel: any): Promise<any> {
     }
   }
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pis-cache-cleared'));
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }
+
   return updatedChannel;
 }
 
@@ -4579,6 +4631,13 @@ export async function deleteRemittanceChannel(id: string): Promise<void> {
   const currentCoverages = getLocalStorageItem<ChannelCorridorCoverage[]>(CHANNEL_COVERAGE_KEY, initialCoverages);
   const updatedCoverages = currentCoverages.filter(cov => cov.channel_id !== id);
   saveLocalStorageItem(CHANNEL_COVERAGE_KEY, updatedCoverages);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pis-cache-cleared'));
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }
 }
 
 export async function fetchChannelCoverage(channelId?: string): Promise<ChannelCorridorCoverage[]> {
@@ -4964,6 +5023,14 @@ export async function saveBrandAsset(asset: BrandAsset): Promise<BrandAsset> {
   const filtered = current.filter(a => a.id !== asset.id);
   const updated = [asset, ...filtered];
   saveLocalStorageItem(BRAND_ASSETS_KEY, updated);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pis-cache-cleared'));
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }
+
   return asset;
 }
 
@@ -4978,6 +5045,13 @@ export async function deleteBrandAsset(id: string): Promise<void> {
   const current = getLocalStorageItem<BrandAsset[]>(BRAND_ASSETS_KEY, initialBrandAssets);
   const updated = current.filter(a => a.id !== id);
   saveLocalStorageItem(BRAND_ASSETS_KEY, updated);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pis-cache-cleared'));
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }
 }
 
 export async function fetchBrandAssetPermissions(): Promise<BrandAssetPermission[]> {

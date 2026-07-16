@@ -1,8 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
   /* SARIREMIT REDESIGN: Premium Dark Navy Financial Theme */
@@ -17,6 +18,28 @@
   --color-sds-success: #10B981;      /* Success Green */
   --color-sds-warning: #F59E0B;      /* Warning Amber */
   --color-sds-error: #EF4444;        /* Error Red */
+
+  /* SDS 3.0 Semantic Tokens */
+  --color-sds-bg-canvas: #051326;
+  --color-sds-bg-sidebar: #030c18;
+  --color-sds-bg-surface: #0c2547;
+  --color-sds-bg-surface-soft: rgba(16, 185, 129, 0.05);
+
+  --color-sds-emerald-primary: #10B981;
+  --color-sds-emerald-soft: rgba(16, 185, 129, 0.1);
+  --color-sds-mint: #34D399;
+
+  --color-sds-gold: #F59E0B;
+  --color-sds-gold-soft: rgba(245, 158, 11, 0.05);
+
+  --color-sds-text-primary: #F8FAFC;
+  --color-sds-text-secondary: #CBD5E1;
+  --color-sds-text-muted: #64748B;
+
+  --color-sds-status-success: #10B981;
+  --color-sds-status-warning: #F59E0B;
+  --color-sds-status-danger: #EF4444;
+  --color-sds-status-info: #3B82F6;
 
   /* Shadows and Radius */
   --shadow-sds-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.2);

@@ -1,5 +1,6 @@
 import { BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus } from '../types';
 import { getBrandAssetsSync } from './supabaseService';
+import { getProviderIdentity, generateProviderInitials } from './pisService';
 
 // Centralized Feature Flags for BAM roll-out and rollback strategy
 export const BAM_FEATURE_FLAGS = {
@@ -97,12 +98,7 @@ export function resolveAssetVariant(asset: BrandAsset, surface?: BrandSurface): 
  * Fallback to generate standard initials for a provider or country
  */
 export function getFallbackInitials(name: string): string {
-  if (!name) return 'SR';
-  const parts = name.trim().split(/[\s-_]+/);
-  if (parts.length >= 2 && parts[0] && parts[1]) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return name.substring(0, 2).toUpperCase();
+  return generateProviderInitials(name, name);
 }
 
 /**
@@ -214,92 +210,19 @@ export function getSariRemitMonogram(surface?: BrandSurface, size?: BrandAssetSi
  */
 export function getProviderBranding(channel: any, surface?: BrandSurface): ResolvedBrandAsset {
   const providerCode = channel?.providerCode || channel?.provider_code || channel?.id || '';
+  const identity = getProviderIdentity(providerCode);
 
-  if (!BAM_FEATURE_FLAGS.ENABLE_BAM_UI) {
-    const legacyUrl = channel?.logoUrl || channel?.logo_url;
-    if (legacyUrl) {
-      return {
-        source: 'legacy',
-        url: legacyUrl,
-        thumbnailUrl: legacyUrl,
-        altText: `${channel?.displayName || channel?.providerName || providerCode} legacy logo (BAM UI Disabled).`,
-        fallbackInitials: getFallbackInitials(channel?.displayName || channel?.providerName || providerCode)
-      };
-    }
-    return {
-      source: 'sds_fallback',
-      url: null,
-      altText: `${channel?.displayName || channel?.providerName || providerCode} fallback initials (BAM UI Disabled).`,
-      primaryColor: getFallbackColor(providerCode),
-      fallbackInitials: getFallbackInitials(channel?.displayName || channel?.providerName || providerCode)
-    };
-  }
-
-  const assets = getBrandAssetsSync();
-  const brandAssetId = channel?.brandAssetId || channel?.brand_asset_id;
-
-  // Find BAM Asset
-  let bamAsset = channel?.brand_asset || channel?.brandAsset;
-  if (!bamAsset && brandAssetId) {
-    bamAsset = assets.find(a => a.id === brandAssetId && a.status === 'active');
-  }
-  if (!bamAsset && providerCode) {
-    bamAsset = assets.find(a => a.provider_code === providerCode && a.asset_type === 'provider_logo' && a.status === 'active');
-  }
-
-  // Active official BAM asset
-  if (bamAsset && bamAsset.status === 'active' && bamAsset.approval_status === 'official') {
-    const url = resolveAssetVariant(bamAsset, surface);
-    return {
-      id: bamAsset.id,
-      source: 'bam_official',
-      url,
-      thumbnailUrl: bamAsset.thumbnail_url || url,
-      altText: bamAsset.alt_text || `${bamAsset.asset_name || providerCode} official logo.`,
-      primaryColor: bamAsset.primary_color,
-      secondaryColor: bamAsset.secondary_color,
-      approvalStatus: 'official',
-      version: bamAsset.version,
-      fallbackInitials: getFallbackInitials(channel?.displayName || channel?.providerName || providerCode)
-    };
-  }
-
-  // Active placeholder BAM asset
-  if (bamAsset && bamAsset.status === 'active' && bamAsset.approval_status === 'placeholder') {
-    const url = resolveAssetVariant(bamAsset, surface);
-    return {
-      id: bamAsset.id,
-      source: 'bam_placeholder',
-      url,
-      thumbnailUrl: bamAsset.thumbnail_url || url,
-      altText: bamAsset.alt_text || `${bamAsset.asset_name || providerCode} placeholder logo.`,
-      primaryColor: bamAsset.primary_color,
-      secondaryColor: bamAsset.secondary_color,
-      approvalStatus: 'placeholder',
-      version: bamAsset.version,
-      fallbackInitials: getFallbackInitials(channel?.displayName || channel?.providerName || providerCode)
-    };
-  }
-
-  // Active legacy logo_url
-  const legacyUrl = channel?.logoUrl || channel?.logo_url;
-  if (legacyUrl) {
-    return {
-      source: 'legacy',
-      url: legacyUrl,
-      thumbnailUrl: legacyUrl,
-      altText: `${channel?.displayName || channel?.providerName || providerCode} legacy logo.`,
-      fallbackInitials: getFallbackInitials(channel?.displayName || channel?.providerName || providerCode)
-    };
-  }
-
-  // SDS provider-initials fallback
   return {
-    source: 'sds_fallback',
-    url: null,
-    altText: `${channel?.displayName || channel?.providerName || providerCode} fallback initials.`,
-    primaryColor: getFallbackColor(providerCode),
-    fallbackInitials: getFallbackInitials(channel?.displayName || channel?.providerName || providerCode)
+    id: identity.brand_asset_id || undefined,
+    source: identity.logo_url ? 'bam_official' : 'sds_fallback',
+    url: identity.logo_url,
+    thumbnailUrl: identity.logo_url,
+    altText: `${identity.display_name} Logo`,
+    primaryColor: identity.primary_colour,
+    secondaryColor: identity.secondary_colour,
+    approvalStatus: identity.brand_asset_id ? 'official' : 'placeholder',
+    version: 1,
+    fallbackInitials: identity.provider_initials
   };
 }
 

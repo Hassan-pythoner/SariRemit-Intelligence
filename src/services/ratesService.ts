@@ -1,31 +1,19 @@
 import { Corridor, Provider, RemittanceRate, RateSubmission, RateAlert, UserProfile } from '../types';
 import { getRemittanceChannelsSync, getChannelCoverageSync } from './supabaseService';
 import { PROVIDERS as STATIC_PROVIDERS, CORRIDORS } from './constants';
+import { getAllProviderIdentities } from './pisService';
 
 export { CORRIDORS };
 
 export function getMergedProviders(): Provider[] {
-  const channels = getRemittanceChannelsSync();
-  const list: Provider[] = [];
-  
-  STATIC_PROVIDERS.forEach(sp => {
-    list.push(sp);
-  });
-  
-  channels.forEach(ch => {
-    const exists = list.some(p => p.id === ch.providerCode || p.id === ch.id);
-    if (!exists) {
-      list.push({
-        id: ch.providerCode || ch.id,
-        name: ch.displayName || ch.providerName,
-        logoColor: ch.category === 'wallet' ? 'bg-indigo-600' : 'bg-slate-700',
-        logoText: (ch.displayName || ch.providerName || 'XX').substring(0, 2).toLowerCase(),
-        rating: 4.5
-      });
-    }
-  });
-  
-  return list;
+  const allPis = getAllProviderIdentities();
+  return allPis.map(p => ({
+    id: p.provider_code || p.provider_id,
+    name: p.display_name,
+    logoColor: p.category === 'wallet' ? 'bg-indigo-600' : 'bg-slate-700',
+    logoText: p.provider_initials,
+    rating: 4.5
+  }));
 }
 
 export const PROVIDERS: Provider[] = new Proxy([] as Provider[], {

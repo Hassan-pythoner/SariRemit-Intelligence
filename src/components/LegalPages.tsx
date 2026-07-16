@@ -507,101 +507,427 @@ export default function LegalPages({ pageType, setActiveTab, language }: LegalPa
       titleEn: "Terms of Use",
       titleAr: "شروط الاستخدام",
       icon: FileText,
-      lastUpdatedEn: "Last updated: July 10, 2026",
-      lastUpdatedAr: "آخر تحديث: ١٠ يوليو ٢٠٢٦",
+      lastUpdatedEn: "Last updated: July 16, 2026 (v1.2)",
+      lastUpdatedAr: "آخر تحديث: ١٦ يوليو ٢٠٢٦ (إصدار ١.٢)",
       renderEn: () => (
         <div className="space-y-6 text-slate-700 leading-relaxed text-sm">
+          <div className="p-4 bg-emerald-50/60 border-l-4 border-emerald-500 rounded-xl text-emerald-950 text-xs font-semibold leading-normal">
+            These Terms of Use constitute a legally binding agreement between you and SariRemit. They govern your access to and use of our platform, forming an essential component of the SariRemit Legal & Compliance Framework (SLCF) under the regulations of the Kingdom of Saudi Arabia.
+          </div>
+
           <p className="font-semibold text-slate-900 text-base">
-            Welcome to SariRemit. By using our website and platform, you agree to these Terms of Use. Please read them carefully.
+            Welcome to SariRemit. By registering an account, submitting rates, or using any part of our platform, you acknowledge that you have read, understood, and agreed to be bound by these Terms of Use.
           </p>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">1. Description of Service</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">1. About SariRemit (What We Are & What We Are NOT)</h3>
             <p>
-              SariRemit is an independent decision-support platform designed to compare exchange rates, fees, and value-added tax (VAT) of major money transfer operators and digital wallets in Saudi Arabia.
-              <strong> SariRemit does not directly transfer money, provide financial advice, or process any transactions.</strong>
+              <strong>SariRemit</strong> is an independent remittance comparison and financial intelligence platform. Our platform is built using the <strong>SariRemit Design System (SDS)</strong> to serve expatriates living in the Kingdom of Saudi Arabia.
+            </p>
+            <p className="font-semibold text-slate-900">Our Purpose is to help users:</p>
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>Compare live and community-sourced remittance channels in Saudi Arabia.</li>
+              <li>Estimate true transfer costs, including exchange rates, transfer fees, and Value Added Tax (VAT).</li>
+              <li>Calculate estimated savings compared to local traditional channels.</li>
+              <li>Track savings milestones and achievements using data-driven intelligence.</li>
+            </ul>
+            <div className="p-4 bg-rose-50 border-l-4 border-rose-500 rounded-xl text-rose-950 text-xs font-semibold leading-normal mt-2">
+              <strong>CRITICAL NOTICE – WHAT WE ARE NOT:</strong> SariRemit does NOT transfer money, process transactions, receive or hold customer funds, act as a bank, or represent any commercial remittance provider. Users must complete all remittance transfers directly with their chosen licensed financial institution (e.g., STC Pay, urpay, Al Rajhi, etc.).
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">2. Eligibility</h3>
+            <p>
+              To create an account and participate in our platform, you must meet the minimum legal age of majority in the Kingdom of Saudi Arabia (18 years or older) and possess full legal capacity. You agree to use only one personal account on the platform unless explicitly authorized by a SariRemit administrator.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">2. Accuracy and Use of Information</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">3. User Accounts & Security</h3>
             <p>
-              All rates, fees, and intelligence ratings are displayed for informational purposes only. While we employ rigorous crowdsourcing, verification filters, and the Rate Resolution Engine (RRE) to provide the freshest estimates, rates change dynamically. You are strongly advised to check the final parameters directly inside your chosen wallet app before completing any money transfer.
-            </p>
-          </section>
-
-          <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">3. Community Submissions</h3>
-            <p>
-              By uploading a screenshot or submitting rate parameters, you guarantee that:
+              When you register an account, you agree to provide complete and accurate registration information (including your name, email address, and KSA mobile phone number) and keep this information updated. You are solely responsible for:
             </p>
             <ul className="list-disc pl-5 space-y-1">
-              <li>The information is authentic and represents an actual transaction attempt or rate check.</li>
-              <li>The screenshot has not been digitally altered, forged, or edited.</li>
-              <li>You grant SariRemit an absolute, royalty-free, perpetual right to utilize and aggregate the data.</li>
+              <li>Maintaining the confidentiality of your login credentials and password.</li>
+              <li>All activities and data submissions carried out under your account.</li>
+              <li>Reporting any suspected unauthorized access or compromise of your credentials immediately to support@sariremit.com.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">4. Prohibited Uses</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">4. Platform Services & Disclaimers</h3>
             <p>
-              You agree not to upload spam, submit deliberately false or misleading rate information, create multiple fake accounts, attempt to breach our security filters, or defame any financial provider or individual.
+              SariRemit offers a suite of advanced intelligence tools designed to assist you:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong>Rate Resolution Engine (RRE):</strong> Dynamically resolves volatile exchange rate inputs to yield clean baseline estimates.</li>
+              <li><strong>SariRemit Intelligence Core (SIC):</strong> Auto-calculates multi-factor performance indexes to generate optimal recommendations.</li>
+              <li><strong>True Cost Engine (TCE):</strong> Factors in hidden margins, fixed transfer fees, and standard Saudi VAT.</li>
+              <li><strong>SariRemit Intelligence Score (SIS):</strong> Rates corridors based on reliability, rate attractiveness, and data freshness.</li>
+              <li><strong>SariRemit Engagement & Progress System (SEPS):</strong> Rewards community contributions with milestones and achievement badges.</li>
+              <li><strong>SariRemit Notification System (SNS):</strong> Dispatches critical rate alerts, fraud notifications, and security updates.</li>
+            </ul>
+            <p className="font-semibold text-slate-900">
+              *FINANCIAL DISCLAIMER: All recommendations, comparative rankings, and intelligence indicators are informational tools designed to assist decision-making. They should not be interpreted as formal financial or investment advice.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">5. Limitation of Liability</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">5. Community Rate Submissions & Verification</h3>
             <p>
-              SariRemit, its founders, and contributors are not liable for any financial losses, transfer delays, transaction failures, or rate discrepancies arising from your use of the platform or the operators we compare.
+              Under our <strong>Community Rate Verification System (CRVS)</strong>, you can submit current exchange rates and fees. To ensure community integrity, you agree that:
             </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>Every submission must be authentic, honest, and based on actual exchange rate checks.</li>
+              <li>Where required, you must upload a clear screenshot of your provider screen or transfer receipt as verification evidence.</li>
+              <li>All community submissions must represent genuine, non-manipulated transactions.</li>
+              <li>Our designated administrators at the <strong>SariRemit Community Monitoring & Control (SRCMC)</strong> center review, verify, approve, or reject submissions before publishing.</li>
+            </ul>
+            <p className="text-xs text-rose-500 font-bold">
+              PROHIBITED ACTIONS: Uploading fake screenshots, edited receipts, fraudulent rates, misleading parameters, or spamming multiple identical submissions is strictly forbidden and monitored.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">6. Acceptable Use Policy</h3>
+            <p>
+              You agree to use SariRemit strictly for lawful, personal purposes. You are forbidden from:
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>Impersonating any other individual, financial provider, or SariRemit administrator.</li>
+              <li>Employing automated software, scrapers, crawlers, or bots to harvest data from our platform.</li>
+              <li>Introducing malware, viruses, or attempting unauthorized access to any backend server.</li>
+              <li>Manipulating rate submissions or recommendations through coordinated behavior or fraudulent activity.</li>
+              <li>Using our Brand assets or user details for unsolicited advertising, commercial recruitment, or marketing.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">7. Anti-Fraud Framework (SAF)</h3>
+            <p>
+              We implement the **SariRemit Anti-Fraud Framework (SAF)** to preserve platform reliability and safeguard our community. Under the SAF:
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>Our backend systems perform continuous screening on all rate submissions and uploaded verification images.</li>
+              <li>SariRemit reserves the absolute right to temporarily restrict accounts, reject suspicious content, and permanently block users engaging in systematic fraud or receipt alteration.</li>
+              <li>We cooperate with administrative standards to prevent rate seeding abuse. However, the presence of SAF does not guarantee that all fraudulent activity will be detected immediately.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">8. Recommendations & Intelligence Core (SIC)</h3>
+            <p>
+              Recommendations, badges, and corridor comparisons are calculated in real-time by the <strong>SariRemit Intelligence Core (SIC)</strong>. These calculations weigh multiple parameters: exchange rates, transfer fees, Saudi VAT, transaction confidence levels, historical consistency, and data freshness. Calculations and rankings are updated automatically and can change instantly as market parameters fluctuate.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">9. Third-Party Providers</h3>
+            <p>
+              SariRemit lists, compares, and references independent digital wallets and banks operating in Saudi Arabia. All third-party logos, trademarks, names, and visual designs remain the exclusive property of their respective owners. Where official permissions have been obtained, logos are managed under our <strong>Brand Asset Manager (BAM)</strong>; otherwise, generic placeholder assets are styled to represent independent channels.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">10. Intellectual Property Rights</h3>
+            <p>
+              SariRemit owns all rights, titles, and interests in the platform’s underlying technology, source code, visual components, documentation, algorithms, and branding. The following proprietary subsystems are protected by copyright and intellectual property laws:
+            </p>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[10px] font-bold uppercase text-slate-600">
+              <li>• SariRemit Intelligence Core (SIC)</li>
+              <li>• Rate Resolution Engine (RRE)</li>
+              <li>• True Cost Engine (TCE)</li>
+              <li>• SariRemit Intelligence Score (SIS)</li>
+              <li>• SariRemit Anti-Fraud Framework (SAF)</li>
+              <li>• SariRemit Engagement & Progress System (SEPS)</li>
+              <li>• SariRemit Notification System (SNS)</li>
+              <li>• Brand Asset Manager (BAM)</li>
+              <li>• SariRemit Design System (SDS)</li>
+              <li>• SariRemit Legal & Compliance Framework (SLCF)</li>
+            </ul>
+            <p className="text-xs">
+              You are strictly forbidden from copying, reverse engineering, distributing, selling, licensing, or commercially exploiting any component of our platform or proprietary systems without prior written consent from our legal team.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">11. Savings Estimates & Mathematical Models</h3>
+            <p>
+              All savings calculations displayed across SariRemit are estimates derived from comparison algorithms using active database rates. <strong>Actual savings completed in real life may vary</strong> due to dynamic exchange rate movements, individual wallet promotion codes, specific bank transfer fees, regional tax structures, and transaction execution times. Always verify exact rates in your target provider app before transfer.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">12. Limitation of Liability</h3>
+            <p>
+              SariRemit and its operators work diligently to maintain accurate comparison indexes. However, because exchange markets fluctuate constantly:
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>We do not guarantee the availability, accuracy, or performance of any third-party remittance provider.</li>
+              <li>We are not responsible or liable for any transaction failures, transfer delays, financial losses, or adverse exchange rate changes.</li>
+              <li>To the maximum extent permitted under KSA regulations, SariRemit shall not be liable for any indirect, incidental, or consequential damages arising from decisions made based on platform recommendations.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">13. Account Suspension & Termination</h3>
+            <p>
+              SariRemit reserves the right to suspend or permanently terminate your account, access tokens, or capability to submit community rates at our discretion, without warning, in the event of:
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>A direct violation of these Terms of Use or the SLCF.</li>
+              <li>Attempting to upload falsified, forged, or malicious rate verification receipts.</li>
+              <li>Coordinated attempts to manipulation recommendations or disrupt servers.</li>
+              <li>Regulatory or compliance directives issued by government authorities in the Kingdom of Saudi Arabia.</li>
+            </ul>
+            <p className="text-xs font-bold text-slate-500">
+              *A reasonable administrative review process is conducted in the SRCMC control panel before any permanent ban is applied to an active user.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">14. Privacy & Consent Integration</h3>
+            <p>
+              Your personal data is managed strictly in accordance with our <strong>SariRemit Privacy Policy</strong>, designed to fully comply with the Saudi Personal Data Protection Law (PDPL). By accepting these Terms, you also acknowledge how we collect, process, secure, and delete your personal information as defined in that policy.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">15. Changes and Versioning</h3>
+            <p>
+              We may update these Terms of Use from time to time. When a new version is published through the <strong>SLCF Terms Manager</strong> inside the SRCMC panel, the version indicator will increase. Material changes will be communicated via the dashboard or through mandatory consent updates. Your continued use of the platform represents your acceptance of the updated Terms.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">16. Governing Law & Dispute Resolution</h3>
+            <p>
+              These Terms of Use are governed by and construed in accordance with the laws and regulations of the Kingdom of Saudi Arabia. Any disputes or issues arising out of or in connection with these Terms shall be subject to the exclusive jurisdiction of the competent judicial authorities in Riyadh, Kingdom of Saudi Arabia.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">17. Contact & Support Desk</h3>
+            <p>
+              If you have any questions, feedback, compliance requests, or wish to report a security/terms violation, please contact our administrative desk:
+            </p>
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mt-2">
+              <p className="font-extrabold text-slate-900">SariRemit Legal & Compliance Framework (SLCF)</p>
+              <p className="text-xs text-slate-500 mt-1">Compliance Email: <span className="font-bold text-emerald-650">support@sariremit.com</span></p>
+              <p className="text-xs text-slate-500">Riyadh, Kingdom of Saudi Arabia</p>
+            </div>
           </section>
         </div>
       ),
       renderAr: () => (
         <div className="space-y-6 text-slate-700 leading-relaxed text-sm text-right">
+          <div className="p-4 bg-emerald-50/60 border-r-4 border-emerald-500 rounded-xl text-emerald-950 text-xs font-semibold leading-normal">
+            تمثل شروط الاستخدام هذه اتفاقية ملزمة قانوناً بينك وبين منصة ساري ريميت. وهي تحكم وصولك واستخدامك للمنصة، وتعد جزءاً أساسياً من إطار عمل ساري ريميت القانوني والامتثال (SLCF) بموجب أنظمة وقوانين المملكة العربية السعودية.
+          </div>
+
           <p className="font-semibold text-slate-900 text-base">
-            مرحباً بكم في ساري ريميت. باستخدامكم لموقعنا ومنصتنا، فإنكم توافقون على شروط الاستخدام هذه. يرجى قراءتها بعناية.
+            مرحباً بكم في ساري ريميت. بتسجيلك لحساب، أو إضافة أسعار صرف، أو استخدام أي جزء من منصتنا، فإنك تقر بأنك قد قرأت وفهمت ووافقت على الالتزام بشروط الاستخدام هذه.
           </p>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">١. وصف الخدمة</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١. حول ساري ريميت (ما تمثله المنصة وما لا تمثله)</h3>
             <p>
-              ساري ريميت هي منصة مستقلة لدعم القرار مصممة لمقارنة أسعار الصرف، والرسوم، وضريبة القيمة المضافة (VAT) لأهم قنوات ومحافظ تحويل الأموال الرقمية في المملكة العربية السعودية.
-              <strong> لا يقوم ساري ريميت بتحويل الأموال مباشرة، ولا يقدم مشورة مالية، ولا يعالج أي معاملات مالية.</strong>
+              <strong>ساري ريميت</strong> هي منصة مقارنة مستقلة وتحليلية لأسعار تحويل الأموال. تم بناء المنصة باستخدام <strong>نظام ساري ريميت للتصميم (SDS)</strong> لخدمة المغتربين المقيمين في المملكة العربية السعودية.
+            </p>
+            <p className="font-semibold text-slate-900">هدفنا الرئيسي هو مساعدة المستخدمين على:</p>
+            <ul className="list-disc pr-5 space-y-1.5">
+              <li>مقارنة أسعار وممرات التحويل المختلفة المتاحة في المملكة العربية السعودية لحظة بلحظة.</li>
+              <li>تقدير التكلفة الحقيقية لعمليات التحويل بما يشمل أسعار الصرف، الرسوم الثابتة، وضريبة القيمة المضافة (VAT).</li>
+              <li>حساب الوفر المالي المقدر مقارنة بقنوات التحويل التقليدية.</li>
+              <li>مراقبة إنجازات ومستويات مدخراتك من خلال تحليلات تفصيلية للبيانات.</li>
+            </ul>
+            <div className="p-4 bg-rose-50 border-r-4 border-rose-500 rounded-xl text-rose-950 text-xs font-semibold leading-normal mt-2">
+              <strong>تنبيه هام للغاية – ما لا تمثله المنصة:</strong> ساري ريميت لا تقوم بتحويل الأموال، ولا تعالج أي معاملات مالية، ولا تستقبل أو تحتفظ بأموال العملاء، ولا تمثل أي بنك أو محفظة رقمية بشكل تجاري. يجب على المستخدمين إتمام عمليات التحويل مباشرة عبر التطبيقات المرخصة لمزودي الخدمة (مثل STC Pay، urpay، الراجحي، إلخ).
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٢. الأهلية وشروط التسجيل</h3>
+            <p>
+              لإنشاء حساب والمشاركة في المنصة، يجب أن تبلغ السن القانوني للرشد في المملكة العربية السعودية (١٨ عاماً أو أكثر) وتتمتع بالأهلية القانونية الكاملة. وتوافق على استخدام حساب شخصي واحد فقط على المنصة ما لم يتم منحك تصريحاً صريحاً ومكتوباً من إدارة المنصة.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٢. دقة المعلومات واستخدامها</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٣. حسابات المستخدمين وأمن البيانات</h3>
             <p>
-              يتم عرض جميع أسعار الصرف والرسوم لأغراض إعلامية فقط. على الرغم من أننا نستخدم تدقيقاً صارماً ومحركاً متقدماً (RRE) لتوفير أحدث التقديرات، إلا أن الأسعار تتغير باستمرار. يُنصح بشدة بالتحقق من التفاصيل النهائية مباشرة من داخل تطبيق المحفظة المختار قبل إتمام أي عملية تحويل للأموال.
-            </p>
-          </section>
-
-          <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٣. مشاركات المجتمع</h3>
-            <p>
-              عند تحميل لقطة شاشة أو تقديم بيانات الأسعار، فإنك تضمن ما يلي:
+              عند إنشاء حسابك، فإنك توافق على تقديم معلومات صحيحة ودقيقة (تشمل الاسم الكامل، البريد الإلكتروني، ورقم الجوال السعودي الخاص بك) والحرص على تحديثها باستمرار. وتتحمل المسؤولية الكاملة عن:
             </p>
             <ul className="list-disc pr-5 space-y-1">
-              <li>أن المعلومات حقيقية وتمثل محاولة تحويل فعلية أو استعلام مباشر.</li>
-              <li>أن لقطة الشاشة لم يتم تعديلها أو تزويرها رقمياً بأي شكل من الأشكال.</li>
-              <li>أنك تمنح ساري ريميت حقاً كاملاً في استخدام هذه البيانات ودمجها بشكل مجهول الهوية.</li>
+              <li>الحفاظ على سرية بيانات تسجيل دخولك وكلمة المرور الخاصة بك.</li>
+              <li>جميع الأنشطة ومشاركات البيانات التي تتم من خلال حسابك.</li>
+              <li>الإبلاغ الفوري عن أي محاولة وصول غير مصرح بها أو اشتباه في اختراق حسابك عبر البريد support@sariremit.com.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٤. الاستخدامات المحظورة</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٤. خدمات المنصة وإخلاء المسؤولية</h3>
             <p>
-              أنت توافق على عدم إرسال مشاركات عشوائية (Spam)، أو تقديم أسعار مضللة أو خاطئة عمداً، أو إنشاء حسابات وهمية متعددة، أو محاولة اختراق فلاتر الأمان الخاصة بنا.
+              يوفر ساري ريميت حزمة من الأدوات والمحركات الذكية لمساعدتك:
+            </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li><strong>محرك تسوية الأسعار (RRE):</strong> يعمل ديناميكياً على تصفية وتنقية بيانات أسعار الصرف لتوفير تقديرات موثوقة ومتقاربة.</li>
+              <li><strong>نواة ذكاء ساري ريميت (SIC):</strong> تقوم بحساب خوارزميات الأداء المتعددة لتوليد التوصيات الأكثر ملائمة.</li>
+              <li><strong>محرك التكلفة الحقيقية (TCE):</strong> يقوم بحساب الفروق المخفية، الرسوم الثابتة، والضريبة المضافة المطبقة في السعودية.</li>
+              <li><strong>مؤشر ذكاء ساري ريميت (SIS):</strong> يقيم ممرات التحويل بناءً على الموثوقية، جاذبية السعر، وحداثة البيانات المعروضة.</li>
+              <li><strong>نظام الإنجازات والتقدم (SEPS):</strong> يكافئ مساهمات المجتمع الإيجابية بشارات ومستويات تقديرية.</li>
+              <li><strong>نظام الإشعارات والتنبيهات (SNS):</strong> يرسل تنبيهات الأسعار المهمة، إشعارات الأمان، والتحذيرات من الاحتيال.</li>
+            </ul>
+            <p className="font-semibold text-slate-900">
+              *إخلاء مسؤولية مالية: جميع التوصيات، والترتيبات المقارنة، ومؤشرات الأداء هي أدوات استرشادية لمساعدتك في اتخاذ القرار، ولا يجب اعتبارها بأي حال من الأحوال نصيحة مالية أو مصرفية رسمية.
             </p>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900">٥. حدود المسؤولية</h3>
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٥. مشاركات المجتمع ونظام التحقق من الأسعار</h3>
             <p>
-              لا يتحمل ساري ريميت أو مؤسسوه أو المساهمون فيه أي مسؤولية عن أي خسائر مالية، أو تأخر في التحويلات، أو فشل المعاملات، أو اختلافات الأسعار الناتجة عن استخدامك للمنصة أو المشغلين الذين نقارن بينهم.
+              بموجب <strong>نظام التحقق المجتمعي من الأسعار (CRVS)</strong>، يمكنك إضافة ومشاركة أسعار الصرف والرسوم. لضمان مصداقية المجتمع، فإنك توافق على ما يلي:
             </p>
+            <ul className="list-disc pr-5 space-y-2">
+              <li>يجب أن تكون كل مشاركة صحيحة وصادقة تماماً ومبنية على أسعار تحويل فعلية.</li>
+              <li>يجب عليك عند الحاجة رفع لقطة شاشة واضحة وغير معدلة لشاشة تطبيق المحفظة أو إيصال التحويل كدليل على صحة السعر.</li>
+              <li>يجب أن تمثل مشاركات المجتمع معاملات حقيقية وخالية من أي تلاعب رقمي.</li>
+              <li>تقوم إدارة <strong>مركز مراقبة وتحكم مجتمع ساري ريميت (SRCMC)</strong> بمراجعة وتدقيق واعتماد أو رفض المساهمات قبل نشرها للعامة.</li>
+            </ul>
+            <p className="text-xs text-rose-500 font-bold">
+              الإجراءات المحظورة: يُمنع منعاً باتاً رفع لقطات شاشة مزيفة، أو إيصالات معدلة بالفوتوشوب، أو إدخال أسعار وهمية ومضللة، أو تكرار الإرسال بطريقة مزعجة (Spam).
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٦. سياسة الاستخدام المقبول</h3>
+            <p>
+              أنت توافق على استخدام ساري ريميت لأغراض قانونية وشخصية فقط. ويُحظر عليك تماماً:
+            </p>
+            <ul className="list-disc pr-5 space-y-1.5">
+              <li>انتحال شخصية أي فرد آخر، أو مزود خدمة مالي، أو مشرف لدى ساري ريميت.</li>
+              <li>استخدام البرمجيات الآلية، أو أدوات سحب البيانات (Scrapers)، أو العناكب لجمع محتوى المنصة آلياً.</li>
+              <li>إدخال الفيروسات، أو برمجيات التجسس، أو محاولة الوصول غير المصرح به لقواعد البيانات أو الخوادم الخلفية.</li>
+              <li>التلاعب بنظام التوصيات أو أسعار الصرف من خلال سلوك جماعي منسق أو عمليات تسجيل وهمية.</li>
+              <li>استخدام أصول المنصة أو بيانات الأعضاء في الإعلانات التجارية غير المرغوب فيها، أو التسويق.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٧. إطار عمل مكافحة الاحتيال (SAF)</h3>
+            <p>
+              نحن نطبق **إطار عمل ساري ريميت لمكافحة الاحتيال (SAF)** لضمان أمان وموثوقية مجتمعنا. وبموجب هذا الإطار:
+            </p>
+            <ul className="list-disc pr-5 space-y-1.5">
+              <li>تقوم خوارزمياتنا بفحص مستمر لجميع مدخلات الأسعار وصور التحقق المرفوعة من المجتمع.</li>
+              <li>يحتفظ ساري ريميت بالحق الكامل في تقييد الحسابات مؤقتاً، ورفض المساهمات المشبوهة، وحظر الحسابات التي تحاول ممارسة الاحتيال بشكل دائم.</li>
+              <li>نحن نتعاون بشكل كامل مع المعايير الإدارية والرقابية؛ ومع ذلك، فإن وجود هذا الإطار لا يضمن الكشف الفوري عن كل المحاولات الاحتيالية في نفس اللحظة.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٨. التوصيات ونواة الذكاء (SIC)</h3>
+            <p>
+              يتم توليد جميع التوصيات، الشارات، ومقارنات ممرات التحويل في الوقت الفعلي بواسطة <strong>نواة ذكاء ساري ريميت (SIC)</strong>. وتأخذ هذه الخوارزميات في الاعتبار معايير متعددة تشمل: أسعار الصرف المباشرة، الرسوم، ضريبة القيمة المضافة، موثوقية السعر، تكرار التحديث، وحداثة البيانات. هذه الحسابات تتغير ديناميكياً وتلقائياً مع تقلبات سوق الصرف.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">٩. مقدمو الخدمات من الجهات الخارجية</h3>
+            <p>
+              يقوم ساري ريميت بمقارنة وعرض معلومات البنوك والمحافظ الرقمية المرخصة في المملكة. وتبقى جميع الشعارات، العلامات التجارية، الأسماء، والتصاميم ملكاً حصرياً لأصحابها ومؤسساتها الرسمية. وعند توفر التصريحات الرسمية، يتم إدارة الشعارات عبر <strong>مدير أصول العلامات التجارية (BAM)</strong>؛ وفي حال عدم توفرها، يتم استخدام أصول افتراضية مناسبة لتمثيل تلك القنوات بشكل حيادي ومستقل.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١٠. حقوق الملكية الفكرية</h3>
+            <p>
+              يمتلك ساري ريميت جميع الحقوق والعناوين والمصالح في التقنيات الأساسية للمنصة، الكود المصدري، التصاميم البصرية، الخوارزميات، والهوية التجارية. الأنظمة والبرمجيات التالية تعد ملكية فكرية محمية بالكامل:
+            </p>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[10px] font-bold uppercase text-slate-600">
+              <li>• نواة ذكاء ساري ريميت (SIC)</li>
+              <li>• محرك تسوية الأسعار (RRE)</li>
+              <li>• محرك حساب التكلفة الحقيقية (TCE)</li>
+              <li>• مؤشر ذكاء ساري ريميت (SIS)</li>
+              <li>• إطار عمل مكافحة الاحتيال (SAF)</li>
+              <li>• نظام الإنجازات والتقدم (SEPS)</li>
+              <li>• نظام الإشعارات والتنبيهات (SNS)</li>
+              <li>• مدير أصول العلامات التجارية (BAM)</li>
+              <li>• نظام ساري ريميت للتصميم (SDS)</li>
+              <li>• إطار عمل ساري ريميت القانوني والامتثال (SLCF)</li>
+            </ul>
+            <p className="text-xs">
+              يُمنع منعاً باتاً نسخ، أو إعادة هندسة كود المنصة (Reverse Engineering)، أو بيع، أو ترخيص، أو استغلال أي جزء من أنظمتنا وبرمجياتنا التجارية دون الحصول على موافقة خطية مسبقة من الإدارة القانونية لدينا.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١١. تقديرات التوفير والنمذجة الرياضية</h3>
+            <p>
+              جميع حسابات التوفير المعروضة عبر لوحة تحكم ساري ريميت هي تقديرات تم حسابها بواسطة خوارزمياتنا الرياضية بناءً على الأسعار المخزنة في قاعدة البيانات. <strong>قد يختلف التوفير الفعلي المحقق على أرض الواقع</strong> نظراً للتغيرات السريعة في أسعار الصرف، العروض الترويجية والخصومات لمزودي الخدمة، توقيت التنفيذ، وتكلفة التحويل البنكي المصدرية. يُرجى دائماً التأكد من السعر النهائي قبل إتمام الحوالة.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١٢. حدود المسؤولية</h3>
+            <p>
+              يبذل فريق ساري ريميت قصارى جهده لضمان دقة معلومات المقارنة ومعاييرها. ولكن نظراً لتقلب الأسواق المستمر:
+            </p>
+            <ul className="list-disc pr-5 space-y-1.5">
+              <li>نحن لا نضمن دقة أو جاهزية أو أداء أي بنك أو محفظة رقمية تابعة لجهة خارجية.</li>
+              <li>نحن غير مسؤولين عن أي خطأ في تنفيذ المعاملات، تأخر الحوالات، خسارة مالية، أو تغير مفاجئ في الأسعار من قبل مزودي الخدمة.</li>
+              <li>بالحد الأقصى المسموح به بموجب الأنظمة المرعية في المملكة العربية السعودية، لا يتحمل ساري ريميت أي مسؤولية عن أي أضرار غير مباشرة أو تبعية ناتجة عن استخدام المنصة وتوصياتها.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١٣. تعليق وإنهاء الحسابات</h3>
+            <p>
+              يحتفظ ساري ريميت بالحق الكامل في تعليق أو إنهاء حسابك ومصادقة تسجيل دخولك ومنعك من رفع أي مساهمات على المنصة في الحالات التالية:
+            </p>
+            <ul className="list-disc pr-5 space-y-1.5">
+              <li>مخالفة شروط الاستخدام هذه أو معايير إطار العمل القانوني (SLCF).</li>
+              <li>محاولة رفع صور فواتير مزيفة أو لقطات شاشة تم التلاعب بها رقمياً.</li>
+              <li>محاولات منسقة لتزييف وتوجيه نظام التوصيات أو التسبب في تعطيل الخوادم.</li>
+              <li>تلقي توجيهات أو رغبات رسمية من الجهات التنظيمية والرقابية في المملكة العربية السعودية.</li>
+            </ul>
+            <p className="text-xs font-bold text-slate-500">
+              *تخضع جميع قرارات الإنهاء لمراجعة إدارية وبشرية دقيقة في مركز تحكم SRCMC قبل تطبيق الحظر النهائي على العضو الملتزم.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١٤. الخصوصية والاندماج مع نظام حماية البيانات</h3>
+            <p>
+              يتم إدارة وحماية بياناتك الشخصية بالكامل طبقاً لـ <strong>سياسة الخصوصية لساري ريميت</strong>، والمتوافقة تماماً مع نظام حماية البيانات الشخصية السعودي (PDPL). بموافقتك على شروط الاستخدام هذه، فإنك تؤكد اطلاعك وموافقتك أيضاً على ممارسات جمع، معالجة، وحفظ وإتلاف البيانات المبينة في تلك السياسة.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١٥. التحديثات والإصدارات</h3>
+            <p>
+              قد نقوم بتحديث شروط الاستخدام هذه من وقت لآخر. وعند نشر إصدار جديد عبر <strong>مدير الشروط في إطار العمل القانوني (SLCF)</strong> داخل لوحة تحكم SRCMC، سيتغير رقم الإصدار المعروض. وسيتم إبلاغ الأعضاء بالتغييرات الجوهرية من خلال لوحة التحكم أو الإشعارات. استمرار استخدامك للمنصة يمثل موافقتك على الإصدار الجديد.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١٦. القانون الحاكم وحل النزاعات</h3>
+            <p>
+              تخضع شروط الاستخدام هذه وتُفسر وفقاً للأنظمة واللوائح والتعليمات المعمول بها في المملكة العربية السعودية. وتخضع جميع النزاعات أو الخلافات الناشئة عنها أو المتصلة بها للاختصاص القضائي الحصري والمطلق للمحاكم والجهات القضائية المختصة في مدينة الرياض، المملكة العربية السعودية.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-mono">١٧. الاتصال ومكتب الامتثال</h3>
+            <p>
+              إذا كان لديك أي سؤال، أو ملاحظة، أو رغبة في التواصل مع مكتب الامتثال والالتزام القانوني لدينا، يرجى الكتابة إلينا:
+            </p>
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mt-2 text-right">
+              <p className="font-extrabold text-slate-900">إطار عمل ساري ريميت القانوني والامتثال (SLCF)</p>
+              <p className="text-xs text-slate-500 mt-1">البريد الإلكتروني للامتثال: <span className="font-bold text-emerald-650">support@sariremit.com</span></p>
+              <p className="text-xs text-slate-500">الرياض، المملكة العربية السعودية</p>
+            </div>
           </section>
         </div>
       )

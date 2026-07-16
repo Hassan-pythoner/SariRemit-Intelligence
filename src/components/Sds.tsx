@@ -137,7 +137,7 @@ export function SDSButton({
   
   const variants = {
     primary: 'bg-sds-primary border-sds-primary text-white hover:bg-[#084937] hover:border-[#084937] focus:ring-sds-primary/40',
-    secondary: 'bg-white border-sds-border text-sds-text hover:bg-sds-bg-sec hover:border-sds-border focus:ring-sds-primary/20',
+    secondary: 'bg-[#0C2547] border-sds-border text-sds-text hover:bg-[#091F3E] hover:border-sds-border focus:ring-sds-primary/20',
     ghost: 'bg-transparent border-transparent text-sds-primary hover:bg-sds-bg-sec focus:ring-sds-primary/20',
     danger: 'bg-[#D94B4B]/10 border-transparent text-[#D94B4B] hover:bg-[#D94B4B]/15 focus:ring-sds-error/30',
     success: 'bg-sds-success border-sds-success text-white hover:bg-[#1a8557] focus:ring-sds-success/40',
