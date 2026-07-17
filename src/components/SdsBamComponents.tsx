@@ -20,6 +20,7 @@ import {
   ResolvedBrandAsset,
   SDS_ASSET_SIZES
 } from '../services/bamAssetResolver';
+import { getProviderIdentity } from '../services/pisService';
 
 // Development warning helper
 const runDevWarning = (message: string) => {
@@ -344,7 +345,7 @@ export function ProviderLogo({
       {renderImage()}
       {showName && channel && (
         <span className="font-sans font-black text-xs text-slate-800 dark:text-slate-100 uppercase tracking-wider">
-          {channel.displayName || channel.providerName || channel.provider_code || channel.id}
+          {getProviderIdentity(channel?.provider_id || channel?.provider_code || channel?.providerCode || channel?.id || (typeof channel === 'string' ? channel : '')).display_name}
         </span>
       )}
     </div>
@@ -376,7 +377,8 @@ export function ProviderBrandBlock({
   if (!channel) return null;
 
   const resolved = getProviderBranding(channel, surface);
-  const displayName = channel.displayName || channel.providerName || channel.provider_code || 'Unknown Provider';
+  const identity = getProviderIdentity(channel?.provider_id || channel?.provider_code || channel?.providerCode || channel?.id || (typeof channel === 'string' ? channel : ''));
+  const displayName = identity.display_name;
   const method = transferMethod || channel.transferMethod || channel.type || 'Bank Transfer';
   const website = channel.website || channel.metadata?.website;
 

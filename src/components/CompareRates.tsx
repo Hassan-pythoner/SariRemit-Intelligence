@@ -43,6 +43,10 @@ export default function CompareRates({
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'value' | 'received' | 'rate' | 'fee' | 'trusted'>('value');
+  const [optionsTab, setOptionsTab] = useState<'all' | 'recommended'>('all');
+  const [deliverySpeed, setDeliverySpeed] = useState<string>('all');
+  const [paymentMethod, setPaymentMethod] = useState<string>('all');
+  const [providerType, setProviderType] = useState<string>('all');
   const [brandAssets, setBrandAssets] = useState<BrandAsset[]>([]);
 
   useEffect(() => {
@@ -124,10 +128,11 @@ export default function CompareRates({
 
   // Apply filters on option list returned by the engine
   const filteredOptions = options.filter(option => {
+    const pid = option.resolved.provider_id;
+    
     // 1. Transfer Method
     if (methodFilter !== 'all') {
       let method: 'wallet' | 'cash' | 'bank' = 'bank';
-      const pid = option.resolved.provider_id;
       if (pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay') {
         method = 'wallet';
       } else if (pid === 'enjaz' || pid === 'western-union') {
@@ -139,8 +144,33 @@ export default function CompareRates({
     }
 
     // 2. Provider Filter
-    if (providerFilter !== 'all' && option.resolved.provider_id !== providerFilter) {
+    if (providerFilter !== 'all' && pid !== providerFilter) {
       return false;
+    }
+
+    // 3. Recommended Only option tab
+    if (optionsTab === 'recommended') {
+      const isBest = pid === recommendation?.best_provider_id;
+      const isHighSis = option.sis.sis_score >= 80;
+      if (!isBest && !isHighSis) return false;
+    }
+
+    // 4. Delivery Speed
+    if (deliverySpeed === 'instant') {
+      const isInstant = pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay';
+      if (!isInstant) return false;
+    }
+
+    // 5. Provider Type
+    if (providerType === 'wallet') {
+      const isWallet = pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay';
+      if (!isWallet) return false;
+    } else if (providerType === 'bank') {
+      const isBank = pid === 'al-rajhi' || pid === 'snb-quickpay' || pid === 'anb-telemoney';
+      if (!isBank) return false;
+    } else if (providerType === 'exchange') {
+      const isExchange = pid === 'enjaz' || pid === 'western-union';
+      if (!isExchange) return false;
     }
 
     return true;
@@ -491,152 +521,126 @@ export default function CompareRates({
   return (
     <div className={`space-y-6 pb-24 text-sds-text ${isRtl ? 'text-right' : 'text-left'} animate-fadeIn`}>
       
-      {/* 1. HERO RECOMMENDATION BANNER */}
-      {!loading && recommendation && (
-        <div className="relative bg-gradient-to-r from-[#0C2547] via-[#091F3E] to-[#0C2547] border border-sds-border rounded-3xl p-6 shadow-sds-lg overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-[#10B981]/5 rounded-full blur-2xl pointer-events-none" />
+      {/* SDS 3.0 BREADCRUMB & HEADER */}
+      <div className="text-left space-y-1">
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block font-mono">
+          {isRtl ? 'مقارنة > النتائج الفورية' : 'Compare > Results'}
+        </span>
+        <h1 className="text-2xl md:text-3xl font-sans font-black text-white tracking-tight">
+          {isRtl ? 'مقارنة خيارات التحويل المالي ✨' : 'Compare remittance options ✨'}
+        </h1>
+        <p className="text-xs text-sds-text-sec font-semibold">
+          {isRtl 
+            ? 'أسعار صرف حقيقية. شفافية تامة للرسوم. قرارات ذكية.' 
+            : 'Real rates. Total transparency. Smarter decisions.'}
+        </p>
+      </div>
+
+      {/* SDS 3.0 HORIZONTAL SEND WIDGET */}
+      <div className="bg-[#0C2547] p-5 sm:p-6 rounded-3xl text-white shadow-sds-lg border border-sds-border space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
           
-          <div className="flex items-center gap-4 text-left">
-            <div className="w-12 h-12 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 flex items-center justify-center text-2xl shadow-inner shrink-0">
-              💡
-            </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-black text-[#F59E0B] uppercase tracking-wider block font-mono">
-                {isRtl ? 'أفضل خيار موصى به اليوم' : 'OPTIMAL CHOICE TODAY'}
-              </span>
-              <h2 className="text-lg md:text-xl font-sans font-black text-white leading-tight">
-                {isRtl ? 'وفر أكثر مع' : 'Maximize Family Payout via'} <span className="text-[#10B981]">{recommendation.best_provider_name}</span>
-              </h2>
-              <p className="text-xs text-sds-text-sec max-w-xl">
-                {isRtl 
-                  ? `يقدم أفضل عائد صافي قدره ${recommendation.net_recipient_amount.toLocaleString()} ${activeCorridor.currencyCode} لكل ${sendAmount} ريال.`
-                  : `Yields the highest net recipient payout of ${recommendation.net_recipient_amount.toLocaleString()} ${activeCorridor.currencyCode} per ${sendAmount} SAR.`}
-              </p>
+          {/* Item 1: You send */}
+          <div className="md:col-span-4 space-y-2 text-left">
+            <label className={`block text-[10px] font-black text-slate-400 uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
+              {isRtl ? 'أنت ترسل' : 'You send'}
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                id="compare-send-amount-input"
+                value={sendAmount}
+                onChange={(e) => setSendAmount(Math.max(1, parseInt(e.target.value) || 0))}
+                className="w-full pl-4 pr-16 py-3 bg-[#071A35] border border-sds-border rounded-xl font-black font-mono text-lg text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-all"
+              />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-[#0C2547] px-2.5 py-1 rounded-lg border border-sds-border text-xs font-black font-mono text-white">
+                <span>🇸🇦</span>
+                <span>SAR</span>
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-col items-center md:items-end justify-center shrink-0">
-            <span className="text-[10px] font-black text-sds-text-sec uppercase tracking-widest block font-mono leading-none">{isRtl ? 'التوفير المتوقع' : 'EST SAVINGS'}</span>
-            <span className="text-xl md:text-2xl font-black text-[#10B981] font-mono block mt-1">
-              +{recommendation.estimated_savings.toLocaleString(undefined, { maximumFractionDigits: 1 })} {activeCorridor.currencyCode}
-            </span>
-            <button
-              onClick={() => setComparisonTargetId(recommendation.best_provider_id)}
-              className="mt-2.5 px-3.5 py-1.5 bg-[#10B981]/10 hover:bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+          {/* Item 2: They receive */}
+          <div className="md:col-span-4 space-y-2 text-left">
+            <label className={`block text-[10px] font-black text-slate-400 uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
+              {isRtl ? 'المستلم يحصل على (تقريبي)' : 'They receive'}
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                disabled
+                value={recommendation ? (sendAmount * recommendation.resolved_exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 1 }) : (sendAmount * activeCorridor.baseExchangeRate).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                className="w-full pl-4 pr-16 py-3 bg-[#071A35]/60 border border-sds-border/60 rounded-xl font-black font-mono text-lg text-slate-400 select-all"
+              />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-[#0C2547] px-2.5 py-1 rounded-lg border border-sds-border text-xs font-black font-mono text-white">
+                <span>{activeCorridor.flag}</span>
+                <span>{activeCorridor.currencyCode}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Item 3: Destination Corridor select */}
+          <div className="md:col-span-4 space-y-2 text-left">
+            <label className={`block text-[10px] font-black text-slate-400 uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
+              {isRtl ? 'وجهة التحويل' : 'Destination'}
+            </label>
+            <select
+              id="compare-corridor-select"
+              value={corridorId}
+              onChange={(e) => setCorridorId(e.target.value)}
+              className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer h-[48px]"
             >
-              {isRtl ? 'تحليل ومقارنة' : 'Analyze Matchup'}
-            </button>
+              {CORRIDORS.map((c) => (
+                <option key={c.id} value={c.id} className="bg-[#071A35] text-slate-850 font-bold">
+                  {c.flag} {language === 'en' ? c.toCountry : c.toCountryAr} ({c.currencyCode})
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-      )}
 
-      {/* 2. SMART FILTERS & CONTROL PANEL */}
-      <div className="bg-[#0C2547] p-5 sm:p-6 rounded-3xl text-white shadow-sds-lg grid grid-cols-1 md:grid-cols-12 gap-5 items-end border border-sds-border">
-        
-        {/* Destination Corridor */}
-        <div className="md:col-span-4 space-y-2 text-left">
-          <label className={`block text-[10px] font-black text-sds-text-sec uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
-            {t.chooseCountry}
-          </label>
-          <select
-            id="compare-corridor-select"
-            value={corridorId}
-            onChange={(e) => setCorridorId(e.target.value)}
-            className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer h-[46px]"
-          >
-            {CORRIDORS.map((c) => (
-              <option key={c.id} value={c.id} className="bg-[#071A35] text-slate-800 font-bold">
-                {c.flag} {language === 'en' ? c.toCountry : c.toCountryAr} ({c.currencyCode})
-              </option>
-            ))}
-          </select>
-          <div className={`text-[10px] text-sds-text-sec font-bold ${isRtl ? 'text-right' : 'text-left'}`}>
-            {t.receivingCurrency}: <span className="font-extrabold text-[#F59E0B] font-mono">{activeCorridor.currencyCode}</span>
-          </div>
         </div>
 
-        {/* Send Amount Field */}
-        <div className="md:col-span-4 space-y-2 text-left">
-          <label className={`block text-[10px] font-black text-sds-text-sec uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
-            {t.sendingAmount}
-          </label>
-          <div className="relative">
-            <input
-              type="number"
-              id="compare-send-amount-input"
-              value={sendAmount}
-              onChange={(e) => setSendAmount(Math.max(1, parseInt(e.target.value) || 0))}
-              className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-black font-mono text-lg text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-all"
-            />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sds-text-sec text-xs font-bold font-mono">
-              SAR
-            </div>
-          </div>
-          {/* Quick presets */}
-          <div className={`flex flex-wrap gap-1 pt-1 ${isRtl ? 'justify-end' : 'justify-start'}`}>
+        {/* Quick Presets row & Checklist bullets underneath */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-3 border-t border-slate-800/40">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">{isRtl ? 'المبالغ الشائعة:' : 'Quick Presets:'}</span>
             {presets.map((p) => (
               <button
                 key={p}
                 onClick={() => setSendAmount(p)}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all cursor-pointer ${
+                className={`px-3 py-1 rounded-lg text-[10px] font-black border transition-all cursor-pointer ${
                   sendAmount === p
                     ? 'bg-[#10B981] border-[#10B981] text-[#071A35] shadow-xs'
                     : 'bg-[#071A35] border-sds-border text-slate-300 hover:bg-[#071A35]/80'
                 }`}
               >
-                {p}
+                {p} SAR
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Transfer Method Filter */}
-        <div className="md:col-span-4 space-y-2 text-left">
-          <label className={`block text-[10px] font-black text-sds-text-sec uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
-            {t.transferMethod}
-          </label>
-          <select
-            id="compare-method-select"
-            value={methodFilter}
-            onChange={(e) => setMethodFilter(e.target.value)}
-            className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer h-[46px]"
-          >
-            <option value="all" className="bg-[#071A35] text-slate-850 font-bold">{t.allMethods}</option>
-            <option value="bank" className="bg-[#071A35] text-slate-850 font-bold">{t.bankTransfer}</option>
-            <option value="cash" className="bg-[#071A35] text-slate-850 font-bold">{t.cashPickup}</option>
-            <option value="wallet" className="bg-[#071A35] text-slate-850 font-bold">{t.mobileWallet}</option>
-          </select>
+          {/* Verification bullets */}
+          <div className="flex flex-wrap items-center gap-3.5 text-[10px] sm:text-[11px] text-[#10B981] font-extrabold">
+            <span className="flex items-center gap-1">
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+              <span>{isRtl ? 'شامل كل الرسوم والضرائب' : 'All fees & taxes included'}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+              <span>{isRtl ? 'تحديث فوري بالدقيقة' : 'Real-time rates'}</span>
+            </span>
+            <span className="flex items-center gap-1 text-amber-400">
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+              <span>{isRtl ? 'موثق مجتمعياً' : 'Crowdsourced verifications'}</span>
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Comparison Head-to-Head matchup overlay drawer */}
       {renderComparisonDrawer()}
 
-      {/* Destination Country Context Header & Savings Story */}
-      {!loading && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between bg-[#0C2547]/40 border border-sds-border px-4 py-3 rounded-2xl">
-            <div className="flex items-center gap-2 text-left">
-              <span className="text-xl leading-none">{activeCorridor.flag}</span>
-              <div>
-                <span className="text-[10px] font-black text-sds-text-sec uppercase tracking-widest block leading-none">
-                  {isRtl ? 'البلد والعملة' : 'Destination Corridor'}
-                </span>
-                <span className="text-xs font-bold text-white mt-0.5 block">
-                  {language === 'en' ? activeCorridor.toCountry : activeCorridor.toCountryAr} · <span className="font-mono text-[#F59E0B]">{activeCorridor.currencyCode}</span>
-                </span>
-              </div>
-            </div>
-            <span className="px-2.5 py-1 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 rounded-lg text-[10px] font-black uppercase tracking-wider">
-              {isRtl ? 'نشط' : 'Active'}
-            </span>
-          </div>
-
-          {renderSavingsInsight()}
-        </div>
-      )}
-
-      {/* 3. RATES RESULTS CONTAINER */}
+      {/* 3. DUAL-COLUMN BENTO GRID */}
       {loading ? (
         <div className="py-20 text-center space-y-4">
           <div className="w-10 h-10 border-4 border-[#0C2547] border-t-[#10B981] rounded-full animate-spin mx-auto"></div>
@@ -646,65 +650,54 @@ export default function CompareRates({
         </div>
       ) : (
         <>
-          {/* Results Sort header bar */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2 border-b border-sds-border/60 pb-3 text-left">
-            <div>
-              <span className="text-sm font-black text-white uppercase tracking-wide">
-                {filteredOptions.length} {language === 'en' ? 'verified remittance channels active' : 'قنوات تحويل مؤكدة ونشطة'}
-              </span>
-              <p className="text-xs text-sds-text-sec font-medium">
-                {language === 'en' ? "RRE resolved with live wallet indices and crowdsourced expat validations." : "تم تحديث المقارنة بالأسعار الفورية وتقارير المغتربين الموثقة."}
-              </p>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left">
+          
+          {/* LEFT PANEL: RESULTS DECK (Col span 8) */}
+          <div className="lg:col-span-8 space-y-5">
+            
+            {/* Top Options Tabs Selector */}
+            <div className="flex bg-[#0C2547] p-1 rounded-2xl border border-sds-border w-fit">
+              <button
+                onClick={() => setOptionsTab('all')}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-2 ${
+                  optionsTab === 'all'
+                    ? 'bg-[#10B981] text-[#071A35] font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>{isRtl ? 'كل الخيارات' : 'All Options'}</span>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${optionsTab === 'all' ? 'bg-[#071A35]/20 text-[#071A35]' : 'bg-slate-850 text-slate-400'}`}>
+                  {options.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setOptionsTab('recommended')}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-2 ${
+                  optionsTab === 'recommended'
+                    ? 'bg-[#10B981] text-[#071A35] font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>⭐ {isRtl ? 'الموصى بها فقط' : 'Recommended Only'}</span>
+              </button>
             </div>
 
-            {/* Sort Controls */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-sds-text-sec font-black uppercase tracking-wider flex items-center gap-1 shrink-0 font-mono">
-                <ArrowUpDown className="w-3 h-3 text-[#10B981]" /> {isRtl ? 'ترتيب حسب:' : 'Sort by:'}
-              </span>
-              {isMobile ? (
-                <div className="flex items-center gap-1.5">
-                  <div className="flex bg-[#0C2547] p-0.5 rounded-xl border border-sds-border text-[10px] font-black uppercase">
-                    <button
-                      onClick={() => setSortBy('value')}
-                      className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                        sortBy === 'value' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {isRtl ? 'أفضل قيمة' : 'Value'}
-                    </button>
-                    <button
-                      onClick={() => setSortBy('received')}
-                      className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                        sortBy === 'received' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {isRtl ? 'عائد' : 'Payout'}
-                    </button>
-                    <button
-                      onClick={() => setSortBy('rate')}
-                      className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                        sortBy === 'rate' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {isRtl ? 'سعر' : 'Rate'}
-                    </button>
-                  </div>
-                  <select
-                    value={sortBy === 'fee' || sortBy === 'trusted' ? sortBy : 'more'}
-                    onChange={(e) => {
-                      if (e.target.value !== 'more') {
-                        setSortBy(e.target.value as any);
-                      }
-                    }}
-                    className="bg-[#0C2547] border border-sds-border text-[10px] text-slate-300 font-black uppercase rounded-xl px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981]/20 cursor-pointer h-[32px]"
-                  >
-                    <option value="more" disabled className="text-slate-500">{isRtl ? 'المزيد' : 'More'}</option>
-                    <option value="fee" className="text-slate-800">{isRtl ? 'أقل رسوم' : 'Lowest Fee'}</option>
-                    <option value="trusted" className="text-slate-800">{isRtl ? 'الأكثر ثقة' : 'Most Trusted'}</option>
-                  </select>
-                </div>
-              ) : (
+            {/* Results Sort header bar */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1 border-b border-sds-border/45 pb-3 text-left">
+              <div>
+                <span className="text-sm font-black text-white uppercase tracking-wide">
+                  {filteredOptions.length} {language === 'en' ? 'verified remittance channels active' : 'قنوات تحويل مؤكدة ونشطة'}
+                </span>
+                <p className="text-xs text-sds-text-sec font-medium">
+                  {language === 'en' ? "RRE resolved with live wallet indices and crowdsourced expat validations." : "تم تحديث المقارنة بالأسعار الفورية وتقارير المغتربين الموثقة."}
+                </p>
+              </div>
+
+              {/* Sort Controls */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-sds-text-sec font-black uppercase tracking-wider flex items-center gap-1 shrink-0 font-mono">
+                  <ArrowUpDown className="w-3 h-3 text-[#10B981]" /> {isRtl ? 'ترتيب حسب:' : 'Sort by:'}
+                </span>
                 <div className="flex bg-[#0C2547] p-0.5 rounded-xl border border-sds-border text-[10px] font-black uppercase">
                   <button
                     onClick={() => setSortBy('value')}
@@ -738,18 +731,9 @@ export default function CompareRates({
                   >
                     Lowest Fee
                   </button>
-                  <button
-                    onClick={() => setSortBy('trusted')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                      sortBy === 'trusted' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Most Trusted
-                  </button>
                 </div>
-              )}
+              </div>
             </div>
-          </div>
 
           {/* DUAL SCREEN RESPONSIVE CARD DECK */}
           {isMobile ? (
@@ -776,15 +760,15 @@ export default function CompareRates({
                         key={opt.resolved.provider_id}
                         className={`bg-[#0C2547] rounded-3xl border transition-all ${
                           isBestValue 
-                            ? 'border-[#10B981] ring-4 ring-[#10B981]/15 shadow-xl bg-gradient-to-b from-[#0e2c53] to-[#0C2547]' 
+                            ? 'border-amber-500/60 ring-4 ring-amber-500/10 shadow-lg bg-gradient-to-b from-[#0e2c53] to-[#0C2547]' 
                             : 'border-sds-border hover:border-sds-border/80 shadow-xs'
                         } overflow-hidden`}
                       >
                         {/* Optimal Recommended badge banner */}
                         {isBestValue && (
-                          <div className="bg-[#10B981] text-[#071A35] text-[10px] font-black px-4 py-1.5 uppercase tracking-wider flex items-center gap-1.5">
-                            <ThumbsUp className="w-3.5 h-3.5 fill-[#071A35]" />
-                            <span>{isRtl ? 'خيار اليوم الأفضل' : "Today's Best Choice"}</span>
+                          <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-[#071A35] text-[10px] font-black px-4 py-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                            <span>⭐</span>
+                            <span>{isRtl ? 'الخيار الأفضل اليوم' : "TODAY'S BEST RECOMMENDED OPTION"}</span>
                           </div>
                         )}
 
@@ -794,12 +778,12 @@ export default function CompareRates({
                             <div className="flex items-center gap-2.5">
                               <ProviderLogo channel={{ ...opt.resolved, providerCode: opt.resolved.provider_id, displayName: opt.resolved.provider_name }} size="md" shape="circle" surface="dark" />
                               <div className="text-left">
-                                <h4 className="font-black text-white text-sm uppercase leading-tight tracking-tight">
+                                <h4 className="font-black text-white text-sm uppercase leading-none tracking-tight">
                                   {opt.resolved.provider_name}
                                 </h4>
-                                <div className="flex items-center gap-1 mt-0.5">
+                                <div className="flex items-center gap-1 mt-1">
                                   {getMethodIcon(opt.resolved.provider_id)}
-                                  <span className="text-[8px] font-black text-sds-text-sec uppercase tracking-wider">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
                                     {getMethodLabel(opt.resolved.provider_id)}
                                   </span>
                                 </div>
@@ -807,15 +791,15 @@ export default function CompareRates({
                             </div>
 
                             {/* Labelled Value Badge */}
-                            <span className="inline-block px-2.5 py-1 text-[9px] font-black border rounded-lg uppercase tracking-wider bg-[#071A35] border-sds-border text-[#10B981]">
+                            <span className={`inline-block px-2.5 py-1 text-[9px] font-black border rounded-lg uppercase tracking-wider bg-[#071A35] ${isBestValue ? 'border-amber-500/30 text-amber-400' : 'border-sds-border text-[#10B981]'}`}>
                               {getValueLabel(opt, bestNetAmount)}
                             </span>
                           </div>
 
                           {/* 2. Visual Recipient Payout Area */}
                           <div className="bg-[#071A35] rounded-2xl p-4 border border-sds-border/50 text-left space-y-1">
-                            <span className="text-[9px] text-sds-text-sec font-black uppercase tracking-wider leading-none">
-                              {isRtl ? 'المبلغ المستلم' : 'They Receive'}
+                            <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider leading-none">
+                              {isRtl ? 'المبلغ المستلم للمستفيد' : 'They Receive'}
                             </span>
                             <div className="flex items-baseline gap-1">
                               <span className="font-mono text-3xl font-black text-[#10B981] tracking-tight">
@@ -827,8 +811,8 @@ export default function CompareRates({
                             </div>
                             
                             {/* Estimated savings story difference line */}
-                            <div className="text-[10px] font-bold text-slate-300 pt-1 flex items-center gap-1">
-                              <span className="text-[#10B981]">●</span>
+                            <div className="text-[10px] font-bold text-slate-300 pt-1 flex items-center gap-1.5">
+                              <span className={isBestValue ? 'text-amber-400' : 'text-slate-400'}>●</span>
                               <span>
                                 {isBestValue ? (
                                   isRtl ? (
@@ -850,15 +834,15 @@ export default function CompareRates({
                           {/* 3. Rate & Fee Row */}
                           <div className="grid grid-cols-2 gap-3 text-left">
                             <div className="p-2.5 bg-[#071A35]/40 border border-sds-border/40 rounded-xl">
-                              <span className="text-[8px] text-sds-text-sec font-black uppercase tracking-wider block">
-                                {isRtl ? 'سعر صرف اليوم' : "Today's Rate"}
+                              <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">
+                                {isRtl ? 'سعر الصرف' : "Today's Rate"}
                               </span>
                               <span className="font-mono text-sm font-black text-white block mt-0.5">
-                                {opt.resolved.resolved_rate} <span className="text-[9px] text-sds-text-sec">{activeCorridor.currencyCode}</span>
+                                {opt.resolved.resolved_rate} <span className="text-[9px] text-slate-400">{activeCorridor.currencyCode}</span>
                               </span>
                             </div>
                             <div className="p-2.5 bg-[#071A35]/40 border border-sds-border/40 rounded-xl">
-                              <span className="text-[8px] text-sds-text-sec font-black uppercase tracking-wider block">
+                              <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">
                                 {isRtl ? 'رسوم التحويل' : 'Transfer Fee'}
                               </span>
                               <span className="font-mono text-sm font-black text-white block mt-0.5">
@@ -869,20 +853,20 @@ export default function CompareRates({
 
                           {/* 4. Confidence Badge & Helper */}
                           <div className="p-3 bg-[#071A35]/60 rounded-xl border border-sds-border/40 space-y-1 text-left">
-                            <div className="flex items-center gap-1.5 text-[10px] font-black text-sds-text-sec uppercase tracking-wider">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                               <ShieldAlert className="w-3.5 h-3.5 text-[#10B981]" />
                               <span>{isRtl ? 'مستوى الثقة:' : 'Confidence Level:'}</span>
                               <span className={getConfidenceLevel(opt.sis.sis_score).color}>
                                 {getConfidenceLevel(opt.sis.sis_score).label} ({opt.sis.sis_score}%)
                               </span>
                             </div>
-                            <p className="text-[9px] text-sds-text-sec/85 font-medium leading-tight">
+                            <p className="text-[9px] text-slate-400/80 font-medium leading-tight">
                               {isRtl ? 'يوضح مدى موثوقية وحداثة هذه البيانات المستخرجة.' : 'This shows how reliable and recent the extracted data is.'}
                             </p>
                           </div>
 
                           {/* 5. Freshness & Source */}
-                          <div className="flex justify-between items-center text-[9px] font-bold text-sds-text-sec">
+                          <div className="flex justify-between items-center text-[9px] font-bold text-slate-400">
                             <span>{getFreshnessLabel(opt)}</span>
                             <span className="px-1.5 py-0.5 bg-[#071A35] border border-sds-border/50 rounded-md text-[8px] font-black uppercase">
                               {getSourceLabelHuman(opt.resolved.source_type)}
@@ -932,34 +916,34 @@ export default function CompareRates({
 
                           {/* Expanded detail accordion panel */}
                           {isExpanded && (
-                            <div className="pt-4 border-t border-sds-border/60 space-y-4 animate-fadeIn text-sds-text-sec text-xs text-left">
+                            <div className="pt-4 border-t border-sds-border/60 space-y-4 animate-fadeIn text-slate-400 text-xs text-left">
                               <div className="bg-[#071A35] rounded-2xl p-3 border border-sds-border space-y-3">
                                 <h5 className="font-black text-[9px] text-[#F59E0B] uppercase tracking-widest leading-none">
                                   {isRtl ? 'تفاصيل التكلفة ومؤشرات ساري' : 'Cost Breakdown & Indicators'}
                                 </h5>
                                 <div className="grid grid-cols-2 gap-3 text-[11px]">
                                   <div className="space-y-0.5">
-                                    <span className="text-sds-text-sec block">{isRtl ? "سعر صرف اليوم:" : "Today's Rate:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "سعر صرف اليوم:" : "Today's Rate:"}</span>
                                     <span className="font-mono text-white font-bold">{opt.resolved.resolved_rate} {activeCorridor.currencyCode}</span>
                                   </div>
                                   <div className="space-y-0.5 text-right">
-                                    <span className="text-sds-text-sec block">{isRtl ? "رسوم التحويل:" : "Transfer Fee:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "رسوم التحويل:" : "Transfer Fee:"}</span>
                                     <span className="font-mono text-white font-bold">{opt.resolved.transfer_fee} SAR</span>
                                   </div>
                                   <div className="space-y-0.5">
-                                    <span className="text-sds-text-sec block">{isRtl ? "ضريبة القيمة المضافة والمصاريف:" : "VAT & Other Charges:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "ضريبة القيمة المضافة والمصاريف:" : "VAT & Other Charges:"}</span>
                                     <span className="font-mono text-white font-bold">{opt.trueCost?.vatAmount || 0} SAR</span>
                                   </div>
                                   <div className="space-y-0.5 text-right">
-                                    <span className="text-sds-text-sec block">{isRtl ? "التكلفة الإجمالية:" : "Total Cost:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "التكلفة الإجمالية:" : "Total Cost:"}</span>
                                     <span className="font-mono text-[#10B981] font-bold">{(opt.resolved.transfer_fee + (opt.trueCost?.vatAmount || 0))} SAR</span>
                                   </div>
                                   <div className="space-y-0.5">
-                                    <span className="text-sds-text-sec block">{isRtl ? "العائد المتوقع للمستلم:" : "Expected Recipient Amount:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "العائد المتوقع للمستلم:" : "Expected Recipient Amount:"}</span>
                                     <span className="font-mono text-[#10B981] font-bold">{opt.netAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })} {activeCorridor.currencyCode}</span>
                                   </div>
                                   <div className="space-y-0.5 text-right">
-                                    <span className="text-sds-text-sec block">{isRtl ? "التوفير المتوقع:" : "Estimated Savings:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "التوفير المتوقع:" : "Estimated Savings:"}</span>
                                     <span className="font-mono text-[#10B981] font-bold">
                                       {isBestValue 
                                         ? `+${recommendation?.estimated_savings.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeCorridor.currencyCode}`
@@ -968,11 +952,11 @@ export default function CompareRates({
                                     </span>
                                   </div>
                                   <div className="space-y-0.5">
-                                    <span className="text-sds-text-sec block">{isRtl ? "مصدر السعر والتحقق:" : "Rate Source:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "مصدر السعر والتحقق:" : "Rate Source:"}</span>
                                     <span className="text-white font-bold">{getSourceLabelHuman(opt.resolved.source_type)}</span>
                                   </div>
                                   <div className="space-y-0.5 text-right">
-                                    <span className="text-sds-text-sec block">{isRtl ? "آخر تحديث:" : "Last Updated:"}</span>
+                                    <span className="text-slate-400 block">{isRtl ? "آخر تحديث:" : "Last Updated:"}</span>
                                     <span className="text-white font-bold">{getRelativeTimeText(opt.resolved.last_updated)}</span>
                                   </div>
                                 </div>
@@ -983,7 +967,7 @@ export default function CompareRates({
                                   </span>
                                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                                     <div className="space-y-0.5">
-                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                      <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                         <span>Rate Advantage</span>
                                         <span className="font-mono text-white">{opt.sis.rate_advantage_score}/100</span>
                                       </div>
@@ -992,7 +976,7 @@ export default function CompareRates({
                                       </div>
                                     </div>
                                     <div className="space-y-0.5">
-                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                      <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                         <span>Fee Advantage</span>
                                         <span className="font-mono text-white">{opt.sis.fee_advantage_score}/100</span>
                                       </div>
@@ -1001,7 +985,7 @@ export default function CompareRates({
                                       </div>
                                     </div>
                                     <div className="space-y-0.5">
-                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                      <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                         <span>Comparison Confidence</span>
                                         <span className="font-mono text-white">{opt.sis.true_cost_score ?? 80}/100</span>
                                       </div>
@@ -1010,7 +994,7 @@ export default function CompareRates({
                                       </div>
                                     </div>
                                     <div className="space-y-0.5">
-                                      <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                      <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                         <span>Freshness Indicator</span>
                                         <span className="font-mono text-white">{opt.sis.freshness_score}/100</span>
                                       </div>
@@ -1053,15 +1037,15 @@ export default function CompareRates({
                         key={opt.resolved.provider_id}
                         className={`bg-[#0C2547] rounded-3xl border transition-all ${
                           isBestValue 
-                            ? 'border-[#10B981] ring-2 ring-[#10B981]/10 shadow-lg' 
+                            ? 'border-amber-500/60 ring-2 ring-amber-500/10 shadow-lg bg-gradient-to-b from-[#0e2c53] to-[#0C2547]' 
                             : 'border-sds-border hover:border-sds-border/80 shadow-xs'
                         }`}
                       >
                         {/* Best Value Header */}
                         {isBestValue && (
-                          <div className="bg-[#10B981] text-[#071A35] text-[10px] font-black px-4 py-1.5 rounded-t-xl uppercase tracking-widest flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>Optimal Recommended Option Today (Best Value)</span>
+                          <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-[#071A35] text-[10px] font-black px-4 py-1.5 rounded-t-xl uppercase tracking-widest flex items-center gap-1.5">
+                            <span>⭐</span>
+                            <span>{isRtl ? 'خيار موصى به اليوم (أفضل قيمة)' : 'OPTIMAL RECOMMENDED OPTION TODAY (BEST VALUE)'}</span>
                           </div>
                         )}
 
@@ -1077,7 +1061,7 @@ export default function CompareRates({
                                 </h4>
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                   {getMethodIcon(opt.resolved.provider_id)}
-                                  <span className="text-[10px] font-extrabold text-sds-text-sec uppercase tracking-widest">
+                                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
                                     {getMethodLabel(opt.resolved.provider_id)}
                                   </span>
                                 </div>
@@ -1087,12 +1071,12 @@ export default function CompareRates({
                             {/* Rates, Payouts, Fees */}
                             <div className="lg:col-span-5 grid grid-cols-2 gap-4 text-left">
                               <div>
-                                <span className="text-[9px] font-black text-sds-text-sec block uppercase tracking-widest">Exchange Rate</span>
+                                <span className="text-[9px] font-black text-slate-400 block uppercase tracking-widest">Exchange Rate</span>
                                 <div className="flex items-baseline gap-0.5 mt-1 font-mono text-white">
                                   <span className="text-base font-black">{opt.resolved.resolved_rate}</span>
-                                  <span className="text-[10px] text-sds-text-sec ml-1">{activeCorridor.currencyCode}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1">{activeCorridor.currencyCode}</span>
                                 </div>
-                                <span className="text-[9px] font-semibold text-sds-text-sec mt-1 block">
+                                <span className={`text-[9px] font-semibold mt-1 block ${opt.resolved.transfer_fee === 0 ? 'text-[#10B981]' : 'text-slate-400'}`}>
                                   {opt.resolved.transfer_fee === 0 ? 'FREE TRANSFER' : `Fee: ${opt.resolved.transfer_fee} SAR`}
                                 </span>
                               </div>
@@ -1147,7 +1131,7 @@ export default function CompareRates({
                                 </h5>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                       <span>Rate Advantage</span>
                                       <span className="font-mono text-white">{opt.sis.rate_advantage_score}/100</span>
                                     </div>
@@ -1156,7 +1140,7 @@ export default function CompareRates({
                                     </div>
                                   </div>
                                   <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                       <span>Fee Advantage</span>
                                       <span className="font-mono text-white">{opt.sis.fee_advantage_score}/100</span>
                                     </div>
@@ -1165,7 +1149,7 @@ export default function CompareRates({
                                     </div>
                                   </div>
                                   <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                       <span>Comparison Confidence</span>
                                       <span className="font-mono text-white">{opt.sis.true_cost_score ?? 85}/100</span>
                                     </div>
@@ -1174,7 +1158,7 @@ export default function CompareRates({
                                     </div>
                                   </div>
                                   <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-sds-text-sec">
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                       <span>Freshness Score</span>
                                       <span className="font-mono text-white">{opt.sis.freshness_score}/100</span>
                                     </div>
@@ -1206,7 +1190,7 @@ export default function CompareRates({
                                     </div>
                                   </div>
                                 ) : (
-                                  <p className="text-sds-text-sec italic text-[10px]">No dynamic cost breakdown compiled today.</p>
+                                  <p className="text-slate-400 italic text-[10px]">No dynamic cost breakdown compiled today.</p>
                                 )}
                               </div>
                             </div>
@@ -1273,6 +1257,8 @@ export default function CompareRates({
 
             </div>
           )}
+          </div>
+        </div>
 
           {/* 4. COMPARISON MATRIX (Tabular Head-to-Head Table) */}
           {!isMobile && sortedOptions.length > 0 && (

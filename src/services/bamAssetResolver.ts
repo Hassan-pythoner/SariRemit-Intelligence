@@ -209,7 +209,9 @@ export function getSariRemitMonogram(surface?: BrandSurface, size?: BrandAssetSi
  * 4. Get Provider Branding details
  */
 export function getProviderBranding(channel: any, surface?: BrandSurface): ResolvedBrandAsset {
-  const providerCode = channel?.providerCode || channel?.provider_code || channel?.id || '';
+  const providerCode = typeof channel === 'string'
+    ? channel
+    : (channel?.providerCode || channel?.provider_code || channel?.provider_id || channel?.id || '');
   const identity = getProviderIdentity(providerCode);
 
   return {

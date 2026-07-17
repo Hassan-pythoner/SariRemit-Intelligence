@@ -217,12 +217,32 @@ export function getAllProviderIdentities(): ProviderIdentity[] {
  */
 export function getProviderIdentity(idOrCode: string): ProviderIdentity {
   const all = getAllProviderIdentities();
-  const found = all.find(
-    p => p.provider_id === idOrCode || p.provider_code === idOrCode?.toLowerCase()
-  );
+  
+  const target = (idOrCode || '').toLowerCase().trim();
+  const normalizedTarget = target.replace(/[\s_]+/g, '-'); // e.g., "stc pay" -> "stc-pay"
+  const strippedTarget = target.replace(/[^a-z0-9]/g, ''); // e.g., "stc-pay" -> "stcpay"
+
+  const found = all.find(p => {
+    const pId = p.provider_id.toLowerCase();
+    const pCode = p.provider_code.toLowerCase();
+    const pName = p.display_name.toLowerCase();
+    const pShort = p.short_name.toLowerCase();
+
+    return pId === target || pCode === target ||
+           pId === normalizedTarget || pCode === normalizedTarget ||
+           pId.replace(/[^a-z0-9]/g, '') === strippedTarget ||
+           pCode.replace(/[^a-z0-9]/g, '') === strippedTarget ||
+           pName === target || pShort === target ||
+           pName.includes(target) || target.includes(pName);
+  });
 
   if (found) {
     return found;
+  }
+
+  // If PIS cannot resolve, log the reason in development mode
+  if (typeof window !== 'undefined' && (import.meta.env?.DEV || process.env.NODE_ENV !== 'production')) {
+    console.warn(`[PIS Dev Log] Provider Identity Service could not resolve a registered provider for ID/Code: "${idOrCode}". Dynamic fallback generated.`);
   }
 
   // Graceful Fallback if missing
@@ -231,11 +251,26 @@ export function getProviderIdentity(idOrCode: string): ProviderIdentity {
   const initials = generateProviderInitials(cleanId, cleanCode);
   const fallbackColor = getFallbackColor(cleanCode) || '#374151';
 
+  // Format the fallback display name elegantly instead of raw 'unknown' or 'Unknown Provider'
+  let formattedName = cleanId;
+  if (cleanId === 'unknown') {
+    formattedName = 'SariRemit Partner';
+  } else {
+    // stc-pay -> STC Pay, mobily-pay -> Mobily Pay
+    formattedName = cleanId
+      .replace(/[-_]+/g, ' ')
+      .replace(/\b[a-z]/g, (char) => char.toUpperCase());
+    // Special capitalization logic
+    if (formattedName.toLowerCase().includes('stc')) {
+      formattedName = formattedName.replace(/Stc/i, 'STC');
+    }
+  }
+
   return {
     provider_id: cleanId,
     provider_code: cleanCode,
-    display_name: cleanId,
-    short_name: deriveShortName(cleanId, cleanCode),
+    display_name: formattedName,
+    short_name: deriveShortName(formattedName, cleanCode),
     category: 'bank',
     transfer_method: 'Bank Transfer',
     logo_url: null,

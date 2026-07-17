@@ -877,3 +877,71 @@ ALTER TABLE public.user_profiles
 ADD COLUMN IF NOT EXISTS privacy_policy_accepted_at TIMESTAMPTZ DEFAULT now();
 
 
+-- =========================================================================
+-- 16. SARIREMIT PROVIDER IDENTITY & COVERAGE SEEDS (PIS/BAM)
+-- =========================================================================
+-- These queries populate canonical brand assets, remittance channels,
+-- and channel corridor coverages to ensure the recommenders load correctly.
+
+-- A. Seed Brand Assets (BAM)
+INSERT INTO public.brand_assets (
+    id, asset_type, asset_key, asset_name, owner_type, owner_id, provider_code, country_code, storage_path, public_url, approval_status, status, version, primary_color, secondary_color, metadata, created_at, updated_at
+) VALUES
+    ('ba-stc-pay', 'provider_logo', 'stc-pay', 'STC Pay Logo', 'provider', 'stc-pay', 'stc-pay', 'SA', 'providers/stc-pay/stc-pay-logo.svg', '', 'official', 'active', 1, '#9333ea', '#ffffff', '{}'::jsonb, timezone('utc'::text, now()), timezone('utc'::text, now())),
+    ('ba-urpay', 'provider_logo', 'urpay', 'Urpay Logo', 'provider', 'urpay', 'urpay', 'SA', 'providers/urpay/urpay-logo.svg', '', 'official', 'active', 1, '#4f46e5', '#ffffff', '{}'::jsonb, timezone('utc'::text, now()), timezone('utc'::text, now())),
+    ('ba-mobily-pay', 'provider_logo', 'mobily-pay', 'Mobily Pay Logo', 'provider', 'mobily-pay', 'mobily-pay', 'SA', 'providers/mobily-pay/mobily-pay-logo.svg', '', 'official', 'active', 1, '#0ea5e9', '#ffffff', '{}'::jsonb, timezone('utc'::text, now()), timezone('utc'::text, now())),
+    ('ba-enjaz', 'provider_logo', 'enjaz', 'Enjaz Logo', 'provider', 'enjaz', 'enjaz', 'SA', 'providers/enjaz/enjaz-logo.svg', '', 'official', 'active', 1, '#d97706', '#ffffff', '{}'::jsonb, timezone('utc'::text, now()), timezone('utc'::text, now())),
+    ('ba-quickpay', 'provider_logo', 'quickpay', 'QuickPay Logo', 'provider', 'quickpay', 'quickpay', 'SA', 'providers/quickpay/quickpay-logo.svg', '', 'official', 'active', 1, '#059669', '#ffffff', '{}'::jsonb, timezone('utc'::text, now()), timezone('utc'::text, now())),
+    ('ba-western-union', 'provider_logo', 'western-union', 'Western Union Logo', 'provider', 'western-union', 'western-union', 'SA', 'providers/western-union/western-union-logo.svg', '', 'official', 'active', 1, '#eab308', '#ffffff', '{}'::jsonb, timezone('utc'::text, now()), timezone('utc'::text, now())),
+    ('ba-al-rajhi-tahweel', 'provider_logo', 'al-rajhi-tahweel', 'Al Rajhi Tahweel Logo', 'provider', 'al-rajhi-tahweel', 'al-rajhi-tahweel', 'SA', 'providers/al-rajhi-tahweel/tahweel-logo.svg', '', 'placeholder', 'active', 1, '#1e293b', '#ffffff', '{}'::jsonb, timezone('utc'::text, now()), timezone('utc'::text, now()))
+ON CONFLICT (id) DO UPDATE
+SET asset_name = EXCLUDED.asset_name, status = EXCLUDED.status, primary_color = EXCLUDED.primary_color;
+
+-- B. Seed Remittance Channels
+INSERT INTO public.remittance_channels (
+    id, provider_name, provider_code, display_name, category, status, supported_corridors, supported_transfer_methods, default_transfer_fee, default_vat_rate, fee_currency, logo_url, website_url, brand_asset_id
+) VALUES
+    ('stc-pay', 'STC Pay', 'stc-pay', 'STC Pay / STC Bank', 'wallet', 'active', ARRAY['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], ARRAY['Bank Transfer', 'Mobile Wallet'], 10.00, 0.15, 'SAR', '', 'https://stcpay.com.sa', 'ba-stc-pay'),
+    ('urpay', 'Urpay', 'urpay', 'Urpay', 'wallet', 'active', ARRAY['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], ARRAY['Bank Transfer', 'Mobile Wallet'], 12.00, 0.15, 'SAR', '', 'https://urpay.com.sa', 'ba-urpay'),
+    ('mobily-pay', 'Mobily Pay', 'mobily-pay', 'Mobily Pay', 'wallet', 'active', ARRAY['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], ARRAY['Mobile Wallet', 'Bank Transfer'], 8.00, 0.15, 'SAR', '', 'https://mobilypay.com.sa', 'ba-mobily-pay'),
+    ('enjaz', 'Enjaz', 'enjaz', 'Enjaz (Bank Albilad)', 'bank', 'active', ARRAY['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 'SAR', '', 'https://www.bankalbilad.com', 'ba-enjaz'),
+    ('quickpay', 'QuickPay', 'quickpay', 'QuickPay (SNB)', 'bank', 'active', ARRAY['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 'SAR', '', 'https://www.alahli.com', 'ba-quickpay'),
+    ('western-union', 'Western Union', 'western-union', 'Western Union', 'money_transfer_operator', 'active', ARRAY['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], ARRAY['Cash Pickup', 'Bank Transfer'], 18.00, 0.15, 'SAR', '', 'https://www.westernunion.com', 'ba-western-union'),
+    ('al-rajhi-tahweel', 'Al Rajhi Tahweel', 'al-rajhi-tahweel', 'Al Rajhi Tahweel', 'bank', 'active', ARRAY['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'], ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 'SAR', '', 'https://www.alrajhibank.com.sa', 'ba-al-rajhi-tahweel')
+ON CONFLICT (id) DO UPDATE
+SET display_name = EXCLUDED.display_name, category = EXCLUDED.category, status = EXCLUDED.status, brand_asset_id = EXCLUDED.brand_asset_id;
+
+-- C. Seed Channel Corridor Coverage (Rates and custom fee rules)
+INSERT INTO public.channel_corridor_coverage (
+    id, channel_id, corridor_id, status, supported_transfer_methods, custom_transfer_fee, custom_vat_rate, exchange_rate, transfer_fee, vat_rate, vat_amount, other_costs
+) VALUES
+    -- Pakistan (sa-pk, base rate 74.25)
+    ('cov-stc-pay-sa-pk', 'stc-pay', 'sa-pk', 'active', ARRAY['Bank Transfer', 'Mobile Wallet'], 10.00, 0.15, 74.62, 10.00, 0.15, 1.50, 0.00),
+    ('cov-urpay-sa-pk', 'urpay', 'sa-pk', 'active', ARRAY['Bank Transfer', 'Mobile Wallet'], 12.00, 0.15, 74.95, 12.00, 0.15, 1.80, 0.00),
+    ('cov-mobily-pay-sa-pk', 'mobily-pay', 'sa-pk', 'active', ARRAY['Mobile Wallet', 'Bank Transfer'], 8.00, 0.15, 74.50, 8.00, 0.15, 1.20, 0.00),
+    ('cov-enjaz-sa-pk', 'enjaz', 'sa-pk', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 74.20, 15.00, 0.15, 2.25, 0.00),
+    ('cov-quickpay-sa-pk', 'quickpay', 'sa-pk', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 74.15, 15.00, 0.15, 2.25, 0.00),
+    ('cov-western-union-sa-pk', 'western-union', 'sa-pk', 'active', ARRAY['Cash Pickup', 'Bank Transfer'], 18.00, 0.15, 74.75, 18.00, 0.15, 2.70, 0.00),
+    ('cov-al-rajhi-tahweel-sa-pk', 'al-rajhi-tahweel', 'sa-pk', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 74.30, 15.00, 0.15, 2.25, 0.00),
+
+    -- India (sa-in, base rate 22.15)
+    ('cov-stc-pay-sa-in', 'stc-pay', 'sa-in', 'active', ARRAY['Bank Transfer', 'Mobile Wallet'], 10.00, 0.15, 22.25, 10.00, 0.15, 1.50, 0.00),
+    ('cov-urpay-sa-in', 'urpay', 'sa-in', 'active', ARRAY['Bank Transfer', 'Mobile Wallet'], 12.00, 0.15, 22.35, 12.00, 0.15, 1.80, 0.00),
+    ('cov-mobily-pay-sa-in', 'mobily-pay', 'sa-in', 'active', ARRAY['Mobile Wallet', 'Bank Transfer'], 8.00, 0.15, 22.20, 8.00, 0.15, 1.20, 0.00),
+    ('cov-enjaz-sa-in', 'enjaz', 'sa-in', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 22.05, 15.00, 0.15, 2.25, 0.00),
+    ('cov-quickpay-sa-in', 'quickpay', 'sa-in', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 21.98, 15.00, 0.15, 2.25, 0.00),
+    ('cov-western-union-sa-in', 'western-union', 'sa-in', 'active', ARRAY['Cash Pickup', 'Bank Transfer'], 18.00, 0.15, 22.30, 18.00, 0.15, 2.70, 0.00),
+    ('cov-al-rajhi-tahweel-sa-in', 'al-rajhi-tahweel', 'sa-in', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 22.10, 15.00, 0.15, 2.25, 0.00),
+
+    -- Kenya (sa-ke, base rate 34.50)
+    ('cov-stc-pay-sa-ke', 'stc-pay', 'sa-ke', 'active', ARRAY['Bank Transfer', 'Mobile Wallet'], 10.00, 0.15, 34.65, 10.00, 0.15, 1.50, 0.00),
+    ('cov-urpay-sa-ke', 'urpay', 'sa-ke', 'active', ARRAY['Bank Transfer', 'Mobile Wallet'], 12.00, 0.15, 34.80, 12.00, 0.15, 1.80, 0.00),
+    ('cov-mobily-pay-sa-ke', 'mobily-pay', 'sa-ke', 'active', ARRAY['Mobile Wallet', 'Bank Transfer'], 8.00, 0.15, 34.55, 8.00, 0.15, 1.20, 0.00),
+    ('cov-enjaz-sa-ke', 'enjaz', 'sa-ke', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 34.35, 15.00, 0.15, 2.25, 0.00),
+    ('cov-quickpay-sa-ke', 'quickpay', 'sa-ke', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 34.30, 15.00, 0.15, 2.25, 0.00),
+    ('cov-western-union-sa-ke', 'western-union', 'sa-ke', 'active', ARRAY['Cash Pickup', 'Bank Transfer'], 18.00, 0.15, 34.70, 18.00, 0.15, 2.70, 0.00),
+    ('cov-al-rajhi-tahweel-sa-ke', 'al-rajhi-tahweel', 'sa-ke', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 34.40, 15.00, 0.15, 2.25, 0.00)
+ON CONFLICT (channel_id, corridor_id) DO UPDATE
+SET status = EXCLUDED.status, exchange_rate = EXCLUDED.exchange_rate, transfer_fee = EXCLUDED.transfer_fee;
+
+

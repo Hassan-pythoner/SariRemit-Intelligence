@@ -973,7 +973,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
 
     const action = async () => {
       const setting: CorridorSetting = {
-        id: `cs-${selectedCorridorCode}`,
+        id: selectedCorridorCode,
         corridor_code: selectedCorridorCode,
         destination_country: targetCorridor.toCountry,
         destination_currency: targetCorridor.currencyCode,

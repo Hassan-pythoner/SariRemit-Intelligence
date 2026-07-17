@@ -1250,8 +1250,8 @@ export async function resolveRatesWithRRE(
 
   for (const ch of activeChannels) {
     const provider = {
-      id: ch.providerCode,
-      name: ch.displayName || ch.providerName,
+      id: ch.providerCode || ch.provider_code || ch.id || 'unknown',
+      name: ch.displayName || ch.providerName || ch.display_name || ch.provider_name || ch.id || 'SariRemit Partner',
     };
 
     const coverage = getChannelCoverageSync(ch.id, corridorId);
@@ -4216,19 +4216,167 @@ const initialAdmins: SRCMCAdminAccess[] = [
 ];
 
 const initialCorridorSettings: CorridorSetting[] = [
-  { id: 'cs-ke', corridor_code: 'sa-ke', destination_country: 'Kenya', destination_currency: 'KES', status: 'active', display_as_coming_soon: false, notes: 'Primary active launch corridor', activated_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'cs-ug', corridor_code: 'sa-ug', destination_country: 'Uganda', destination_currency: 'UGX', status: 'active', display_as_coming_soon: false, notes: 'Primary active launch corridor', activated_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'cs-in', corridor_code: 'sa-in', destination_country: 'India', destination_currency: 'INR', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
-  { id: 'cs-pk', corridor_code: 'sa-pk', destination_country: 'Pakistan', destination_currency: 'PKR', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
-  { id: 'cs-ph', corridor_code: 'sa-ph', destination_country: 'Philippines', destination_currency: 'PHP', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
-  { id: 'cs-bd', corridor_code: 'sa-bd', destination_country: 'Bangladesh', destination_currency: 'BDT', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
-  { id: 'cs-eg', corridor_code: 'sa-eg', destination_country: 'Egypt', destination_currency: 'EGP', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
-  { id: 'cs-et', corridor_code: 'sa-et', destination_country: 'Ethiopia', destination_currency: 'ETB', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
+  { id: 'sa-ke', corridor_code: 'sa-ke', destination_country: 'Kenya', destination_currency: 'KES', status: 'active', display_as_coming_soon: false, notes: 'Primary active launch corridor', activated_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: 'sa-ug', corridor_code: 'sa-ug', destination_country: 'Uganda', destination_currency: 'UGX', status: 'active', display_as_coming_soon: false, notes: 'Primary active launch corridor', activated_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: 'sa-in', corridor_code: 'sa-in', destination_country: 'India', destination_currency: 'INR', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
+  { id: 'sa-pk', corridor_code: 'sa-pk', destination_country: 'Pakistan', destination_currency: 'PKR', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
+  { id: 'sa-ph', corridor_code: 'sa-ph', destination_country: 'Philippines', destination_currency: 'PHP', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
+  { id: 'sa-bd', corridor_code: 'sa-bd', destination_country: 'Bangladesh', destination_currency: 'BDT', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
+  { id: 'sa-eg', corridor_code: 'sa-eg', destination_country: 'Egypt', destination_currency: 'EGP', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
+  { id: 'sa-et', corridor_code: 'sa-et', destination_country: 'Ethiopia', destination_currency: 'ETB', status: 'inactive', display_as_coming_soon: false, notes: 'Inactive corridor', updated_at: new Date().toISOString() },
 ];
 
-const initialChannels: any[] = [];
+function buildDefaultFallbackChannels(): any[] {
+  return [
+    {
+      id: 'stc-pay',
+      providerName: 'STC Pay',
+      providerCode: 'stc-pay',
+      displayName: 'STC Pay / STC Bank',
+      category: 'wallet',
+      status: 'active',
+      supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'],
+      supportedTransferMethods: ['Bank Transfer', 'Mobile Wallet'],
+      defaultTransferFee: 10,
+      defaultVatRate: 0.15,
+      feeCurrency: 'SAR',
+      websiteUrl: 'https://stcpay.com.sa'
+    },
+    {
+      id: 'urpay',
+      providerName: 'Urpay',
+      providerCode: 'urpay',
+      displayName: 'Urpay',
+      category: 'wallet',
+      status: 'active',
+      supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'],
+      supportedTransferMethods: ['Bank Transfer', 'Mobile Wallet'],
+      defaultTransferFee: 12,
+      defaultVatRate: 0.15,
+      feeCurrency: 'SAR',
+      websiteUrl: 'https://urpay.com.sa'
+    },
+    {
+      id: 'mobily-pay',
+      providerName: 'Mobily Pay',
+      providerCode: 'mobily-pay',
+      displayName: 'Mobily Pay',
+      category: 'wallet',
+      status: 'active',
+      supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'],
+      supportedTransferMethods: ['Mobile Wallet', 'Bank Transfer'],
+      defaultTransferFee: 8,
+      defaultVatRate: 0.15,
+      feeCurrency: 'SAR',
+      websiteUrl: 'https://mobilypay.com.sa'
+    },
+    {
+      id: 'enjaz',
+      providerName: 'Enjaz',
+      providerCode: 'enjaz',
+      displayName: 'Enjaz (Bank Albilad)',
+      category: 'bank',
+      status: 'active',
+      supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'],
+      supportedTransferMethods: ['Bank Transfer', 'Cash Pickup'],
+      defaultTransferFee: 15,
+      defaultVatRate: 0.15,
+      feeCurrency: 'SAR',
+      websiteUrl: 'https://www.bankalbilad.com'
+    },
+    {
+      id: 'quickpay',
+      providerName: 'QuickPay',
+      providerCode: 'quickpay',
+      displayName: 'QuickPay (SNB)',
+      category: 'bank',
+      status: 'active',
+      supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'],
+      supportedTransferMethods: ['Bank Transfer', 'Cash Pickup'],
+      defaultTransferFee: 15,
+      defaultVatRate: 0.15,
+      feeCurrency: 'SAR',
+      websiteUrl: 'https://www.alahli.com'
+    },
+    {
+      id: 'western-union',
+      providerName: 'Western Union',
+      providerCode: 'western-union',
+      displayName: 'Western Union',
+      category: 'money_transfer_operator',
+      status: 'active',
+      supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'],
+      supportedTransferMethods: ['Cash Pickup', 'Bank Transfer'],
+      defaultTransferFee: 18,
+      defaultVatRate: 0.15,
+      feeCurrency: 'SAR',
+      websiteUrl: 'https://www.westernunion.com'
+    },
+    {
+      id: 'al-rajhi-tahweel',
+      providerName: 'Al Rajhi Tahweel',
+      providerCode: 'al-rajhi-tahweel',
+      displayName: 'Al Rajhi Tahweel',
+      category: 'bank',
+      status: 'active',
+      supportedCorridors: ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'],
+      supportedTransferMethods: ['Bank Transfer', 'Cash Pickup'],
+      defaultTransferFee: 15,
+      defaultVatRate: 0.15,
+      feeCurrency: 'SAR',
+      websiteUrl: 'https://www.alrajhibank.com.sa'
+    }
+  ];
+}
 
-const initialCoverages: ChannelCorridorCoverage[] = [];
+function buildDefaultFallbackCoverages(): ChannelCorridorCoverage[] {
+  const coverages: ChannelCorridorCoverage[] = [];
+  const activeCorridors = ['sa-ke', 'sa-ug', 'sa-in', 'sa-pk', 'sa-ph', 'sa-bd', 'sa-eg', 'sa-et'];
+
+  const channels = [
+    { id: 'stc-pay', fee: 10, rateMult: 1.003, methods: ['Bank Transfer', 'Mobile Wallet'] },
+    { id: 'urpay', fee: 12, rateMult: 1.005, methods: ['Bank Transfer', 'Mobile Wallet'] },
+    { id: 'mobily-pay', fee: 8, rateMult: 1.001, methods: ['Mobile Wallet', 'Bank Transfer'] },
+    { id: 'enjaz', fee: 15, rateMult: 0.998, methods: ['Bank Transfer', 'Cash Pickup'] },
+    { id: 'quickpay', fee: 15, rateMult: 0.995, methods: ['Bank Transfer', 'Cash Pickup'] },
+    { id: 'western-union', fee: 18, rateMult: 1.002, methods: ['Cash Pickup', 'Bank Transfer'] },
+    { id: 'al-rajhi-tahweel', fee: 15, rateMult: 0.999, methods: ['Bank Transfer', 'Cash Pickup'] }
+  ];
+
+  for (const ch of channels) {
+    for (const corrId of activeCorridors) {
+      const corridor = CORRIDORS.find(c => c.id === corrId);
+      if (!corridor) continue;
+      
+      const baseRate = corridor.baseExchangeRate;
+      const rate = parseFloat((baseRate * ch.rateMult).toFixed(4));
+      const vatAmount = parseFloat((ch.fee * 0.15).toFixed(2));
+
+      coverages.push({
+        id: `cov-${ch.id}-${corrId}`,
+        channel_id: ch.id,
+        corridor_id: corrId,
+        status: 'active',
+        supported_transfer_methods: ch.methods,
+        custom_transfer_fee: ch.fee,
+        custom_vat_rate: 0.15,
+        exchange_rate: rate,
+        transfer_fee: ch.fee,
+        vat_rate: 0.15,
+        vat_amount: vatAmount,
+        other_costs: 0.00,
+        notes: 'Pre-seeded fallback coverage rules',
+        updated_at: new Date().toISOString()
+      });
+    }
+  }
+
+  return coverages;
+}
+
+const initialChannels: any[] = buildDefaultFallbackChannels();
+
+const initialCoverages: ChannelCorridorCoverage[] = buildDefaultFallbackCoverages();
 
 // 1. Admin Access Control Methods
 export async function fetchAdminAccess(): Promise<SRCMCAdminAccess[]> {
@@ -4399,7 +4547,7 @@ export async function fetchRemittanceChannels(): Promise<any[]> {
         data = fallbackRes.data;
       }
 
-      if (data) {
+      if (data && data.length > 0) {
         const mapped = data.map((r: any) => {
           const joinedAsset = Array.isArray(r.brand_assets)
             ? (r.brand_assets[0] || null)
@@ -4430,6 +4578,13 @@ export async function fetchRemittanceChannels(): Promise<any[]> {
         });
         saveLocalStorageItem<any[]>(CHANNELS_KEY, mapped);
         return mapped;
+      } else if (data && data.length === 0) {
+        const currentLocal = getLocalStorageItem<any[]>(CHANNELS_KEY, []);
+        if (currentLocal.length === 0) {
+          saveLocalStorageItem<any[]>(CHANNELS_KEY, initialChannels);
+          return initialChannels;
+        }
+        return currentLocal;
       }
     } catch (err) {
       console.warn('Supabase fetch channels failed entirely, falling back:', err);
@@ -4663,6 +4818,15 @@ export async function fetchChannelCoverage(channelId?: string): Promise<ChannelC
           notes: r.notes ?? '',
           updated_at: r.updated_at
         }));
+
+        if (fetched.length === 0 && !channelId) {
+          const currentLocal = getLocalStorageItem<ChannelCorridorCoverage[]>(CHANNEL_COVERAGE_KEY, []);
+          if (currentLocal.length === 0) {
+            saveLocalStorageItem<ChannelCorridorCoverage[]>(CHANNEL_COVERAGE_KEY, initialCoverages);
+            return initialCoverages;
+          }
+          return currentLocal;
+        }
 
         const current = getLocalStorageItem<ChannelCorridorCoverage[]>(CHANNEL_COVERAGE_KEY, initialCoverages);
         let updated: ChannelCorridorCoverage[];

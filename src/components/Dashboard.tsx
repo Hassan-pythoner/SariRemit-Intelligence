@@ -13,6 +13,7 @@ import {
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect, SDSSisGauge } from './Sds';
 import { ProviderLogo, ProviderBrandBlock, CountryFlag, BrandIllustration } from './SdsBamComponents';
 import { RecordTransferModal } from './RecordTransferModal';
+import { getProviderIdentity } from '../services/pisService';
 
 interface DashboardProps {
   language: 'en' | 'ar';
@@ -218,10 +219,14 @@ export default function Dashboard({
       : "Based on currently available information, this provider is estimated to provide the highest recipient value for your selected transfer.";
   };
 
+  const recommendedProviderId = recommendedChannel?.resolved?.provider_id || recommendedChannel?.resolved?.provider_code || recommendedChannel?.resolved?.providerCode || 'stc-pay';
+  const bestProviderIdentity = getProviderIdentity(recommendedProviderId);
+
   const recommendedChannelObj = recommendedChannel?.resolved || {
-    provider_code: 'stc-pay',
-    displayName: bestProvider,
-    providerName: bestProvider,
+    provider_id: bestProviderIdentity.provider_id,
+    provider_code: bestProviderIdentity.provider_code,
+    displayName: bestProviderIdentity.display_name,
+    providerName: bestProviderIdentity.display_name,
     resolved_rate: activeCorridor.baseExchangeRate,
     transfer_fee: activeCorridor.typicalFee,
     source_label: 'Verified Direct Rate'
@@ -278,74 +283,8 @@ export default function Dashboard({
 
       <div className="relative z-10 space-y-8 pb-16">
         
-        {/* TOP SEARCH COMPACT UTILITY (Dynamic Real Search, Section 4) */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/60 pb-5">
-          {/* Real Dynamic Search Input */}
-          <div className="relative w-full md:max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder={isRtl ? "ابحث عن مزودي الخدمة، الممرات أو تحليلات الأسعار..." : "Search providers, corridors or insights..."}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setIsSearchFocused(true)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-all"
-              />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Dynamic Search Results Dropdown overlay */}
-            {isSearchFocused && searchQuery && (
-              <div className="absolute left-0 right-0 top-12 z-50 bg-[#0c2547] border border-slate-800 rounded-2xl shadow-2xl p-4 space-y-3 max-h-80 overflow-y-auto animate-fadeIn">
-                <div className="flex items-center justify-between pb-1 border-b border-slate-800/60">
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                    {isRtl ? 'الممرات المطابقة' : 'MATCHING CORRIDORS'}
-                  </span>
-                  <button 
-                    onClick={() => setIsSearchFocused(false)} 
-                    className="text-[10px] text-[#10B981] hover:underline"
-                  >
-                    {isRtl ? 'إغلاق' : 'Close'}
-                  </button>
-                </div>
-
-                {filteredCorridors.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {filteredCorridors.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => {
-                          setSelectedCorridorId(c.id);
-                          setSearchQuery('');
-                          setIsSearchFocused(false);
-                        }}
-                        className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-800/40 rounded-xl transition-colors cursor-pointer text-xs font-bold text-white"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span>{c.flag}</span>
-                          <span>{isRtl ? c.toCountryAr : c.toCountry}</span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-mono uppercase font-bold">{c.currencyCode}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-400 text-center py-2">
-                    {isRtl ? 'لا توجد نتائج مطابقة لمصطلح البحث' : 'No matching corridors found.'}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
+        {/* TOP STATUS COMPACT UTILITY (Section 4) */}
+        <div className="flex flex-col md:flex-row md:items-center justify-end gap-4 border-b border-slate-800/60 pb-5">
           {/* Real-time Freshwater status strip (Section 4) */}
           <div className="flex items-center gap-3 px-4 py-2.5 bg-[#0C2547] border border-slate-800 rounded-2xl shadow-sds-sm self-start md:self-auto font-mono">
             <div className="relative flex h-2 w-2">
@@ -388,126 +327,152 @@ export default function Dashboard({
             {isLoading ? (
               <RecommendationSkeleton isRtl={isRtl} />
             ) : (
-              <div className="relative bg-gradient-to-br from-[#0c2547] via-[#091f3e] to-[#07172c] rounded-3xl p-6 md:p-8 shadow-2xl border border-amber-500/20 overflow-hidden group hover:border-amber-500/30 transition-all">
-                {/* Visual Accent */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#10B981] via-amber-400 to-[#10B981]" />
+              <div className="relative bg-gradient-to-br from-[#0c2547] via-[#091f3e] to-[#07172c] rounded-3xl p-5 md:p-6 shadow-2xl border-2 border-amber-500/20 overflow-hidden group hover:border-amber-500/30 transition-all">
+                {/* Subtle top ambient gold glow */}
+                <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 blur-[50px] rounded-full -mr-16 -mt-16 pointer-events-none" />
                 
-                {/* Header Row */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-400/10 flex items-center justify-center text-xl shadow-inner border border-amber-400/20">
-                      🏆
-                    </div>
-                    <div className="text-left">
-                      <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest block font-mono">
-                        {isRtl ? 'التوصية المميزة لليوم' : 'RECOMMENDED FOR THIS TRANSFER'}
-                      </span>
-                      <h3 className="text-lg md:text-xl font-bold text-white tracking-tight flex items-center gap-2 mt-0.5">
-                        <span>🇸🇦 {isRtl ? 'المملكة العربية السعودية' : 'Saudi Arabia'}</span>
-                        <span className="text-slate-400 text-xs font-normal">→</span>
-                        <span>{activeCorridor.flag} {isRtl ? activeCorridor.toCountryAr : activeCorridor.toCountry}</span>
-                      </h3>
-                    </div>
-                  </div>
-
-                  {/* Provider Logo Component via PIS/BAM (Section 20/21) */}
-                  <ProviderBrandBlock
-                    channel={recommendedChannelObj}
-                    surface="dark"
-                    showVerification={true}
-                    className="bg-[#051326]/60 border-slate-800/80 shrink-0 min-w-[200px]"
-                  />
-                </div>
-
-                {/* Key Payout Display */}
-                <div className="my-8 py-6 border-y border-slate-800/60 text-left relative">
-                  <div className="absolute inset-y-0 right-4 flex items-center justify-center opacity-5 text-8xl font-black pointer-events-none select-none font-mono">
-                    {activeCorridor.currencyCode}
-                  </div>
-                  
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">
-                    {isRtl ? 'صافي المبلغ المستلم المتوقع للعائلة' : 'ESTIMATED LOWEST OVERALL TRANSFER COST'}
+                {/* Header banner: ✨ TODAY'S TOP RECOMMENDATION ✨ */}
+                <div className="flex items-center justify-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5 w-fit mx-auto mb-5">
+                  <span className="text-amber-400 text-xs">✨</span>
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest font-mono">
+                    {isRtl ? 'التوصية المميزة لليوم' : "TODAY'S TOP RECOMMENDATION"}
                   </span>
-
-                  <div className="flex items-baseline gap-2.5 flex-wrap">
-                    <span className="text-3xl md:text-5xl font-extrabold tracking-tight text-white font-mono">
-                      {netRecipient.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                    </span>
-                    <span className="text-lg font-black text-[#10B981]">{activeCorridor.currencyCode}</span>
-                    
-                    <span className="text-slate-400 text-xs font-bold px-1">
-                      ({isRtl ? 'مقابل' : 'for'} {amount.toLocaleString()} SAR)
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] text-slate-400 mt-3 flex items-center gap-1.5 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-[#10B981]" />
-                    {isRtl 
-                      ? "شامل الرسوم والضرائب، ولا يحتوي على رسوم خفية" 
-                      : "Calculated with fully disclosed rates, fees, and compliance taxes."}
-                  </p>
+                  <span className="text-amber-400 text-xs">✨</span>
                 </div>
 
-                {/* Info Panel: Resolved Rate & Savings */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                  <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800/60">
-                    <span className="text-[9px] text-slate-400 block font-black uppercase tracking-wider">{isRtl ? 'سعر الصرف المعتمد' : 'RESOLVED EXCHANGE RATE'}</span>
-                    <span className="text-sm font-extrabold text-white mt-1 block font-mono">
-                      1 SAR = {recommendedChannelObj.resolved_rate} {activeCorridor.currencyCode}
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800/60">
-                    <span className="text-[9px] text-slate-400 block font-black uppercase tracking-wider">{isRtl ? 'التوفير المحتمل' : 'POTENTIAL SAVINGS'}</span>
-                    <span className="text-sm font-extrabold text-[#10B981] mt-1 block font-mono">
-                      +{estimatedSavings.toLocaleString(undefined, { maximumFractionDigits: 1 })} SAR
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800/60">
-                    <span className="text-[9px] text-slate-400 block font-black uppercase tracking-wider">{isRtl ? 'درجة موثوقية المقارنة' : 'COMPARISON CONFIDENCE'}</span>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs font-black text-amber-400 uppercase tracking-wide">
-                        {confidence}
-                      </span>
-                      <SDSBadge type="verified" />
+                {/* Grid layout for Provider Info and SIS Score Gauge */}
+                <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-800/60">
+                  <div className="flex items-center gap-3">
+                    <ProviderLogo channel={{ ...recommendedChannelObj, providerCode: recommendedProviderId, displayName: bestProviderIdentity.display_name }} size="md" shape="rounded" surface="dark" />
+                    <div className="text-left">
+                      <h4 className="text-base font-extrabold text-white leading-tight uppercase tracking-tight">
+                        {bestProviderIdentity.display_name}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 font-medium">
+                        {isRtl ? `عبر ${recommendedChannelObj.source_label || 'قناة آمنة'}` : `via ${recommendedChannelObj.source_label || 'Direct Wallet'}`}
+                      </p>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 rounded text-[9px] font-black uppercase tracking-wider">
+                          {isRtl ? 'ثقة عالية' : 'High Confidence'}
+                        </span>
+                        <SDSBadge type="verified" />
+                      </div>
                     </div>
                   </div>
+
+                  {/* Circular SIS Gauge */}
+                  <div className="flex flex-col items-center justify-center shrink-0">
+                    <div className="relative w-14 h-14 flex items-center justify-center">
+                      <svg className="absolute w-full h-full transform -rotate-90">
+                        <circle
+                          cx="28"
+                          cy="28"
+                          r="23"
+                          className="stroke-slate-800"
+                          strokeWidth="3.5"
+                          fill="transparent"
+                        />
+                        <circle
+                          cx="28"
+                          cy="28"
+                          r="23"
+                          className="stroke-[#10B981]"
+                          strokeWidth="3.5"
+                          fill="transparent"
+                          strokeDasharray={2 * Math.PI * 23}
+                          strokeDashoffset={2 * Math.PI * 23 * (1 - (sisScore || 90) / 100)}
+                        />
+                      </svg>
+                      <span className="text-xs font-black text-white font-mono">{((sisScore || 90) / 10).toFixed(1)}</span>
+                    </div>
+                    <span className="text-[8px] font-black tracking-wider text-[#10B981] uppercase mt-1">
+                      {isRtl ? 'مؤشر SIS' : 'SIS SCORE'}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Primary Actions (Section 6) */}
-                <div className="mt-8 pt-5 border-t border-slate-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <span className="text-[10px] text-slate-400 font-medium leading-normal max-w-sm">
+                {/* 2-Column Key Payout Stats Panel */}
+                <div className="grid grid-cols-2 gap-4 py-4 border-b border-slate-800/60 text-left">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      {isRtl ? 'المستلم يحصل على' : 'Recipient gets'}
+                    </span>
+                    <span className="text-xl md:text-2xl font-black text-[#10B981] font-mono leading-none block">
+                      {netRecipient.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {activeCorridor.currencyCode}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium block">
+                      {isRtl ? `مقابل ${amount.toLocaleString()} ر.س` : `for ${amount.toLocaleString()} SAR`}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 pl-3 border-l border-slate-800/40">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      {isRtl ? 'أنت توفر حتى' : 'You save up to'}
+                    </span>
+                    <span className="text-xl md:text-2xl font-black text-[#10B981] font-mono leading-none block">
+                      {estimatedSavings.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {activeCorridor.currencyCode}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium block">
+                      {isRtl ? 'مقارنة بالخيارات الأخرى' : 'vs other options'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3-Column Secondary Stats Panel */}
+                <div className="grid grid-cols-3 gap-2 py-4 text-left">
+                  <div className="space-y-0.5">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{isRtl ? 'السرعة المتوقعة' : 'Est. delivery'}</span>
+                    <span className="text-xs font-extrabold text-[#10B981] block">{isRtl ? 'فوري' : 'Instant'}</span>
+                    <span className="text-[9px] text-slate-400 block font-medium">{isRtl ? 'بضع ثوانٍ' : 'Few seconds'}</span>
+                  </div>
+
+                  <div className="space-y-0.5 pl-2 border-l border-slate-800/40">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{isRtl ? 'التكلفة الإجمالية' : 'Total cost'}</span>
+                    <span className="text-xs font-extrabold text-white block font-mono">{recommendedChannelObj.transfer_fee || 8.05} SAR</span>
+                    <span className="text-[9px] text-slate-400 block font-medium">{isRtl ? 'شامل الضرائب والرسوم' : 'All inclusive'}</span>
+                  </div>
+
+                  <div className="space-y-0.5 pl-2 border-l border-slate-800/40">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">{isRtl ? 'سعر الصرف' : 'Rate'}</span>
+                    <span className="text-xs font-extrabold text-white block font-mono">{recommendedChannelObj.resolved_rate}</span>
+                    <span className="text-[9px] text-[#10B981] block font-black uppercase tracking-wider">{isRtl ? 'أفضل سعر' : 'Best rate'}</span>
+                  </div>
+                </div>
+
+                {/* Primary Button View all options */}
+                <div className="mt-4 pt-4 border-t border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <span className="text-[10px] text-slate-400 font-medium text-left leading-tight max-w-xs">
                     {isRtl 
                       ? "* الأسعار مطابقة لقاعدة بيانات التحليل ومأخوذة من واجهات برمجة التطبيقات المعتمدة للشركاء." 
                       : "* Recommendations are based on true overall cost optimizations compared chronologically."}
                   </span>
 
-                  <div className="flex flex-wrap gap-2.5">
-                    <button
-                      onClick={() => setIsExplainOpen(true)}
-                      className="px-4 py-2.5 bg-slate-900 hover:bg-slate-850 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-800"
-                    >
-                      <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{isRtl ? 'لماذا هذه التوصية؟' : 'Why this recommendation?'}</span>
-                    </button>
+                  <button
+                    onClick={handleCompareFull}
+                    className="w-full sm:w-auto px-6 py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-amber-950/20 font-extrabold"
+                  >
+                    <span>{isRtl ? 'مقارنة كل الخيارات' : 'View all options'}</span>
+                    <ArrowRight className="w-3.5 h-3.5 stroke-[3]" />
+                  </button>
+                </div>
 
-                    <button
-                      onClick={triggerRecordModal}
-                      className="px-4 py-2.5 bg-slate-900 hover:bg-slate-850 text-[#10B981] rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-800"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>{isRtl ? 'تسجيل الحوالة' : 'Record Transfer'}</span>
-                    </button>
+                {/* Secondary Actions drawer trigger */}
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    onClick={() => setIsExplainOpen(true)}
+                    className="px-3 py-1.5 bg-slate-900/60 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer border border-slate-800/60"
+                  >
+                    <HelpCircle className="w-3 h-3 text-amber-400" />
+                    <span>{isRtl ? 'لماذا؟' : 'Why?'}</span>
+                  </button>
 
-                    <button
-                      onClick={handleCompareFull}
-                      className="px-5 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#051326] rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-emerald-950/20 font-bold"
-                    >
-                      <span>{isRtl ? 'مقارنة الخيارات' : 'Compare Options'}</span>
-                      <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={triggerRecordModal}
+                    className="px-3 py-1.5 bg-slate-900/60 hover:bg-slate-800 text-[#10B981] rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer border border-slate-800/60"
+                  >
+                    <PlusCircle className="w-3 h-3" />
+                    <span>{isRtl ? 'تسجيل الحوالة' : 'Record'}</span>
+                  </button>
                 </div>
 
               </div>
@@ -975,7 +940,9 @@ export default function Dashboard({
                 {isRtl ? 'مساعد التفسير المالي الذكي' : 'EXPLAINABLE DECISION LOGIC'}
               </span>
               <h3 className="text-lg font-bold text-white tracking-tight">
-                {isRtl ? 'لماذا تم ترشيح هذه القناة؟' : 'Recommended for this transfer'}
+                {isRtl 
+                  ? `لماذا تم ترشيح ${bestProviderIdentity.display_name}؟` 
+                  : `Why ${bestProviderIdentity.display_name} is recommended`}
               </h3>
               <p className="text-xs text-slate-300">
                 {isRtl 
