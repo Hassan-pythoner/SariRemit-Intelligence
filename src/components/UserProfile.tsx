@@ -508,37 +508,6 @@ export default function UserProfile({
                   </button>
                 </form>
 
-                {/* Demo Quick Sandbox Access */}
-                <div className="pt-4 border-t border-sds-border/40 mt-4 text-left">
-                  <span className="block text-[10px] font-black text-[#F59E0B] uppercase tracking-widest font-mono mb-2">
-                    {isRtl ? 'بوابة العرض التجريبي السريع (SDS 3.0)' : 'Demo Sandbox Quick Access (SDS 3.0)'}
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthEmail('ahmed.hassan@saudi-expats.com');
-                        setAuthPassword('ahmed_hassan_remit_secure_9238');
-                      }}
-                      className="px-2.5 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-[11px] text-left hover:border-amber-400/40 transition-colors cursor-pointer"
-                    >
-                      <div className="font-extrabold text-slate-200">Ahmed Hassan</div>
-                      <div className="text-[9px] text-slate-400 font-mono">ahmed.hassan@saudi-expats.com</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthEmail('gaturuhassan@gmail.com');
-                        setAuthPassword('gaturu_hassan_remit_secure_8174');
-                      }}
-                      className="px-2.5 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-[11px] text-left hover:border-amber-400/40 transition-colors cursor-pointer"
-                    >
-                      <div className="font-extrabold text-slate-200">Hassan Gaturu</div>
-                      <div className="text-[9px] text-slate-400 font-mono">gaturuhassan@gmail.com</div>
-                    </button>
-                  </div>
-                </div>
-
                 <p className="text-[10px] text-sds-text-sec text-center leading-normal mt-3">
                   {isRtl ? (
                     <>

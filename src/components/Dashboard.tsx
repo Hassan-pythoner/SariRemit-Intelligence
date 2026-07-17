@@ -283,32 +283,13 @@ export default function Dashboard({
 
       <div className="relative z-10 space-y-8 pb-16">
         
-        {/* TOP STATUS COMPACT UTILITY (Section 4) */}
-        <div className="flex flex-col md:flex-row md:items-center justify-end gap-4 border-b border-slate-800/60 pb-5">
-          {/* Real-time Freshwater status strip (Section 4) */}
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-[#0C2547] border border-slate-800 rounded-2xl shadow-sds-sm self-start md:self-auto font-mono">
-            <div className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]"></span>
-            </div>
-            <div className="text-left">
-              <span className="text-[10px] font-black text-[#10B981] uppercase block tracking-wider leading-none">
-                {isRtl ? 'الأسعار مستقرة ومؤكدة' : 'VERIFIED STABILITY ACTIVE'}
-              </span>
-              <span className="text-[9px] text-slate-400 block mt-1 font-bold">
-                {isRtl ? 'آخر تحديث مالي قبل:' : 'Updated'} {lastUpdated}
-              </span>
-            </div>
-          </div>
-        </div>
-
         {/* HERO HEADER SECTION (Elegant Playfair display typography, Section 5) */}
         <div className="space-y-2 py-4">
           <span className="text-xs font-black text-amber-400 uppercase tracking-widest bg-amber-400/10 px-2.5 py-0.5 rounded border border-amber-400/20 inline-block font-mono">
             {isRtl ? 'مساعد اتخاذ القرار المالي' : 'REMITTANCE DECISION CONTROL'}
           </span>
           <h1 className="text-3xl md:text-5xl font-serif font-bold text-white tracking-tight leading-none">
-            {isRtl ? `أهلاً بك مجدداً، ${profile.name}` : `Make smarter moves with your money, ${profile.name}`}
+            {slf.getGreeting(profile.name, language)}
           </h1>
           <p className="text-sm md:text-base text-slate-300 max-w-2xl font-medium leading-relaxed">
             {isRtl 
@@ -483,12 +464,11 @@ export default function Dashboard({
               <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest font-mono">
                 {isRtl ? 'إجراءات سريعة ومختصرة' : 'FINANCIAL WORKSPACE SHORTCUTS'}
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
                   { title: isRtl ? 'مقارنة الأسعار' : 'Compare Rates', helper: isRtl ? 'تحليل كل القنوات' : 'Find best providers', icon: ArrowLeftRight, tab: 'compare', color: 'text-emerald-400 bg-emerald-500/5' },
                   { title: isRtl ? 'سجل التوفير' : 'Track Savings', helper: isRtl ? 'تحليلات تقدمك المالي' : 'Monitor milestones', icon: PiggyBank, tab: 'savings', color: 'text-amber-400 bg-amber-400/5' },
-                  { title: isRtl ? 'توثيق الحوالات' : 'Verify a Rate', helper: isRtl ? 'إرسال لقطة شاشة والتحقق' : 'Submit live receipt', icon: PlusCircle, tab: 'submit', color: 'text-indigo-400 bg-indigo-500/5' },
-                  { title: isRtl ? 'تنبيهات مخصصة' : 'Rate Alerts', helper: isRtl ? 'مراقبة الصرف الفوري' : 'Notify on high value', icon: Bell, tab: 'alerts', color: 'text-pink-400 bg-pink-500/5' }
+                  { title: isRtl ? 'توثيق الحوالات' : 'Verify a Rate', helper: isRtl ? 'إرسال لقطة شاشة والتحقق' : 'Submit live receipt', icon: PlusCircle, tab: 'submit', color: 'text-indigo-400 bg-indigo-500/5' }
                 ].map((act, idx) => {
                   const Icon = act.icon;
                   return (

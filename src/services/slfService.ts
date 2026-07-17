@@ -366,5 +366,29 @@ export const slf = {
       default:
         return lang === 'en' ? "Updated Recently" : "تم تحديثه مؤخراً";
     }
+  },
+
+  /**
+   * Generates a time-of-day greeting in English or Arabic based on SLF standards.
+   */
+  getGreeting: (name: string, lang: 'en' | 'ar'): string => {
+    const hours = new Date().getHours();
+    if (lang === 'en') {
+      if (hours >= 5 && hours < 12) {
+        return `Good morning, ${name}`;
+      } else if (hours >= 12 && hours < 17) {
+        return `Good afternoon, ${name}`;
+      } else {
+        return `Good evening, ${name}`;
+      }
+    } else {
+      if (hours >= 5 && hours < 12) {
+        return `صباح الخير، ${name}`;
+      } else if (hours >= 12 && hours < 17) {
+        return `طاب يومك، ${name}`;
+      } else {
+        return `مساء الخير، ${name}`;
+      }
+    }
   }
 };

@@ -652,8 +652,8 @@ export default function CompareRates({
         <>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left">
           
-          {/* LEFT PANEL: RESULTS DECK (Col span 8) */}
-          <div className="lg:col-span-8 space-y-5">
+          {/* LEFT PANEL: RESULTS DECK (Col span 9) */}
+          <div className="lg:col-span-9 space-y-5">
             
             {/* Top Options Tabs Selector */}
             <div className="flex bg-[#0C2547] p-1 rounded-2xl border border-sds-border w-fit">
@@ -1203,8 +1203,8 @@ export default function CompareRates({
                 )}
               </div>
 
-              {/* Sidebar contribution / verify rates widget (Col span 4) */}
-              <div className="lg:col-span-4 space-y-6 text-left">
+              {/* Sidebar contribution / verify rates widget (Col span 3) */}
+              <div className="lg:col-span-3 space-y-6 text-left">
                 
                 {/* Active Expat Reports mini widget */}
                 <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border space-y-4">

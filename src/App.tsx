@@ -320,8 +320,6 @@ export default function App() {
     { id: 'compare', label: language === 'en' ? 'Compare Rates' : 'مقارنة الأسعار', icon: ArrowLeftRight },
     { id: 'submit', label: language === 'en' ? 'Verify Rate' : 'توثيق الحوالات', icon: PlusCircle },
     { id: 'savings', label: language === 'en' ? 'Savings Journey' : 'المدخرات والوفر', icon: PiggyBank },
-    { id: 'insights', label: language === 'en' ? 'Market Pulse' : 'نبض السوق', icon: Compass },
-    { id: 'alerts', label: language === 'en' ? 'Rate Alerts' : 'التنبيهات', icon: Bell },
     { id: 'profile', label: language === 'en' ? 'Profile Settings' : 'الملف الشخصي', icon: User },
     { id: 'support', label: language === 'en' ? 'Support Center' : 'الدعم والمساعدة', icon: MessageSquare },
     ...(canSeeSrcmc ? [{ id: 'srcmc', label: language === 'en' ? 'SRCMC Control' : 'لوحة تحكم SRCMC', icon: ShieldCheck }] : []),
@@ -823,26 +821,6 @@ export default function App() {
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3.5">
-                  <button 
-                    onClick={() => { setActiveTab('alerts'); setIsMobileMoreOpen(false); }}
-                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
-                      activeTab === 'alerts' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
-                    }`}
-                  >
-                    <Bell className="w-5 h-5" />
-                    <span>{isRtl ? 'التنبيهات' : 'Rate Alerts'}</span>
-                  </button>
-                  
-                  <button 
-                    onClick={() => { setActiveTab('insights'); setIsMobileMoreOpen(false); }}
-                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
-                      activeTab === 'insights' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
-                    }`}
-                  >
-                    <Compass className="w-5 h-5" />
-                    <span>{isRtl ? 'نبض السوق' : 'Market Pulse'}</span>
-                  </button>
-                  
                   <button 
                     onClick={() => { setActiveTab('profile'); setIsMobileMoreOpen(false); }}
                     className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
