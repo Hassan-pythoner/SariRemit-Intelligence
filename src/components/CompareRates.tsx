@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TranslationDict, Corridor, TrueCostResult, BrandAsset } from '../types';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
+import { getProviderIdentity } from '../services/pisService';
 import { slf } from '../services/slfService';
 import { 
   getRecommendations, DbResolvedRate, DbSisScore, DbRecommendationResult, getAuthSession,
@@ -129,13 +130,16 @@ export default function CompareRates({
   // Apply filters on option list returned by the engine
   const filteredOptions = options.filter(option => {
     const pid = option.resolved.provider_id;
+    const identity = getProviderIdentity(pid);
+    const cat = identity.category?.toLowerCase() || '';
+    const methodStr = identity.transfer_method?.toLowerCase() || '';
     
     // 1. Transfer Method
     if (methodFilter !== 'all') {
       let method: 'wallet' | 'cash' | 'bank' = 'bank';
-      if (pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay') {
+      if (cat === 'wallet' || methodStr.includes('wallet')) {
         method = 'wallet';
-      } else if (pid === 'enjaz' || pid === 'western-union') {
+      } else if (cat === 'money_transfer_operator' || cat === 'exchange_house' || methodStr.includes('cash') || methodStr.includes('pickup')) {
         method = 'cash';
       } else {
         method = 'bank';
@@ -157,19 +161,19 @@ export default function CompareRates({
 
     // 4. Delivery Speed
     if (deliverySpeed === 'instant') {
-      const isInstant = pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay';
+      const isInstant = cat === 'wallet' || methodStr.includes('wallet');
       if (!isInstant) return false;
     }
 
     // 5. Provider Type
     if (providerType === 'wallet') {
-      const isWallet = pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay';
+      const isWallet = cat === 'wallet' || methodStr.includes('wallet');
       if (!isWallet) return false;
     } else if (providerType === 'bank') {
-      const isBank = pid === 'al-rajhi' || pid === 'snb-quickpay' || pid === 'anb-telemoney';
+      const isBank = cat === 'bank' || methodStr.includes('bank');
       if (!isBank) return false;
     } else if (providerType === 'exchange') {
-      const isExchange = pid === 'enjaz' || pid === 'western-union';
+      const isExchange = cat === 'exchange_house' || cat === 'money_transfer_operator' || methodStr.includes('cash') || methodStr.includes('pickup');
       if (!isExchange) return false;
     }
 
@@ -262,20 +266,26 @@ export default function CompareRates({
   };
 
   const getMethodIcon = (pid: string) => {
-    if (pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay') {
+    const identity = getProviderIdentity(pid);
+    const cat = identity.category?.toLowerCase() || '';
+    const method = identity.transfer_method?.toLowerCase() || '';
+    if (cat === 'wallet' || method.includes('wallet')) {
       return <Wallet className="w-3.5 h-3.5 text-indigo-400" />;
     }
-    if (pid === 'enjaz' || pid === 'western-union') {
+    if (cat === 'money_transfer_operator' || cat === 'exchange_house' || method.includes('cash') || method.includes('pickup')) {
       return <MapPin className="w-3.5 h-3.5 text-[#F59E0B]" />;
     }
     return <Landmark className="w-3.5 h-3.5 text-[#10B981]" />;
   };
 
   const getMethodLabel = (pid: string) => {
-    if (pid === 'stc-pay' || pid === 'urpay' || pid === 'mobily-pay') {
+    const identity = getProviderIdentity(pid);
+    const cat = identity.category?.toLowerCase() || '';
+    const method = identity.transfer_method?.toLowerCase() || '';
+    if (cat === 'wallet' || method.includes('wallet')) {
       return t.mobileWallet;
     }
-    if (pid === 'enjaz' || pid === 'western-union') {
+    if (cat === 'money_transfer_operator' || cat === 'exchange_house' || method.includes('cash') || method.includes('pickup')) {
       return t.cashPickup;
     }
     return t.bankTransfer;
@@ -642,18 +652,21 @@ export default function CompareRates({
 
       {/* 3. DUAL-COLUMN BENTO GRID */}
       {loading ? (
-        <div className="py-20 text-center space-y-4">
-          <div className="w-10 h-10 border-4 border-[#0C2547] border-t-[#10B981] rounded-full animate-spin mx-auto"></div>
-          <p className="text-sds-text-sec text-xs font-black uppercase tracking-wider font-mono">
-            {language === 'en' ? "Running Rate Resolution Engine (RRE)..." : "جاري تشغيل محرك أسعار الصرف (RRE)..."}
-          </p>
+        <div className="space-y-6">
+          <div className="bg-[#0C2547] border border-sds-border rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-t-[#10B981] border-sds-border rounded-full animate-spin"></div>
+            <p className="text-xs font-black uppercase tracking-wider font-mono text-sds-text-sec">
+              {language === 'en' ? "Running Rate Resolution Engine (RRE)..." : "جاري تشغيل محرك أسعار الصرف (RRE)..."}
+            </p>
+          </div>
+          <CompareRatesSkeleton isRtl={isRtl} />
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left">
           
-          {/* LEFT PANEL: RESULTS DECK (Col span 9) */}
-          <div className="lg:col-span-9 space-y-5">
+          {/* LEFT PANEL: RESULTS DECK (Col span 12) */}
+          <div className="lg:col-span-12 space-y-5">
             
             {/* Top Options Tabs Selector */}
             <div className="flex bg-[#0C2547] p-1 rounded-2xl border border-sds-border w-fit">
@@ -1019,8 +1032,8 @@ export default function CompareRates({
             // DESKTOP: BENTO DECK & TABLE LAYOUT
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
-              {/* Provider cards (Col span 8) */}
-              <div className="lg:col-span-8 space-y-4">
+              {/* Provider cards (Col span 9) */}
+              <div className="lg:col-span-9 space-y-4">
                 {sortedOptions.length === 0 ? (
                   <div className="bg-[#0C2547] p-12 text-center rounded-3xl border border-dashed border-sds-border">
                     <ShieldAlert className="w-10 h-10 text-sds-text-sec mx-auto" />
@@ -1397,6 +1410,89 @@ export default function CompareRates({
         />
       )}
 
+    </div>
+  );
+}
+
+// --- SHIMMER SKELETON COMPONENT FOR SDS 3.0 ---
+function CompareRatesSkeleton({ isRtl }: { isRtl: boolean }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left animate-pulse">
+      {/* LEFT PANEL: RESULTS DECK (Col span 12) */}
+      <div className="lg:col-span-12 space-y-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* Provider Cards Shimmer (Col span 9) */}
+          <div className="lg:col-span-9 space-y-5">
+            {/* Top Options Tabs Selector Shimmer */}
+            <div className="h-10 w-64 bg-slate-900/40 border border-sds-border rounded-2xl" />
+
+            {/* Filters bar Shimmer */}
+            <div className="p-4 bg-slate-900/30 rounded-3xl border border-sds-border/60 flex flex-wrap gap-3 items-center justify-between">
+              <div className="flex gap-2">
+                <div className="h-8 w-24 bg-slate-850 rounded-xl animate-pulse" />
+                <div className="h-8 w-28 bg-slate-850 rounded-xl animate-pulse" />
+              </div>
+              <div className="h-8 w-44 bg-slate-850 rounded-xl animate-pulse" />
+            </div>
+
+            {/* Provider Cards Shimmer */}
+            {[1, 2, 3].map((idx) => (
+              <div key={idx} className="bg-[#0C2547] rounded-3xl p-5 border border-sds-border space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-slate-800" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-32 bg-slate-850 rounded" />
+                      <div className="h-2.5 w-24 bg-slate-850 rounded" />
+                    </div>
+                  </div>
+                  <div className="h-9 w-28 bg-slate-850 rounded-xl" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-3 border-t border-sds-border/40">
+                  <div className="space-y-1.5">
+                    <div className="h-2 w-12 bg-slate-850 rounded" />
+                    <div className="h-3.5 w-16 bg-slate-850 rounded" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-2 w-14 bg-slate-850 rounded" />
+                    <div className="h-3.5 w-12 bg-slate-850 rounded" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-2 w-10 bg-slate-850 rounded" />
+                    <div className="h-3.5 w-14 bg-slate-850 rounded" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-2 w-16 bg-slate-850 rounded" />
+                    <div className="h-3.5 w-20 bg-slate-850 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* RIGHT PANEL: SIDEBAR (Col span 3) */}
+          <div className="lg:col-span-3 space-y-6">
+            <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border space-y-4">
+              <div className="h-3 w-28 bg-slate-850 rounded" />
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex justify-between items-center py-2 border-b border-sds-border/40">
+                    <div className="h-2.5 w-20 bg-slate-850 rounded" />
+                    <div className="h-2.5 w-12 bg-slate-850 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border space-y-4">
+              <div className="h-3 w-36 bg-slate-850 rounded" />
+              <div className="h-2 w-full bg-slate-850 rounded" />
+              <div className="h-2 w-4/5 bg-slate-850 rounded" />
+            </div>
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 }

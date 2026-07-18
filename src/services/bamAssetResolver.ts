@@ -9,6 +9,8 @@ export const BAM_FEATURE_FLAGS = {
   ENABLE_BAM_PUBLIC_ASSETS: true,
   ENABLE_BAM_SRCMC: true,
   ENABLE_BAM_ASSET_VERSIONING: true,
+  ENABLE_PURPOSE_LED_LANDING_HERO: true,
+  ENABLE_NEW_SARIREMIT_LOGO: true,
 };
 
 // Initialize from localStorage if present
@@ -120,7 +122,7 @@ export function getFallbackColor(providerCode: string): string {
  * 2. Get SariRemit logo configuration
  */
 export function getSariRemitLogo(surface?: BrandSurface, size?: BrandAssetSize): ResolvedBrandAsset {
-  if (!BAM_FEATURE_FLAGS.ENABLE_BAM_UI) {
+  if (!BAM_FEATURE_FLAGS.ENABLE_BAM_UI || !BAM_FEATURE_FLAGS.ENABLE_NEW_SARIREMIT_LOGO) {
     return {
       source: 'sds_fallback',
       url: null,
@@ -165,7 +167,7 @@ export function getSariRemitLogo(surface?: BrandSurface, size?: BrandAssetSize):
  * 3. Get SariRemit monogram
  */
 export function getSariRemitMonogram(surface?: BrandSurface, size?: BrandAssetSize): ResolvedBrandAsset {
-  if (!BAM_FEATURE_FLAGS.ENABLE_BAM_UI) {
+  if (!BAM_FEATURE_FLAGS.ENABLE_BAM_UI || !BAM_FEATURE_FLAGS.ENABLE_NEW_SARIREMIT_LOGO) {
     return {
       source: 'sds_fallback',
       url: null,
@@ -484,4 +486,32 @@ export function resolveNotificationAsset(notification: any): ResolvedBrandAsset 
   
   // system update
   return getSariRemitMonogram();
+}
+
+/**
+ * 14. Get Landing Hero Image with BAM and Fallback
+ */
+export function getLandingHeroImage(): ResolvedBrandAsset {
+  const assets = getBrandAssetsSync();
+  const asset = assets.find(a => a.asset_key === 'sariremit_landing_hero_primary' && a.asset_type === 'landing_hero_image' && a.status === 'active');
+  
+  if (asset) {
+    return {
+      id: asset.id,
+      source: 'bam_official',
+      url: asset.public_url || asset.light_url || asset.dark_url,
+      thumbnailUrl: asset.thumbnail_url || asset.public_url,
+      altText: asset.alt_text || 'An expat using SariRemit on a smartphone to compare remittance options before sending money to family.',
+      approvalStatus: asset.approval_status,
+      version: asset.version
+    };
+  }
+
+  // Fallback to our newly generated image path
+  return {
+    source: 'sds_fallback',
+    url: '/src/assets/images/sariremit_landing_hero_primary_1784359364187.jpg',
+    altText: 'An expat using SariRemit on a smartphone to compare remittance options before sending money to family.',
+    fallbackInitials: 'SR'
+  };
 }

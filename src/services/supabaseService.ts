@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress, BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission, SupportCategory, SupportFeedbackRequest, SupportRequestMessage, SriReferenceBenchmark } from '../types';
 import { PROVIDERS, CORRIDORS } from './constants';
+import logoImg from '../assets/images/sariremit_logo_1783671155763.jpg';
 
 // Interfaces for Supabase tables
 export interface DbRateOverride {
@@ -3367,7 +3368,16 @@ export async function saveRecordedTransfer(transfer: RecordedTransfer): Promise<
     computed_savings: transfer.estimatedSavingsSAR || 0,
     recipient_amount: transfer.estimatedRecipientAmount,
     transfer_status: 'completed',
-    recorded_at: transfer.recordedAt
+    recorded_at: transfer.recordedAt,
+    provider_id: transfer.channelId,
+    channel_id: transfer.channelId,
+    provider_name: PROVIDERS.find(p => p.id === transfer.channelId)?.name || transfer.channelId,
+    send_amount_sar: transfer.sendAmountSAR,
+    estimated_recipient_amount: transfer.estimatedRecipientAmount,
+    savings_amount_sar: transfer.estimatedSavingsSAR || 0,
+    comparison_type: transfer.savingsComparisonType,
+    comparison_label: transfer.comparisonChannelId || undefined,
+    status: transfer.status || 'recorded'
   };
   await saveUserTransfer(savingsRecord);
 
@@ -3895,7 +3905,8 @@ export async function saveUserTransfer(transfer: UserTransferSavings): Promise<v
           computed_savings: newTransfer.computed_savings,
           recipient_amount: newTransfer.recipient_amount,
           transfer_status: newTransfer.transfer_status,
-          recorded_at: newTransfer.recorded_at
+          recorded_at: newTransfer.recorded_at,
+          provider_id: newTransfer.provider_id
         };
         const { error: coreError } = await supabaseClient
           .from('user_transfer_savings')
@@ -4493,6 +4504,9 @@ export async function saveCorridorSetting(setting: CorridorSetting): Promise<Cor
   if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient.from('corridor_settings').upsert(setting).select();
+      if (error) {
+        console.error('[SariRemit MC] Supabase save corridor settings error:', error);
+      }
       if (!error && data && data[0]) {
         const saved: CorridorSetting = {
           id: data[0].id,
@@ -5035,6 +5049,74 @@ export const BRAND_ASSETS_KEY = 'sr_brand_assets';
 export const BRAND_PERMISSIONS_KEY = 'sr_brand_permissions';
 
 export const initialBrandAssets: BrandAsset[] = [
+  {
+    id: 'ba-sariremit-logo',
+    asset_type: 'sariremit_logo',
+    asset_key: 'sariremit_primary_logo',
+    asset_name: 'SariRemit Primary Logo',
+    owner_type: 'system',
+    provider_code: 'sariremit',
+    storage_path: 'brand/sariremit_logo_1783671155763.jpg',
+    public_url: logoImg,
+    light_url: logoImg,
+    dark_url: logoImg,
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#071A35',
+    secondary_color: '#10B981',
+    alt_text: 'SariRemit — Know before you send',
+    metadata: {
+      width: 1440,
+      height: 960,
+      mime_type: 'image/jpeg'
+    },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-sariremit-monogram',
+    asset_type: 'sariremit_monogram',
+    asset_key: 'sariremit_compact_monogram',
+    asset_name: 'SariRemit Compact Monogram',
+    owner_type: 'system',
+    provider_code: 'sariremit',
+    storage_path: 'brand/sariremit_logo_1783671155763.jpg',
+    public_url: logoImg,
+    light_url: logoImg,
+    dark_url: logoImg,
+    approval_status: 'official',
+    status: 'active',
+    version: 1,
+    primary_color: '#071A35',
+    secondary_color: '#10B981',
+    alt_text: 'SariRemit',
+    metadata: {
+      width: 1440,
+      height: 960,
+      mime_type: 'image/jpeg'
+    },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'ba-sariremit-legacy',
+    asset_type: 'sariremit_logo',
+    asset_key: 'sariremit_legacy_logo',
+    asset_name: 'SariRemit Legacy Fallback',
+    owner_type: 'system',
+    provider_code: 'sariremit',
+    storage_path: '',
+    public_url: '',
+    approval_status: 'placeholder',
+    status: 'archived',
+    version: 1,
+    primary_color: '#10B981',
+    secondary_color: '#F59E0B',
+    metadata: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
   {
     id: 'ba-stc-pay',
     asset_type: 'provider_logo',

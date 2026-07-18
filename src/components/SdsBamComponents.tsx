@@ -148,6 +148,15 @@ export function SariRemitLogo({
 
   const sizeClass = SDS_ASSET_SIZES[size] || SDS_ASSET_SIZES.md;
 
+  const logoImageSizes = {
+    xs: 'h-5 w-auto max-w-[40px] md:max-w-[50px]',
+    sm: 'h-7 w-auto max-w-[60px] md:max-w-[75px]',
+    md: 'h-10 w-auto max-w-[100px] md:max-w-[125px]',
+    lg: 'h-14 w-auto max-w-[140px] md:max-w-[175px]',
+    xl: 'h-20 w-auto max-w-[200px] md:max-w-[250px]',
+  };
+  const sizeStyleClass = logoImageSizes[size] || logoImageSizes.md;
+
   // Render official BAM image logo if successful
   if (resolved.url && imgState !== 'error') {
     return (
@@ -163,10 +172,10 @@ export function SariRemitLogo({
               runDevWarning('SariRemitLogo failed to load from URL: ' + resolved.url);
               setImgState('error');
             }}
-            className={`${sizeClass} rounded-xl object-contain transition-all ${imgState === 'loading' ? 'hidden' : 'block'}`}
+            className={`${sizeStyleClass} rounded-lg object-contain transition-all ${imgState === 'loading' ? 'hidden' : 'block'}`}
           />
         </div>
-        {variant !== 'monogram' && variant !== 'favicon-style' && (
+        {variant !== 'monogram' && variant !== 'favicon-style' && variant !== 'compact' && (
           <div className="flex flex-col text-left">
             <span className="font-sans font-black tracking-tight text-slate-900 dark:text-white leading-none">
               SariRemit

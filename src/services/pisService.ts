@@ -147,9 +147,15 @@ export function getAllProviderIdentities(): ProviderIdentity[] {
 
     // Categorization: Always consume category directly from remittance_channels
     const category = ch.category || 'wallet';
+    let defaultMethod = 'Bank Transfer';
+    if (category.toLowerCase() === 'wallet') {
+      defaultMethod = 'Mobile Wallet';
+    } else if (category.toLowerCase() === 'exchange_house' || category.toLowerCase() === 'money_transfer_operator') {
+      defaultMethod = 'Cash Pickup';
+    }
     const transferMethod = ch.supportedTransferMethods && ch.supportedTransferMethods.length > 0 
       ? ch.supportedTransferMethods[0] 
-      : (category.toLowerCase() === 'wallet' ? 'Mobile Wallet' : 'Bank Transfer');
+      : defaultMethod;
 
     const initials = generateProviderInitials(ch.displayName || ch.providerName || pCode, pCode);
 
@@ -271,8 +277,8 @@ export function getProviderIdentity(idOrCode: string): ProviderIdentity {
     provider_code: cleanCode,
     display_name: formattedName,
     short_name: deriveShortName(formattedName, cleanCode),
-    category: 'bank',
-    transfer_method: 'Bank Transfer',
+    category: cleanCode.includes('pay') || cleanCode.includes('wallet') ? 'wallet' : 'bank',
+    transfer_method: cleanCode.includes('pay') || cleanCode.includes('wallet') ? 'Mobile Wallet' : 'Bank Transfer',
     logo_url: null,
     brand_asset_id: null,
     theme: `bg-slate-700`,

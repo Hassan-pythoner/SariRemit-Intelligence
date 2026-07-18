@@ -152,7 +152,9 @@ export default function Dashboard({
           } else {
             setRecommendedChannel({
               resolved: {
+                provider_id: res.bestOption.best_provider_id,
                 provider_code: res.bestOption.best_provider_id,
+                provider_name: res.bestOption.best_provider_name,
                 displayName: res.bestOption.best_provider_name,
                 providerName: res.bestOption.best_provider_name,
                 resolved_rate: activeCorridor.baseExchangeRate,

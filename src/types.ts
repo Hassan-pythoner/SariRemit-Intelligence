@@ -489,6 +489,7 @@ export type BrandAssetType =
   | "partner_logo"
   | "marketing_asset"
   | "theme_asset"
+  | "landing_hero_image"
   | "other";
 
 export type BrandAssetStatus =

@@ -140,10 +140,12 @@ export const RecordTransferModal: React.FC<RecordTransferModalProps> = ({
     try {
       const actualVal = actualRecipientAmount ? parseFloat(actualRecipientAmount) : undefined;
 
+      const chosenChannelId = provider.provider_id || provider.provider_code || provider.id || option.providerId || 'stc-pay';
+
       const record: RecordedTransfer = {
         id: `rec-trans-${Date.now()}`,
         userId,
-        channelId: provider.provider_id,
+        channelId: chosenChannelId,
         corridorId: corridor.id,
         sendAmountSAR,
         destinationCurrency: corridor.currencyCode,
@@ -158,7 +160,7 @@ export const RecordTransferModal: React.FC<RecordTransferModalProps> = ({
         estimatedSavingsSAR: estimatedSavingsSAR > 0 ? estimatedSavingsSAR : null,
         savingsComparisonType: comparisonType,
         comparisonChannelId: comparisonType === 'direct_matchup' ? selectedTargetId : null,
-        idempotencyKey: `idemp-${provider.provider_id}-${corridor.id}-${sendAmountSAR}-${Date.now().toString().slice(-6)}`,
+        idempotencyKey: `idemp-${chosenChannelId}-${corridor.id}-${sendAmountSAR}-${Date.now().toString().slice(-6)}`,
         recordedAt: new Date().toISOString(),
         createdAt: new Date().toISOString()
       };

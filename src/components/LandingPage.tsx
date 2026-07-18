@@ -164,16 +164,16 @@ export default function LandingPage({
   const dict = {
     en: {
       badge: "REMITTANCE INTELLIGENCE FOR EXPATS",
-      heroTitle: "Transfer With Confidence.",
-      heroSub: "Know where, when, and how to send money home before making your transfer.",
-      heroDesc: "SariRemit helps expatriates in Saudi Arabia make confident remittance decisions by comparing provider rates, fees, VAT, final family payout, and verified intelligence in one clear experience.",
-      heroCta: "Compare Rates Now",
-      heroSecondary: "See How It Works",
-      heroHelper: "SariRemit does not hold or transfer your money. We provide independent decision-support intelligence before you use a remittance provider.",
-      trust1: "Independent Recommendations",
-      trust2: "Transparent Cost Comparison",
-      trust3: "Verified Rate Intelligence",
-      trust4: "Built for Expats in Saudi Arabia",
+      heroTitle: "Know what they’ll receive before you send.",
+      heroSub: "Compare first. Send with confidence.",
+      heroDesc: "SariRemit helps expats compare available rates, fees and estimated recipient amounts across remittance channels—before choosing where to send.",
+      heroCta: "Compare Rates",
+      heroSecondary: "How SariRemit Works",
+      heroHelper: "SariRemit does not process or execute money transfers. It helps you compare available information before choosing a provider.",
+      trust1: "Clear cost comparison",
+      trust2: "Verified community information",
+      trust3: "Explainable recommendations",
+      trust4: "Secure account access",
       
       valTitle: "Everything You Need Before You Send",
       val1Title: "Compare Real Transfer Value",
@@ -284,16 +284,16 @@ export default function LandingPage({
     },
     ar: {
       badge: "ذكاء الحوالات للمغتربين",
-      heroTitle: "حول أموالك بكل ثقة.",
-      heroSub: "اعرف أين، ومتى، وكيف ترسل الأموال إلى بلدك قبل إجراء الحوالة.",
-      heroDesc: "يساعد ساري ريميت المغتربين في المملكة العربية السعودية على اتخاذ قرارات تحويل واثقة من خلال مقارنة أسعار قنوات التحويل، الرسوم، ضريبة القيمة المضافة، والمبلغ النهائي للعائلة في تجربة واحدة واضحة.",
-      heroCta: "قارن الأسعار الآن",
-      heroSecondary: "شاهد كيف يعمل",
-      heroHelper: "ساري ريميت لا يحتفظ بأموالك ولا يقوم بتحويلها. نحن نقدم معلومات مستقلة لدعم قرارك قبل استخدام أي من مزودي خدمات التحويل.",
-      trust1: "توصيات مستقلة بالكامل",
-      trust2: "مقارنة تكاليف شفافة",
-      trust3: "معلومات أسعار مؤكدة بالأدلة",
-      trust4: "مصمم للمغتربين في السعودية",
+      heroTitle: "اعرف ما ستستلمه عائلتك قبل الإرسال.",
+      heroSub: "قارن أولاً. أرسل بكل ثقة.",
+      heroDesc: "يساعد ساري ريميت المغتربين على مقارنة الأسعار المتاحة والرسوم والمبالغ المقدرة للمستلمين عبر قنوات التحويل المختلفة - قبل اختيار مكان الإرسال.",
+      heroCta: "قارن الأسعار",
+      heroSecondary: "كيف يعمل ساري ريميت",
+      heroHelper: "لا يقوم ساري ريميت بمعالجة أو تنفيذ عمليات تحويل الأموال. ولكنه يساعدك على مقارنة المعلومات المتاحة قبل اختيار المزود.",
+      trust1: "مقارنة تكاليف واضحة",
+      trust2: "معلومات مجتمعية مؤكدة",
+      trust3: "توصيات قابلة للتفسير",
+      trust4: "وصول آمن للحساب",
       
       valTitle: "كل ما تحتاجه قبل الإرسال",
       val1Title: "قارن القيمة الفعلية للتحويل",
@@ -612,6 +612,7 @@ export default function LandingPage({
             <div className="space-y-4">
               {/* Amount Input */}
               <SDSInput
+                id="landing-hero-calculator-amount"
                 label={t.sendingAmount}
                 type="number"
                 value={amount}
@@ -685,7 +686,6 @@ export default function LandingPage({
               </SDSButton>
             </div>
           </div>
-          
         </div>
       </section>
 

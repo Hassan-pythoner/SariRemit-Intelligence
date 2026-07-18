@@ -70,6 +70,7 @@ export default function App() {
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
   const [srcmcAccess, setSrcmcAccess] = useState<any | null>(null);
   const [srcmcAccessLoading, setSrcmcAccessLoading] = useState<boolean>(true);
+  const [loadingTimeout, setLoadingTimeout] = useState<boolean>(false);
   const isLoggedIn = !!profile.email;
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -81,6 +82,19 @@ export default function App() {
   });
 
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState<boolean>(false);
+
+  // Monitor loading timeout
+  useEffect(() => {
+    let timer: any;
+    if (appLoading || (isLoggedIn && srcmcAccessLoading)) {
+      timer = setTimeout(() => {
+        setLoadingTimeout(true);
+      }, 10000); // 10 seconds timeout for resilient fallback
+    } else {
+      setLoadingTimeout(false);
+    }
+    return () => clearTimeout(timer);
+  }, [appLoading, srcmcAccessLoading, isLoggedIn]);
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(prev => {
@@ -575,13 +589,110 @@ export default function App() {
   const isOnboardingRequired = isLoggedIn && !profile.onboarding_completed;
 
   if (appLoading || (isLoggedIn && srcmcAccessLoading)) {
+    if (loadingTimeout) {
+      return (
+        <div className="min-h-screen bg-[#071A35] flex flex-col items-center justify-center font-sans p-6 text-center select-none animate-fade-in">
+          <div className="max-w-md w-full bg-[#0C2547] border border-sds-border rounded-3xl p-8 shadow-sds-xl space-y-6 flex flex-col items-center">
+            <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-full flex items-center justify-center animate-bounce mb-2">
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold text-white">
+                {language === 'en' 
+                  ? 'We’re having trouble opening your account.' 
+                  : 'نواجه مشكلة في فتح حسابك.'}
+              </h2>
+              <p className="text-xs text-slate-300 leading-relaxed max-w-sm">
+                {language === 'en'
+                  ? 'Your latest information will be ready shortly. Please check your internet connection or try again.'
+                  : 'ستكون أحدث معلوماتك جاهزة قريبًا. يرجى التحقق من اتصالك بالإنترنت أو المحاولة مرة أخرى.'}
+              </p>
+            </div>
+
+            <div className="w-full pt-4 space-y-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full py-3 bg-[#10B981] hover:bg-[#0d9466] text-white font-semibold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17" />
+                </svg>
+                <span>{language === 'en' ? 'Try Again' : 'المحاولة مرة أخرى'}</span>
+              </button>
+              
+              <button
+                onClick={async () => {
+                  signOutSession();
+                  setLoadingTimeout(false);
+                  setAppLoading(false);
+                  setSrcmcAccessLoading(false);
+                  setProfile({
+                    name: '',
+                    email: '',
+                    phone: '',
+                    preferredCorridorId: 'sa-pk',
+                    language: 'en',
+                    onboarding_completed: false
+                  });
+                  setActiveTab('sign-in');
+                }}
+                className="w-full py-3 bg-[#071A35] hover:bg-[#0b2b57] text-slate-200 hover:text-white font-semibold rounded-xl border border-sds-border transition-all cursor-pointer"
+              >
+                {language === 'en' ? 'Go to Sign In' : 'الذهاب لتسجيل الدخول'}
+              </button>
+
+              <button
+                onClick={() => {
+                  setLoadingTimeout(false);
+                  setAppLoading(false);
+                  setSrcmcAccessLoading(false);
+                  setActiveTab('landing');
+                }}
+                className="w-full py-2.5 text-xs text-slate-400 hover:text-slate-300 font-medium transition-all cursor-pointer"
+              >
+                {language === 'en' ? 'Return to Home' : 'العودة للرئيسية'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="min-h-screen bg-sds-bg flex flex-col items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-4">
-          <SariRemitLogo variant="primary" size="xl" surface="dark" showSlogan={true} className="animate-pulse" />
-          <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest mt-2">
-            <div className="w-2 h-2 rounded-full bg-sds-secondary animate-ping" />
-            Loading App Session & Access Control...
+      <div className="min-h-screen bg-[#071A35] flex flex-col items-center justify-center font-sans p-6 text-center select-none relative overflow-hidden">
+        {/* Abstract background blobs for premium aesthetic */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#10B981]/5 rounded-full blur-3xl pointer-events-none animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none animate-pulse" />
+        
+        <div className="flex flex-col items-center space-y-6 relative z-10 max-w-sm">
+          {/* Logo element with custom container */}
+          <div className="p-4 rounded-3xl bg-[#0C2547]/40 border border-sds-border/30 backdrop-blur-sm shadow-sds-md">
+            <SariRemitLogo variant="compact" size="xl" surface="dark" className="animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            {/* Short status message */}
+            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+              {isLoggedIn 
+                ? (language === 'en' ? 'Getting your account ready…' : 'جاري تجهيز حسابك...')
+                : (language === 'en' ? 'Preparing your SariRemit experience…' : 'جاري تحضير تجربة ساري ريميت...')}
+            </h3>
+            {/* Optional supporting line */}
+            <p className="text-xs text-slate-400">
+              {language === 'en' 
+                ? 'Your latest information will be ready shortly.' 
+                : 'ستكون أحدث معلوماتك جاهزة قريبًا.'}
+            </p>
+          </div>
+
+          {/* Subtle animated progress indicator */}
+          <div className="flex items-center gap-1.5 pt-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-bounce [animation-delay:-0.3s]"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-bounce [animation-delay:-0.15s]"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-bounce"></span>
           </div>
         </div>
       </div>
