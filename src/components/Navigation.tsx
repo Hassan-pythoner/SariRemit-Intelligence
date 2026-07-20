@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { SariRemitLogo } from './SdsBamComponents';
 import NotificationCenter from './NotificationCenter';
+import { useTheme } from '../context/ThemeContext';
 
 interface NavigationProps {
   activeTab: string;
@@ -30,6 +31,7 @@ export default function Navigation({
   srcmcAccessLoading
 }: NavigationProps) {
   const isRtl = language === 'ar';
+  const { toggleTheme, resolvedTheme } = useTheme();
   const isLoggedIn = !!profile.email;
   const canSeeSrcmcNav = srcmcAccess?.is_active === true;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -172,6 +174,20 @@ export default function Navigation({
             >
               <Globe2 className="w-3.5 h-3.5 text-amber-400" />
               <span>{language === 'en' ? 'EN | عربي' : 'عربي | EN'}</span>
+            </button>
+
+            {/* Theme Toggle Button (Section 9) */}
+            <button
+              id="theme-toggle-btn"
+              onClick={toggleTheme}
+              title={resolvedTheme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              className="flex items-center justify-center p-2.5 bg-slate-900 hover:bg-slate-850 rounded-lg text-slate-200 transition-colors cursor-pointer border border-slate-800 shrink-0"
+            >
+              {resolvedTheme === 'dark' ? (
+                <span className="text-amber-400 text-[13px] leading-none" role="img" aria-label="light mode">☀️</span>
+              ) : (
+                <span className="text-indigo-400 text-[13px] leading-none" role="img" aria-label="dark mode">🌙</span>
+              )}
             </button>
 
             {isLoggedIn ? (

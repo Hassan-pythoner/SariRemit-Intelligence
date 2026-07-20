@@ -876,6 +876,13 @@ ADD COLUMN IF NOT EXISTS privacy_policy_version TEXT DEFAULT 'v1.2';
 ALTER TABLE public.user_profiles 
 ADD COLUMN IF NOT EXISTS privacy_policy_accepted_at TIMESTAMPTZ DEFAULT now();
 
+-- These columns track individual consent and acceptance of the Terms of Service.
+ALTER TABLE public.user_profiles 
+ADD COLUMN IF NOT EXISTS terms_version TEXT DEFAULT 'v1.0';
+
+ALTER TABLE public.user_profiles 
+ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
+
 
 -- =========================================================================
 -- 16. SARIREMIT PROVIDER IDENTITY & COVERAGE SEEDS (PIS/BAM)
@@ -943,5 +950,341 @@ INSERT INTO public.channel_corridor_coverage (
     ('cov-al-rajhi-tahweel-sa-ke', 'al-rajhi-tahweel', 'sa-ke', 'active', ARRAY['Bank Transfer', 'Cash Pickup'], 15.00, 0.15, 34.40, 15.00, 0.15, 2.25, 0.00)
 ON CONFLICT (channel_id, corridor_id) DO UPDATE
 SET status = EXCLUDED.status, exchange_rate = EXCLUDED.exchange_rate, transfer_fee = EXCLUDED.transfer_fee;
+
+
+-- ====================================================
+-- SIC 2.0: EVIDENCE & PROVENANCE ENGINE (EPE) MIGRATION
+-- ====================================================
+
+-- 1. Main Evidence Records Table
+CREATE TABLE IF NOT EXISTS public.sic_evidence_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    subject_type TEXT NOT NULL,          -- 'exchange_rate', 'reference_benchmark', 'fee_structure'
+    source_type TEXT NOT NULL,           -- 'management_override', 'management_verified', 'community_verified', 'community_submitted', 'public_reference_api', 'legacy_unclassified'
+    provider_id TEXT,
+    provider_code TEXT,
+    corridor_id TEXT NOT NULL,
+    source_currency TEXT NOT NULL,
+    destination_currency TEXT NOT NULL,
+    numeric_value NUMERIC(20, 6) NOT NULL,
+    provider_specific BOOLEAN DEFAULT TRUE,
+    corridor_specific BOOLEAN DEFAULT TRUE,
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    verified_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    source_name TEXT,                    -- e.g. 'rate_overrides', 'market_reference_rates'
+    source_record_id TEXT,               -- Reference ID of raw database entry
+    status TEXT NOT NULL DEFAULT 'active', -- 'pending', 'active', 'verified', 'rejected', 'expired', 'incomplete', 'superseded'
+    freshness_state TEXT NOT NULL DEFAULT 'unknown', -- 'fresh', 'aging', 'stale', 'expired', 'unknown'
+    permitted_uses TEXT[] DEFAULT ARRAY['comparison', 'recommendation', 'audit', 'analytics']::TEXT[],
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2. Audit Trail Logs for Cryptographic Provenance Traceability
+CREATE TABLE IF NOT EXISTS public.epe_audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    action TEXT NOT NULL,                -- 'register_evidence', 'state_override', 'freshness_recalculated', 'superseded'
+    details TEXT NOT NULL,
+    evidence_id UUID,
+    actor_email TEXT,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 3. Optimized Performance Indexes for Real-time RRE Filtering & Auditing
+CREATE INDEX IF NOT EXISTS idx_sic_evidence_corridor_status ON public.sic_evidence_records(corridor_id, status);
+CREATE INDEX IF NOT EXISTS idx_sic_evidence_subject_provider ON public.sic_evidence_records(subject_type, provider_code);
+CREATE INDEX IF NOT EXISTS idx_sic_evidence_observed ON public.sic_evidence_records(observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_epe_audit_evidence_id ON public.epe_audit_logs(evidence_id);
+
+
+-- ====================================================
+-- SIC 2.0: EVIDENCE RESOLUTION & DECISION ENGINE (ERDE) MIGRATION
+-- ====================================================
+
+-- 4. Resolution Policies Table
+CREATE TABLE IF NOT EXISTS public.sic_resolution_policies (
+    policy_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    version INT DEFAULT 1 NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('draft', 'shadow', 'active', 'inactive', 'archived')),
+    preserve_management_override_priority BOOLEAN DEFAULT TRUE NOT NULL,
+    minimum_quality_score INT DEFAULT 40 NOT NULL,
+    require_verified_evidence BOOLEAN DEFAULT FALSE NOT NULL,
+    require_provider_specificity_for_recommendation BOOLEAN DEFAULT TRUE NOT NULL,
+    require_corridor_match BOOLEAN DEFAULT TRUE NOT NULL,
+    reject_expired_evidence BOOLEAN DEFAULT TRUE NOT NULL,
+    allow_aging_evidence BOOLEAN DEFAULT TRUE NOT NULL,
+    allow_unknown_freshness BOOLEAN DEFAULT FALSE NOT NULL,
+    allow_legacy_fallback BOOLEAN DEFAULT TRUE NOT NULL,
+    weights JSONB NOT NULL DEFAULT '{}'::JSONB,
+    conflict_thresholds JSONB NOT NULL DEFAULT '{}'::JSONB,
+    tie_breaker_order TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,
+    created_by TEXT,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS & Policies for sic_resolution_policies
+ALTER TABLE public.sic_resolution_policies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable read/write for all" ON public.sic_resolution_policies;
+CREATE POLICY "Enable read/write for all" ON public.sic_resolution_policies FOR ALL USING (true);
+
+
+-- 5. Conflict Registry Table
+CREATE TABLE IF NOT EXISTS public.sic_evidence_conflicts (
+    id TEXT PRIMARY KEY,
+    conflict_key TEXT NOT NULL,
+    provider_id TEXT,
+    corridor_id TEXT,
+    source_currency TEXT NOT NULL,
+    destination_currency TEXT NOT NULL,
+    subject_type TEXT NOT NULL,
+    severity TEXT NOT NULL CHECK (severity IN ('no_conflict', 'minor_variance', 'moderate_variance', 'major_conflict', 'critical_conflict', 'structural_conflict')),
+    status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'under_review', 'resolved', 'dismissed', 'auto_resolved', 'archived')),
+    evidence_ids TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,
+    absolute_difference NUMERIC(20, 6) DEFAULT 0.00 NOT NULL,
+    percentage_difference NUMERIC(8, 4) DEFAULT 0.00 NOT NULL,
+    estimated_recipient_impact NUMERIC(12, 2) DEFAULT 0.00 NOT NULL,
+    detection_reason TEXT,
+    detected_at TIMESTAMPTZ NOT NULL,
+    review_notes TEXT,
+    assigned_to TEXT,
+    acknowledged_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    dismissed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS & Policies for sic_evidence_conflicts
+ALTER TABLE public.sic_evidence_conflicts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable read/write for all" ON public.sic_evidence_conflicts;
+CREATE POLICY "Enable read/write for all" ON public.sic_evidence_conflicts FOR ALL USING (true);
+
+
+-- 6. Resolution Ledger/History Table
+CREATE TABLE IF NOT EXISTS public.sic_evidence_resolutions (
+    id TEXT PRIMARY KEY,
+    context_key TEXT NOT NULL,
+    provider_id TEXT,
+    corridor_id TEXT,
+    source_currency TEXT NOT NULL,
+    destination_currency TEXT NOT NULL,
+    subject_type TEXT NOT NULL,
+    requested_use TEXT NOT NULL,
+    environment TEXT NOT NULL,
+    status TEXT NOT NULL,
+    selected_evidence_id TEXT,
+    selected_value NUMERIC(20, 6),
+    selected_currency TEXT,
+    selected_source_type TEXT,
+    selected_quality_score INT,
+    selected_quality_band TEXT,
+    policy_id TEXT REFERENCES public.sic_resolution_policies(policy_id) ON DELETE SET NULL,
+    policy_version INT,
+    resolution_reason_code TEXT,
+    resolution_reason_user_facing TEXT,
+    resolution_reason_internal TEXT,
+    conflict_severity TEXT,
+    warnings TEXT[] DEFAULT '{}'::TEXT[],
+    generated_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS & Policies for sic_evidence_resolutions
+ALTER TABLE public.sic_evidence_resolutions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable read/write for all" ON public.sic_evidence_resolutions;
+CREATE POLICY "Enable read/write for all" ON public.sic_evidence_resolutions FOR ALL USING (true);
+
+
+-- 7. Optimized Performance Indexes for ERDE Real-time Resolution & Auditing
+CREATE INDEX IF NOT EXISTS idx_sic_policies_status ON public.sic_resolution_policies(status);
+CREATE INDEX IF NOT EXISTS idx_sic_conflicts_status_severity ON public.sic_evidence_conflicts(status, severity);
+CREATE INDEX IF NOT EXISTS idx_sic_conflicts_key ON public.sic_evidence_conflicts(conflict_key);
+CREATE INDEX IF NOT EXISTS idx_sic_resolutions_corridor_provider ON public.sic_evidence_resolutions(corridor_id, provider_id);
+CREATE INDEX IF NOT EXISTS idx_sic_resolutions_generated ON public.sic_evidence_resolutions(generated_at DESC);
+
+
+-- ====================================================
+// SIC 2.0 Phase 3A: SIS INTELLIGENCE SCHEMAS
+-- ====================================================
+
+-- 8. SIS Policies Table
+CREATE TABLE IF NOT EXISTS public.sic_policies (
+    policy_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    version INT DEFAULT 1 NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('draft', 'active', 'archived', 'inactive')),
+    weights JSONB NOT NULL DEFAULT '{}'::JSONB,
+    caps JSONB NOT NULL DEFAULT '{}'::JSONB,
+    blocking_rules JSONB NOT NULL DEFAULT '{}'::JSONB,
+    created_by TEXT,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS & Policies for sic_policies
+ALTER TABLE public.sic_policies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable read/write for all" ON public.sic_policies;
+CREATE POLICY "Enable read/write for all" ON public.sic_policies FOR ALL USING (true);
+
+
+-- 9. SIS Results Table
+CREATE TABLE IF NOT EXISTS public.sic_results (
+    id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    corridor_id TEXT NOT NULL,
+    overall_score INT NOT NULL,
+    confidence_band TEXT NOT NULL CHECK (confidence_band IN ('Very High', 'High', 'Moderate', 'Low', 'Very Low', 'Unavailable')),
+    applied_caps TEXT[] DEFAULT '{}'::TEXT[],
+    applied_blocking_rules TEXT[] DEFAULT '{}'::TEXT[],
+    warnings TEXT[] DEFAULT '{}'::TEXT[],
+    strengths TEXT[] DEFAULT '{}'::TEXT[],
+    limitations TEXT[] DEFAULT '{}'::TEXT[],
+    policy_id TEXT NOT NULL,
+    policy_version INT NOT NULL,
+    user_summary TEXT,
+    internal_explanation TEXT,
+    generated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS & Policies for sic_results
+ALTER TABLE public.sic_results ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable read/write for all" ON public.sic_results;
+CREATE POLICY "Enable read/write for all" ON public.sic_results FOR ALL USING (true);
+
+
+-- 10. SIS Audit Logs Table
+CREATE TABLE IF NOT EXISTS public.sic_audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS & Policies for sic_audit_logs
+ALTER TABLE public.sic_audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable read/write for all" ON public.sic_audit_logs;
+CREATE POLICY "Enable read/write for all" ON public.sic_audit_logs FOR ALL USING (true);
+
+
+-- Optimized Indexes for SIS Intelligence Querying
+CREATE INDEX IF NOT EXISTS idx_sic_policies_lookup ON public.sic_policies(status, version);
+CREATE INDEX IF NOT EXISTS idx_sic_results_corridor_provider ON public.sic_results(corridor_id, provider_id);
+CREATE INDEX IF NOT EXISTS idx_sic_results_band ON public.sic_results(confidence_band);
+CREATE INDEX IF NOT EXISTS idx_sic_audit_action ON public.sic_audit_logs(action);
+
+
+-- ==========================================
+-- 20. SEED DEFAULT SIC RESOLUTION POLICIES (ERDE PHASE 2)
+-- ==========================================
+INSERT INTO public.sic_resolution_policies (
+    policy_id,
+    name,
+    description,
+    version,
+    status,
+    preserve_management_override_priority,
+    minimum_quality_score,
+    require_verified_evidence,
+    require_provider_specificity_for_recommendation,
+    require_corridor_match,
+    reject_expired_evidence,
+    allow_aging_evidence,
+    allow_unknown_freshness,
+    allow_legacy_fallback,
+    weights,
+    conflict_thresholds,
+    tie_breaker_order,
+    created_by
+) VALUES 
+    (
+        'sic-balanced-v1',
+        'SIC Balanced Resolution Policy v1',
+        'Initial secure policy. Prefers valid overrides, highly verified provider sources, and fresh corroborated evidence. Safeguards against unverified claims.',
+        1,
+        'active',
+        TRUE,
+        40,
+        FALSE,
+        TRUE,
+        TRUE,
+        TRUE,
+        TRUE,
+        FALSE,
+        TRUE,
+        '{"verificationQuality": 25, "freshnessQuality": 20, "sourceAuthority": 20, "providerSpecificity": 15, "corridorSpecificity": 10, "provenanceCompleteness": 5, "attachmentSupport": 5, "corroborationQuality": 0, "consistencyQuality": 0}'::JSONB,
+        '{"minorPercentage": 0.5, "moderatePercentage": 1.5, "majorPercentage": 3.5, "criticalPercentage": 5.0}'::JSONB,
+        ARRAY['management_override', 'quality_score', 'provider_specific', 'corridor_specific', 'verified_status', 'observation_time', 'provenance_completeness', 'stable_id'],
+        'system'
+    ),
+    (
+        'sic-strict-v1',
+        'SIC High-Trust Strict Policy v1',
+        'Highly conservative policy. Rejects unverified, aging, or non-specific provider evidence. Requires critical conflict blocking.',
+        1,
+        'draft',
+        TRUE,
+        60,
+        TRUE,
+        TRUE,
+        TRUE,
+        TRUE,
+        FALSE,
+        FALSE,
+        FALSE,
+        '{"verificationQuality": 35, "freshnessQuality": 15, "sourceAuthority": 20, "providerSpecificity": 15, "corridorSpecificity": 5, "provenanceCompleteness": 5, "attachmentSupport": 5, "corroborationQuality": 0, "consistencyQuality": 0}'::JSONB,
+        '{"minorPercentage": 0.3, "moderatePercentage": 1.0, "majorPercentage": 2.5, "criticalPercentage": 4.0}'::JSONB,
+        ARRAY['management_override', 'verified_status', 'quality_score', 'provider_specific', 'corridor_specific', 'observation_time', 'provenance_completeness', 'stable_id'],
+        'system'
+    )
+ON CONFLICT (policy_id) DO NOTHING;
+
+
+-- ==========================================
+-- 21. SEED DEFAULT SIS INTELLIGENCE POLICIES (SIS PHASE 3A)
+-- ==========================================
+INSERT INTO public.sic_policies (
+    policy_id,
+    name,
+    description,
+    version,
+    status,
+    weights,
+    caps,
+    blocking_rules,
+    created_by
+) VALUES
+    (
+        'sis-standard-v2',
+        'SIS Standard Intelligence Policy v2',
+        'Standard Phase 3A multidimensional intelligence policy. Provides balanced confidence metrics across nine dimensions.',
+        1,
+        'active',
+        '{"verification": 20, "freshness": 18, "provenance": 12, "providerIdentity": 10, "corridorSpecificity": 10, "costCompleteness": 12, "consistency": 10, "sourceDiversity": 5, "resolutionStrength": 3}'::JSONB,
+        '{"legacyFallbackCap": 50, "unknownFreshnessCap": 60, "majorUnresolvedConflictCap": 40, "missingFeeInformationCap": 45, "benchmarkOnlyCap": 30, "communityOnlyEvidenceCap": 55}'::JSONB,
+        '{"blockRecommendationOnErdeBlock": true, "blockOnNoProviderSpecificRate": true, "blockOnBenchmarkOnly": true, "blockOnCriticalConflict": true, "blockOnInvalidNormalization": true, "blockOnResolutionFailed": true}'::JSONB,
+        'system'
+    ),
+    (
+        'sis-conservative-v2',
+        'SIS Conservative Strict Policy v2',
+        'Strict confidence model. Severely caps aging or community-sourced evidence, requiring high administrative verification.',
+        1,
+        'draft',
+        '{"verification": 30, "freshness": 20, "provenance": 10, "providerIdentity": 8, "corridorSpecificity": 8, "costCompleteness": 12, "consistency": 8, "sourceDiversity": 2, "resolutionStrength": 2}'::JSONB,
+        '{"legacyFallbackCap": 40, "unknownFreshnessCap": 50, "majorUnresolvedConflictCap": 30, "missingFeeInformationCap": 35, "benchmarkOnlyCap": 20, "communityOnlyEvidenceCap": 45}'::JSONB,
+        '{"blockRecommendationOnErdeBlock": true, "blockOnNoProviderSpecificRate": true, "blockOnBenchmarkOnly": true, "blockOnCriticalConflict": true, "blockOnInvalidNormalization": true, "blockOnResolutionFailed": true}'::JSONB,
+        'system'
+    )
+ON CONFLICT (policy_id) DO NOTHING;
+
+
+
+
 
 

@@ -257,6 +257,17 @@ export type ResolvedRate = {
   lastUpdated: string;
   expiresAt?: string | null;
   reason: string;
+  evidenceIds?: string[];
+  provenance?: {
+    primarySourceType: string;
+    sourceTypesUsed: string[];
+    observedAt?: string | null;
+    verifiedAt?: string | null;
+    freshnessState: string;
+    providerSpecific: boolean;
+    corridorSpecific: boolean;
+    permittedForRecommendation: boolean;
+  };
 };
 
 export type RecommendationResult = {
@@ -605,6 +616,441 @@ export interface SupportRequestMessage {
   is_internal: boolean;
   created_at: string;
 }
+
+export type EvidenceSubjectType =
+  | "exchange_rate"
+  | "transfer_fee"
+  | "vat"
+  | "provider_charge"
+  | "other_charge"
+  | "recipient_amount"
+  | "transfer_outcome"
+  | "delivery_estimate"
+  | "reference_benchmark"
+  | "provider_availability"
+  | "corridor_availability"
+  | "provider_identity"
+  | "evidence_attachment"
+  | "verification_event";
+
+export type EvidenceSourceType =
+  | "management_verified"
+  | "management_override"
+  | "community_submitted"
+  | "community_verified"
+  | "provider_authorized"
+  | "provider_published"
+  | "public_reference_api"
+  | "public_official_publication"
+  | "historical_observation"
+  | "user_recorded_outcome"
+  | "system_derived"
+  | "legacy_unclassified";
+
+export type EvidenceStatusType =
+  | "pending"
+  | "active"
+  | "verified"
+  | "rejected"
+  | "expired"
+  | "superseded"
+  | "revoked"
+  | "incomplete"
+  | "archived";
+
+export type EvidenceFreshnessStateType =
+  | "fresh"
+  | "aging"
+  | "stale"
+  | "expired"
+  | "unknown";
+
+export interface EvidenceRecord {
+  id: string;
+  subjectType: EvidenceSubjectType;
+  sourceType: EvidenceSourceType;
+  status: EvidenceStatusType;
+
+  providerId?: string | null;
+  providerCode?: string | null;
+  corridorId?: string | null;
+
+  sourceCurrency?: string | null;
+  destinationCurrency?: string | null;
+
+  numericValue?: number | null;
+  textValue?: string | null;
+  currency?: string | null;
+  unit?: string | null;
+
+  providerSpecific: boolean;
+  corridorSpecific: boolean;
+
+  observedAt: string;
+  receivedAt: string;
+  verifiedAt?: string | null;
+  expiresAt?: string | null;
+
+  submittedBy?: string | null;
+  verifiedBy?: string | null;
+
+  sourceName?: string | null;
+  sourceReference?: string | null;
+  sourceRecordId?: string | null;
+
+  attachmentPath?: string | null;
+  attachmentHash?: string | null;
+
+  freshnessState: EvidenceFreshnessStateType;
+  permittedUses: string[];
+
+  confidenceInput?: number | null;
+  evidence_fingerprint?: string | null;
+
+  metadata: Record<string, any>;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EpeAuditLog {
+  id: string;
+  actorId?: string | null;
+  evidenceId: string;
+  action: string;
+  previousStatus?: string | null;
+  newStatus?: string | null;
+  reason?: string | null;
+  timestamp: string;
+  sourceRecord?: string | null;
+}
+
+export type ResolutionContext = {
+  contextId: string;
+  providerId?: string | null;
+  channelId?: string | null;
+  corridorId?: string | null;
+  sourceCurrency: string;
+  destinationCurrency: string;
+
+  subjectType:
+    | "exchange_rate"
+    | "transfer_fee"
+    | "VAT"
+    | "provider_charge"
+    | "recipient_amount"
+    | "delivery_estimate"
+    | "reference_benchmark"
+    | "provider_availability"
+    | "corridor_availability";
+
+  sendAmount?: number | null;
+  destinationCountry?: string | null;
+  requestedPermittedUse:
+    | "provider_comparison"
+    | "user_rate_display"
+    | "recommendation"
+    | "true_cost"
+    | "trust_evaluation"
+    | "SIS_confidence"
+    | "reference_benchmarking"
+    | "anomaly_detection";
+
+  requestedAt: string;
+  userSegment?: string | null;
+  environment: "production" | "sandbox" | "shadow";
+};
+
+export type EligibilityResult = {
+  eligible: boolean;
+  exclusionCodes: string[];
+  warnings: string[];
+};
+
+export type EvidenceQualityProfile = {
+  verificationQuality: number;
+  freshnessQuality: number;
+  sourceAuthority: number;
+  providerSpecificity: number;
+  corridorSpecificity: number;
+  provenanceCompleteness: number;
+  attachmentSupport: number;
+  corroborationQuality: number;
+  consistencyQuality: number;
+  operationalEligibility: number;
+
+  totalQualityScore: number;
+  qualityBand: "very_high" | "high" | "moderate" | "low" | "unusable";
+
+  contributingFactors: string[];
+  limitations: string[];
+};
+
+export type ResolutionPolicy = {
+  policyId: string;
+  name: string;
+  description: string;
+  version: number;
+  status: "draft" | "shadow" | "active" | "inactive" | "archived";
+
+  appliesTo?: {
+    corridorIds?: string[];
+    providerIds?: string[];
+    subjectTypes?: string[];
+    environments?: string[];
+  };
+
+  preserveManagementOverridePriority: boolean;
+
+  minimumQualityScore: number;
+  requireVerifiedEvidence: boolean;
+  requireProviderSpecificityForRecommendation: boolean;
+  requireCorridorMatch: boolean;
+  rejectExpiredEvidence: boolean;
+  allowAgingEvidence: boolean;
+  allowUnknownFreshness: boolean;
+  allowLegacyFallback: boolean;
+
+  weights: {
+    verificationQuality: number;
+    freshnessQuality: number;
+    sourceAuthority: number;
+    providerSpecificity: number;
+    corridorSpecificity: number;
+    provenanceCompleteness: number;
+    attachmentSupport: number;
+    corroborationQuality: number;
+    consistencyQuality: number;
+  };
+
+  conflictThresholds: {
+    minorPercentage: number;
+    moderatePercentage: number;
+    majorPercentage: number;
+    criticalPercentage: number;
+  };
+
+  tieBreakerOrder: string[];
+
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string | null;
+};
+
+export type ResolutionResult = {
+  resolutionId: string;
+  context: ResolutionContext;
+
+  status:
+    | "resolved"
+    | "resolved_with_warning"
+    | "fallback_legacy"
+    | "insufficient_evidence"
+    | "blocked_by_conflict"
+    | "unresolved"
+    | "error";
+
+  selectedEvidenceId?: string | null;
+  selectedValue?: number | null;
+  selectedCurrency?: string | null;
+  selectedSourceType?: string | null;
+
+  selectedQualityProfile?: EvidenceQualityProfile | null;
+
+  candidateEvidenceIds: string[];
+  eligibleEvidenceIds: string[];
+  excludedEvidence: Array<{
+    evidenceId: string;
+    reasons: string[];
+  }>;
+
+  nonSelectedEvidence: Array<{
+    evidenceId: string;
+    reasonCodes: string[];
+  }>;
+
+  conflictIds: string[];
+  conflictSeverity?: string | null;
+
+  resolutionPolicyId: string;
+  resolutionPolicyVersion: number;
+
+  resolutionReasonCode: string;
+  resolutionReasonUserFacing: string;
+  resolutionReasonInternal: string;
+
+  warnings: string[];
+  generatedAt: string;
+  expiresAt?: string | null;
+};
+
+export type OperationalDecisionPackage = {
+  packageId: string;
+  providerId: string;
+  channelId?: string | null;
+  corridorId: string;
+  sourceCurrency: string;
+  destinationCurrency: string;
+  sendAmount?: number | null;
+
+  resolvedRate?: ResolutionResult | null;
+  resolvedTransferFee?: ResolutionResult | null;
+  resolvedVAT?: ResolutionResult | null;
+  resolvedProviderCharge?: ResolutionResult | null;
+  resolvedDeliveryEstimate?: ResolutionResult | null;
+  resolvedBenchmark?: ResolutionResult | null;
+  resolvedAvailability?: ResolutionResult | null;
+
+  overallEvidenceState:
+    | "complete"
+    | "usable"
+    | "partial"
+    | "weak"
+    | "blocked"
+    | "unavailable";
+
+  activeConflictIds: string[];
+  evidenceWarnings: string[];
+
+  generatedAt: string;
+  validUntil?: string | null;
+  policyId: string;
+  policyVersion: number;
+};
+
+export interface EvidenceConflict {
+  id: string;
+  conflictKey: string;
+  providerId?: string | null;
+  channelId?: string | null;
+  corridorId?: string | null;
+  sourceCurrency: string;
+  destinationCurrency: string;
+  subjectType: string;
+  severity: "no_conflict" | "minor_variance" | "moderate_variance" | "major_conflict" | "critical_conflict" | "structural_conflict";
+  status: "open" | "acknowledged" | "under_review" | "resolved" | "dismissed" | "auto_resolved" | "archived";
+  evidenceIds: string[];
+  selectedEvidenceId?: string | null;
+  absoluteDifference: number;
+  percentageDifference: number;
+  estimatedRecipientImpact: number;
+  detectionReason: string;
+  resolutionId?: string | null;
+  assignedTo?: string | null;
+  reviewNotes?: string | null;
+  detectedAt: string;
+  acknowledgedAt?: string | null;
+  resolvedAt?: string | null;
+  dismissedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ====================================================
+// SIS 2.0: PHASE 3A SIS INTELLIGENCE TYPES
+// ====================================================
+
+export interface SisPolicy {
+  policyId: string;
+  name: string;
+  description: string;
+  version: number;
+  status: 'draft' | 'active' | 'archived';
+  weights: {
+    verification: number;
+    freshness: number;
+    provenance: number;
+    providerIdentity: number;
+    corridorSpecificity: number;
+    costCompleteness: number;
+    consistency: number;
+    sourceDiversity: number;
+    resolutionStrength: number;
+  };
+  caps: {
+    legacyFallbackCap: number;
+    unknownFreshnessCap: number;
+    majorUnresolvedConflictCap: number;
+    missingFeeInformationCap: number;
+    benchmarkOnlyCap: number;
+    communityOnlyEvidenceCap: number;
+  };
+  blockingRules: {
+    blockRecommendationOnErdeBlock: boolean;
+    blockOnNoProviderSpecificRate: boolean;
+    blockOnBenchmarkOnly: boolean;
+    blockOnCriticalConflict: boolean;
+    blockOnInvalidNormalization: boolean;
+    blockOnResolutionFailed: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+export interface SisDimensionResult {
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  calculationMetadata: Record<string, any>;
+}
+
+export interface SisSubjectConfidence {
+  subjectType: string;
+  score: number;
+  band: string;
+  reasons: string[];
+}
+
+export interface SisResultV2 {
+  id: string;
+  providerId: string;
+  corridorId: string;
+  overallScore: number;
+  confidenceBand: 'Very High' | 'High' | 'Moderate' | 'Low' | 'Very Low' | 'Unavailable';
+  dimensionScores: {
+    verification: SisDimensionResult;
+    freshness: SisDimensionResult;
+    provenance: SisDimensionResult;
+    providerIdentity: SisDimensionResult;
+    corridorSpecificity: SisDimensionResult;
+    costCompleteness: SisDimensionResult;
+    consistency: SisDimensionResult;
+    sourceDiversity: SisDimensionResult;
+    resolutionStrength: SisDimensionResult;
+  };
+  subjectConfidence: {
+    exchangeRate: SisSubjectConfidence;
+    transferFee: SisSubjectConfidence;
+    vat: SisSubjectConfidence;
+    providerCharge: SisSubjectConfidence;
+    deliveryEstimate: SisSubjectConfidence;
+    availability: SisSubjectConfidence;
+    benchmark: SisSubjectConfidence;
+  };
+  appliedCaps: string[];
+  appliedBlockingRules: string[];
+  warnings: string[];
+  strengths: string[];
+  limitations: string[];
+  policyId: string;
+  policyVersion: number;
+  userSummary: string;
+  internalExplanation: string;
+  generatedAt: string;
+}
+
+export interface SisAuditLog {
+  id: string;
+  actorId: string;
+  action: string; // e.g. 'policy_activation', 'policy_rollback', 'calculation', 'blocking_rule_trigger', 'cap_applied'
+  policyId?: string;
+  providerId?: string;
+  corridorId?: string;
+  details: string;
+  createdAt: string;
+}
+
 
 
 

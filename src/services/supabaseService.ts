@@ -2,6 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress, BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission, SupportCategory, SupportFeedbackRequest, SupportRequestMessage, SriReferenceBenchmark } from '../types';
 import { PROVIDERS, CORRIDORS } from './constants';
 import logoImg from '../assets/images/sariremit_logo_1783671155763.jpg';
+import { EpeService } from './sic/evidenceProvenanceService';
 
 // Interfaces for Supabase tables
 export interface DbRateOverride {
@@ -124,6 +125,8 @@ export interface DbResolvedRate {
   expires_at?: string;
   is_active: boolean;
   reason: string;
+  evidence_ids?: string[];
+  provenance?: any;
 }
 
 export interface DbRecommendationResult {
@@ -1278,6 +1281,7 @@ export async function resolveRatesWithRRE(
 
     let customVat: number | undefined;
     let customOtherCosts: number | undefined;
+    let approvedCommunity: any = null;
 
     // 1. Active Admin Override
     const activeOverride = overrides.find(
@@ -1297,7 +1301,7 @@ export async function resolveRatesWithRRE(
       reason = 'Active admin override configured by SRCMC. Highest priority selection.';
     } else {
       // 2. Approved Community Verified Rate (verified & within custom validity hours)
-      const approvedCommunity = communitySubmissions
+      approvedCommunity = communitySubmissions
          .filter(s => {
            const isApprovedAndEligible = s.status === 'approved';
            const isVerified = s.evidence_status === 'verified';
@@ -1439,6 +1443,59 @@ export async function resolveRatesWithRRE(
     if (ageHrs <= 1) freshness = 'fresh';
     else if (ageHrs <= 24) freshness = 'aging';
 
+    // ----------------------------------------------------
+    // SIC 2.0 - Evidence & Provenance Engine Integration
+    // ----------------------------------------------------
+    let subjectType: any = 'exchange_rate';
+    let epeSourceType: any = 'legacy_unclassified';
+    let sourceRecordId = '';
+    let sourceName = 'legacy';
+    let providerSpecific = true;
+
+    if (sourceType === 'admin_override' && activeOverride) {
+      epeSourceType = 'management_override';
+      sourceRecordId = activeOverride.id;
+      sourceName = 'rate_overrides';
+    } else if (sourceType === 'community_verified' && approvedCommunity) {
+      epeSourceType = 'community_verified';
+      sourceRecordId = approvedCommunity.id;
+      sourceName = 'community_rate_submissions';
+    } else if (sourceType === 'manual_channel_rate') {
+      epeSourceType = 'management_verified';
+      sourceRecordId = coverage?.id || '';
+      sourceName = 'channel_corridor_coverage';
+    } else if (sourceType === 'market_reference') {
+      subjectType = 'exchange_rate';
+      epeSourceType = 'public_reference_api';
+      providerSpecific = true;
+      sourceRecordId = corridorId;
+      sourceName = 'market_reference_rates';
+    } else {
+      epeSourceType = 'legacy_unclassified';
+      sourceRecordId = `fallback-${provider.id}`;
+      sourceName = 'emergency_fallback';
+    }
+
+    // Register evidence synchronously using our helper service
+    const registeredEvidence = await EpeService.registerEvidence({
+      subjectType,
+      sourceType: epeSourceType,
+      providerId: provider.id,
+      providerCode: provider.id,
+      corridorId,
+      sourceCurrency: 'SAR',
+      destinationCurrency: corridor.currencyCode,
+      numericValue: resolvedRate,
+      providerSpecific,
+      corridorSpecific: true,
+      observedAt: lastUpdated,
+      expiresAt,
+      sourceName,
+      sourceReference: sourceRecordId,
+      sourceRecordId,
+      status: 'active'
+    });
+
     resolvedList.push({
       providerId: provider.id,
       providerName: provider.name,
@@ -1456,7 +1513,18 @@ export async function resolveRatesWithRRE(
       freshness,
       lastUpdated,
       expiresAt,
-      reason
+      reason,
+      evidenceIds: [registeredEvidence.id],
+      provenance: {
+        primarySourceType: registeredEvidence.sourceType,
+        sourceTypesUsed: [registeredEvidence.sourceType],
+        observedAt: registeredEvidence.observedAt,
+        verifiedAt: registeredEvidence.verifiedAt,
+        freshnessState: registeredEvidence.freshnessState,
+        providerSpecific: registeredEvidence.providerSpecific,
+        corridorSpecific: registeredEvidence.corridorSpecific,
+        permittedForRecommendation: registeredEvidence.permittedUses.includes('recommendation')
+      }
     });
   }
 
@@ -1817,11 +1885,52 @@ export async function getSariRemitIntelligence(input: {
   generatedAt: string;
   engine: string;
   engineStatus: string;
+  version?: string;
+  evidenceSummary?: any;
 }> {
   const resolvedRates = await resolveRatesWithRRE(input.corridorId, input.sendAmount);
   const trueCostResults = await calculateTrueCost(resolvedRates, input);
   const sisResults = calculateSISForResolvedRates(resolvedRates, trueCostResults, input.sendAmount);
   const recommendation = generateRecommendation(resolvedRates, trueCostResults, sisResults, input.sendAmount, input.corridorId);
+
+  // ----------------------------------------------------
+  // EPE Evidence Summarization for SIC 2.0 Output
+  // ----------------------------------------------------
+  const allEvidence = await EpeService.getAllEvidence();
+  const corridorEvidence = allEvidence.filter(e => e.corridorId === input.corridorId);
+
+  const evidenceRecordIds = corridorEvidence.map(e => e.id);
+  const sourceTypesUsed = Array.from(new Set(corridorEvidence.map(e => e.sourceType)));
+  
+  let latestObservedAt = '';
+  if (corridorEvidence.length > 0) {
+    const times = corridorEvidence.map(e => new Date(e.observedAt).getTime()).sort((a, b) => b - a);
+    latestObservedAt = new Date(times[0]).toISOString();
+  } else {
+    latestObservedAt = new Date().toISOString();
+  }
+
+  const providerSpecificEvidenceCount = corridorEvidence.filter(e => e.providerSpecific).length;
+  const referenceEvidenceCount = corridorEvidence.filter(e => e.subjectType === 'reference_benchmark').length;
+  const incompleteEvidenceCount = corridorEvidence.filter(e => e.status === 'incomplete').length;
+
+  const freshnessSummary: Record<string, number> = {
+    fresh: corridorEvidence.filter(e => e.freshnessState === 'fresh').length,
+    aging: corridorEvidence.filter(e => e.freshnessState === 'aging').length,
+    stale: corridorEvidence.filter(e => e.freshnessState === 'stale').length,
+    expired: corridorEvidence.filter(e => e.freshnessState === 'expired').length,
+    unknown: corridorEvidence.filter(e => e.freshnessState === 'unknown').length,
+  };
+
+  const evidenceSummary = {
+    evidenceRecordIds,
+    sourceTypesUsed,
+    latestObservedAt,
+    providerSpecificEvidenceCount,
+    referenceEvidenceCount,
+    incompleteEvidenceCount,
+    freshnessSummary
+  };
 
   // Store snapshots locally in sandbox mode for auditable logs
   if (typeof window !== 'undefined' && window.localStorage) {
@@ -1837,7 +1946,9 @@ export async function getSariRemitIntelligence(input: {
       recommendation: recommendation,
       engine_status: 'active',
       generated_at: new Date().toISOString(),
-      sic_version: 'v1.2'
+      sic_version: '2.0-epe-phase-1',
+      evidence_summary: evidenceSummary,
+      evidence_record_ids: evidenceRecordIds
     };
     saveLocalStorageItem<any[]>('sr_sic_snapshots', [newSnapshot, ...snapshots.slice(0, 49)]);
   }
@@ -1854,7 +1965,9 @@ export async function getSariRemitIntelligence(input: {
         true_cost_results: trueCostResults,
         recommendation: recommendation,
         engine_status: 'active',
-        sic_version: 'v1.2'
+        sic_version: '2.0-epe-phase-1',
+        evidence_summary: evidenceSummary,
+        evidence_record_ids: evidenceRecordIds
       }]);
     } catch (err) {
       // Ignored if table doesn't exist yet
@@ -1868,7 +1981,9 @@ export async function getSariRemitIntelligence(input: {
     recommendation,
     generatedAt: new Date().toISOString(),
     engine: "SIC",
-    engineStatus: "active"
+    engineStatus: "active",
+    version: "2.0-epe-phase-1",
+    evidenceSummary
   };
 }
 
@@ -2009,7 +2124,9 @@ export async function getRecommendations(
       last_updated: resolved.lastUpdated,
       expires_at: resolved.expiresAt || undefined,
       is_active: true,
-      reason: resolved.reason
+      reason: resolved.reason,
+      evidence_ids: resolved.evidenceIds,
+      provenance: resolved.provenance
     };
 
     const dbSis: DbSisScore = {
@@ -2454,25 +2571,58 @@ export async function signInWithSupabase(email: string, password: string): Promi
 }
 
 export async function signInWithGoogle(): Promise<void> {
+  // Open popup immediately to avoid browser popup blockers blocking async window.open
+  const authWindow = window.open('about:blank', 'oauth_popup', 'width=600,height=700');
+  if (!authWindow) {
+    throw new Error('Popup blocked. Please allow popups for Google Sign-In.');
+  }
+
   if (isSupabaseConfigured && supabaseClient) {
-    const { error } = await supabaseClient.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: true,
+        }
+      });
+      if (error) {
+        authWindow.close();
+        throw error;
       }
-    });
-    if (error) {
-      throw error;
+      if (data?.url) {
+        authWindow.location.href = data.url;
+      } else {
+        authWindow.close();
+        throw new Error('Failed to retrieve Google OAuth authorization URL.');
+      }
+    } catch (err) {
+      authWindow.close();
+      throw err;
     }
   } else {
-    // Emulated local redirect to /auth/callback for local testing
-    console.log('[SariRemit Auth] Google Sign-In: emulated redirecting to /auth/callback...');
-    window.location.href = `${window.location.origin}/auth/callback?mock=google`;
+    // Emulated local popup to /auth/callback for local testing
+    console.log('[SariRemit Auth] Google Sign-In: opening emulated popup to /auth/callback...');
+    const url = `${window.location.origin}/auth/callback?mock=google`;
+    authWindow.location.href = url;
   }
 }
 
 export async function handleGoogleCallback(): Promise<AuthSession> {
   if (isSupabaseConfigured && supabaseClient) {
+    // 0. Explicitly exchange PKCE authorization code if present in the URL
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      console.log('[SariRemit Google Callback] Found authorization code in query. Exchanging for session...');
+      const { error: exchangeError } = await supabaseClient.auth.exchangeCodeForSession(code);
+      if (exchangeError) {
+        console.error('[SariRemit Google Callback] Code exchange failed:', exchangeError);
+      } else {
+        console.log('[SariRemit Google Callback] Code exchange completed successfully.');
+      }
+    }
+
     // 1. Wait until Supabase restores a valid session (poll/timeout check)
     let session = null;
     for (let i = 0; i < 20; i++) {
@@ -2978,6 +3128,82 @@ export async function updateUserProfileInDb(profile: {
       terms_accepted_at: profile.terms_accepted_at !== undefined ? profile.terms_accepted_at : currentSession.user.terms_accepted_at,
     };
     saveAuthSession(currentSession);
+  }
+}
+
+export async function deleteUserAccount(userId: string, email: string): Promise<boolean> {
+  // 1. If Supabase is fully configured, try to execute via edge function or direct purge
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      console.log('[SariRemit DB Prune] Requesting user account deletion in Supabase for:', userId);
+      // Attempt to invoke the edge function first
+      const { data, error: fnError } = await supabaseClient.functions.invoke('delete-user-account', {
+        body: { userId, email }
+      });
+      
+      if (!fnError) {
+        console.log('[SariRemit DB Prune] Account deleted successfully via edge function.');
+      } else {
+        console.warn('[SariRemit DB Prune] Edge function invoke failed, executing direct tables purge...', fnError);
+        // Direct tables purge for user records
+        await supabaseClient.from('user_transfer_savings').delete().eq('user_id', userId);
+        await supabaseClient.from('recorded_transfers').delete().eq('user_id', userId);
+        await supabaseClient.from('notifications').delete().eq('user_id', userId);
+        
+        // Anonymize community submissions instead of deleting to preserve global statistical data
+        await supabaseClient.from('community_rate_submissions')
+          .update({
+            submitted_by_name: 'Anonymized Expat',
+            submitted_by_email: 'deleted-user@sariremit.net'
+          })
+          .eq('submitted_by_email', email);
+
+        await supabaseClient.from('user_profiles').delete().eq('id', userId);
+      }
+    } catch (err) {
+      console.error('[SariRemit DB Prune] Supabase direct deletion failed:', err);
+    }
+  }
+
+  // 2. Perform local emulation deletion for seamless preview experience
+  try {
+    const allUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', []);
+    const updatedUsers = allUsers.filter(u => u.id !== userId && u.email?.toLowerCase() !== email.toLowerCase());
+    saveLocalStorageItem('sr_supabase_registered_users', updatedUsers);
+
+    const transfers = getLocalStorageItem<any[]>('sr_recorded_transfers', []);
+    const updatedTransfers = transfers.filter(t => t.userId !== userId && t.user_id !== userId);
+    saveLocalStorageItem('sr_recorded_transfers', updatedTransfers);
+
+    const savings = getLocalStorageItem<any[]>('sr_user_transfer_savings', []);
+    const updatedSavings = savings.filter(s => s.userId !== userId && s.user_id !== userId);
+    saveLocalStorageItem('sr_user_transfer_savings', updatedSavings);
+
+    const notifications = getLocalStorageItem<any[]>('sr_notifications', []);
+    const updatedNotifications = notifications.filter(n => n.userId !== userId && n.user_id !== userId);
+    saveLocalStorageItem('sr_notifications', updatedNotifications);
+
+    const submissions = getLocalStorageItem<any[]>('sr_community_rate_submissions', []);
+    const updatedSubmissions = submissions.map(s => {
+      const matchEmail = s.submitted_by_email || s.submittedByEmail;
+      if (matchEmail?.toLowerCase() === email.toLowerCase()) {
+        return {
+          ...s,
+          submitted_by_name: 'Anonymized Expat',
+          submittedByName: 'Anonymized Expat',
+          submitted_by_email: 'deleted-user@sariremit.net',
+          submittedByEmail: 'deleted-user@sariremit.net'
+        };
+      }
+      return s;
+    });
+    saveLocalStorageItem('sr_community_rate_submissions', updatedSubmissions);
+
+    signOutSession();
+    return true;
+  } catch (err) {
+    console.error('[SariRemit DB Prune] Local deletion failed:', err);
+    return false;
   }
 }
 

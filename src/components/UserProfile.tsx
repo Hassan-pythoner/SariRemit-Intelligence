@@ -9,10 +9,18 @@ import {
 } from '../services/supabaseService';
 import { 
   User, Mail, Phone, Globe, Shield, Trophy, MapPin, 
-  Clock, CheckCircle, Clock3, AlertTriangle, Save, LogIn, UserPlus, LogOut, Loader2, Bell, X, FileText
+  Clock, CheckCircle, Clock3, AlertTriangle, Save, LogIn, UserPlus, LogOut, Loader2, Bell, X, FileText, Sparkles,
+  ChevronLeft, ChevronRight, Monitor, Smartphone, ArrowLeftRight, ShieldCheck, Key
 } from 'lucide-react';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
 import { SariRemitLogo, SariRemitMonogram, ProviderLogo, CountryFlag, AchievementIcon } from './SdsBamComponents';
+import { useTheme } from '../context/ThemeContext';
+import { 
+  ProfileOverview, PersonalInformation, DefaultPreferences, 
+  NotificationSettings, AppearanceSettings, LanguageSettings, 
+  ContributionsList, AchievementsGrid, SecuritySettings, 
+  ActiveSessions, PrivacyAndData 
+} from './SettingsViews';
 
 interface UserProfileProps {
   language: 'en' | 'ar';
@@ -32,6 +40,7 @@ export default function UserProfile({
   initialAuthTab,
 }: UserProfileProps) {
   const isRtl = language === 'ar';
+  const { preference, setPreference } = useTheme();
 
   const session = getAuthSession();
   const isAuthenticated = session.user !== null;
@@ -78,6 +87,170 @@ export default function UserProfile({
   const [mySubmissions, setMySubmissions] = useState<RateSubmission[]>([]);
   const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
   const [userAchievements, setUserAchievements] = useState<UserAchievement[]>([]);
+
+  // Sub-tab hash routing state and handlers
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 4000);
+  };
+
+  const getSubTabFromHash = (hash: string): string => {
+    if (hash === '#/account') return 'overview';
+    if (hash === '#/account/profile') return 'personal-info';
+    if (hash === '#/account/preferences') return 'preferences';
+    if (hash === '#/account/activity') return 'activity';
+    if (hash === '#/account/contributions') return 'contributions';
+    if (hash === '#/account/achievements') return 'achievements';
+    if (hash === '#/settings/notifications') return 'notifications';
+    if (hash === '#/settings/appearance') return 'appearance';
+    if (hash === '#/settings/language') return 'language';
+    if (hash === '#/settings/security') return 'security';
+    if (hash === '#/settings/sessions') return 'sessions';
+    if (hash === '#/settings/privacy' || hash === '#/settings/data' || hash === '#/settings/delete-account') return 'privacy-data';
+    return 'overview';
+  };
+
+  const [activeSubTab, setActiveSubTab] = useState<string>(getSubTabFromHash(window.location.hash));
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActiveSubTab(getSubTabFromHash(window.location.hash));
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const handleSubTabChange = (subtab: string) => {
+    setActiveSubTab(subtab);
+    const hashMap: Record<string, string> = {
+      'overview': '#/account',
+      'personal-info': '#/account/profile',
+      'preferences': '#/account/preferences',
+      'activity': '#/account/activity',
+      'contributions': '#/account/contributions',
+      'achievements': '#/account/achievements',
+      'notifications': '#/settings/notifications',
+      'appearance': '#/settings/appearance',
+      'language': '#/settings/language',
+      'security': '#/settings/security',
+      'sessions': '#/settings/sessions',
+      'privacy-data': '#/settings/privacy'
+    };
+    if (hashMap[subtab]) {
+      window.location.hash = hashMap[subtab];
+    }
+  };
+
+  const navGroups = [
+    {
+      titleEn: 'My Account',
+      titleAr: 'حسابي',
+      items: [
+        { id: 'overview', labelEn: 'Profile Overview', labelAr: 'نظرة عامة', icon: User },
+        { id: 'personal-info', labelEn: 'Personal Information', labelAr: 'المعلومات الشخصية', icon: FileText },
+        { id: 'preferences', labelEn: 'Default Preferences', labelAr: 'التفضيلات الافتراضية', icon: ArrowLeftRight }
+      ]
+    },
+    {
+      titleEn: 'Activity & Community',
+      titleAr: 'النشاط والمجتمع',
+      items: [
+        { id: 'contributions', labelEn: 'Contributions Log', labelAr: 'سجل المساهمات', icon: Globe },
+        { id: 'achievements', labelEn: 'Earned Badges', labelAr: 'الشارات المكتسبة', icon: Trophy }
+      ]
+    },
+    {
+      titleEn: 'Preferences',
+      titleAr: 'التفضيلات والمظهر',
+      items: [
+        { id: 'notifications', labelEn: 'Notification Controls', labelAr: 'إعدادات الإشعارات', icon: Bell },
+        { id: 'appearance', labelEn: 'Appearance & Theme', labelAr: 'المظهر والسمة', icon: Sparkles },
+        { id: 'language', labelEn: 'App Language', labelAr: 'لغة التطبيق', icon: Globe }
+      ]
+    },
+    {
+      titleEn: 'Security & Privacy',
+      titleAr: 'الأمان والخصوصية',
+      items: [
+        { id: 'security', labelEn: 'Sign-in & Password', labelAr: 'تسجيل الدخول وكلمة المرور', icon: Key },
+        { id: 'sessions', labelEn: 'Active Device Sessions', labelAr: 'الأجهزة النشطة', icon: Monitor },
+        { id: 'privacy-data', labelEn: 'Privacy & Deletion', labelAr: 'الخصوصية وحذف الحساب', icon: ShieldCheck }
+      ]
+    }
+  ];
+
+  const renderActiveSubTab = () => {
+    const subProps = {
+      language,
+      t,
+      profile,
+      setProfile,
+      onSessionSync,
+      mySubmissions,
+      userProgress,
+      userAchievements,
+      name,
+      setName,
+      phone,
+      setPhone,
+      preferredCorridorId,
+      setPreferredCorridorId,
+      userLanguage,
+      setUserLanguage,
+      preference,
+      setPreference,
+      engagementEnabled,
+      setEngagementEnabled,
+      achievementEnabled,
+      setAchievementEnabled,
+      rateEnabled,
+      setRateEnabled,
+      transferEnabled,
+      setTransferEnabled,
+      communityEnabled,
+      setCommunityEnabled,
+      adminEnabled,
+      setAdminEnabled,
+      pushEnabled,
+      setPushEnabled,
+      emailEnabled,
+      setEmailEnabled,
+      onSave: handleSavePreferences,
+      isLoading,
+      success,
+      triggerToast
+    };
+
+    switch (activeSubTab) {
+      case 'overview':
+        return <ProfileOverview {...subProps} />;
+      case 'personal-info':
+        return <PersonalInformation {...subProps} />;
+      case 'preferences':
+        return <DefaultPreferences {...subProps} />;
+      case 'notifications':
+        return <NotificationSettings {...subProps} />;
+      case 'appearance':
+        return <AppearanceSettings {...subProps} />;
+      case 'language':
+        return <LanguageSettings {...subProps} />;
+      case 'contributions':
+        return <ContributionsList {...subProps} />;
+      case 'achievements':
+        return <AchievementsGrid {...subProps} />;
+      case 'security':
+        return <SecuritySettings {...subProps} />;
+      case 'sessions':
+        return <ActiveSessions {...subProps} />;
+      case 'privacy-data':
+        return <PrivacyAndData {...subProps} />;
+      default:
+        return <ProfileOverview {...subProps} />;
+    }
+  };
 
   // Load user progress and achievements
   useEffect(() => {
@@ -269,8 +442,8 @@ export default function UserProfile({
     }
   };
 
-  const handleSavePreferences = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSavePreferences = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setSuccess(false);
     setIsLoading(true);
 
@@ -722,482 +895,140 @@ export default function UserProfile({
         </div>
       ) : (
         /* Profile Management Panels (Authenticated State) */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left">
-          
-          {/* Left: Preferences Form (Col span 7) */}
-          <div className="lg:col-span-7 space-y-6">
-            <form 
-              onSubmit={handleSavePreferences}
-              className="bg-[#0C2547] p-6 sm:p-8 rounded-3xl border border-sds-border shadow-sds-md space-y-6"
-            >
-              <div className="flex justify-between items-center border-b border-sds-border/60 pb-4">
-                <h3 className="text-xs font-black text-white uppercase tracking-widest font-mono">
-                  Account Preferences
-                </h3>
-                <span className="px-2 py-0.5 rounded-md bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/20 text-[9px] font-mono font-black uppercase">
-                  Connected to Supabase
-                </span>
+        <div className="relative text-left">
+          {/* Toast Notification */}
+          {toastMessage && (
+            <div className="fixed top-20 right-4 z-50 p-4 bg-[#071A35]/95 border border-[#10B981]/35 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs text-white animate-slideIn">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
+              <span className="font-extrabold">{toastMessage}</span>
+            </div>
+          )}
+
+          {/* Desktop Layout (hidden on mobile, shown on md and above) */}
+          <div className="hidden md:grid grid-cols-12 gap-8 items-start">
+            {/* Sidebar Navigation (Col span 4) */}
+            <div className="col-span-4 bg-[#0C2547] border border-sds-border rounded-3xl p-5 space-y-5 shadow-sds-sm animate-fadeIn">
+              <div className="space-y-1 pb-3.5 border-b border-sds-border/50 text-left">
+                <span className="text-[10px] text-sds-text-sec uppercase tracking-widest font-mono font-bold">Authenticated User</span>
+                <h3 className="text-sm font-black text-white truncate max-w-full leading-none mt-1">{profile.name || 'Expat User'}</h3>
+                <span className="text-[10px] text-sds-text-sec truncate block">{profile.email}</span>
               </div>
 
-              {success && (
-                <div className="p-4 bg-[#10B981]/15 border border-[#10B981]/25 rounded-xl text-xs text-[#10B981] font-bold flex items-center gap-2 animate-fadeIn">
-                  <CheckCircle className="w-4 h-4 text-[#10B981] shrink-0" />
-                  <span>Your profile preferences have been updated in Supabase!</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Full Name */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-colors"
-                    />
-                    <User className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <div className="space-y-5">
+                {navGroups.map((group, gIdx) => (
+                  <div key={gIdx} className="space-y-1.5 text-left">
+                    <h5 className="text-[9px] font-black uppercase tracking-widest text-sds-text-sec font-mono px-2.5">
+                      {isRtl ? group.titleAr : group.titleEn}
+                    </h5>
+                    <div className="space-y-0.5">
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const isSelected = activeSubTab === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleSubTabChange(item.id)}
+                            className={`w-full px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                              isSelected 
+                                ? 'bg-[#10B981]/10 text-[#10B981]' 
+                                : 'text-sds-text-sec hover:bg-[#071A35]/40 hover:text-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              <Icon className="w-4 h-4 shrink-0" />
+                              <span className="truncate">{isRtl ? item.labelAr : item.labelEn}</span>
+                            </div>
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-
-                {/* Email (Read Only representation for safety) */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Email Address (Account ID)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      disabled
-                      value={email}
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35]/40 border border-sds-border/60 rounded-xl font-bold text-sm text-sds-text-sec cursor-not-allowed"
-                    />
-                    <Mail className="w-4 h-4 text-sds-text-sec opacity-40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                </div>
+                ))}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Phone */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Phone Number (WhatsApp alerts)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+966 50 123 4567"
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-colors"
-                    />
-                    <Phone className="w-4 h-4 text-sds-text-sec absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                </div>
-
-                {/* Preferred Destination */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                    Default Destination
-                  </label>
-                  <select
-                    value={preferredCorridorId}
-                    onChange={(e) => setPreferredCorridorId(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer transition-colors"
-                  >
-                    {CORRIDORS.map((c) => (
-                      <option key={c.id} value={c.id} className="bg-[#071A35]">
-                        {c.flag} {language === 'en' ? c.toCountry : c.toCountryAr} ({c.currencyCode})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Preferred Language */}
-              <div className="space-y-1.5 text-left">
-                <label className="block text-[10px] font-black text-sds-text-sec uppercase tracking-widest font-mono">
-                  Preferred App Language
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setUserLanguage('en')}
-                    className={`py-2.5 rounded-xl border font-bold text-sm transition-all cursor-pointer ${
-                      userLanguage === 'en'
-                        ? 'border-[#10B981] bg-[#10B981]/10 text-white shadow-xs font-bold'
-                        : 'border-sds-border text-sds-text-sec hover:border-[#10B981] hover:bg-[#071A35]/50'
-                    }`}
-                  >
-                    English
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUserLanguage('ar')}
-                    className={`py-2.5 rounded-xl border font-bold text-sm transition-all cursor-pointer ${
-                      userLanguage === 'ar'
-                        ? 'border-[#10B981] bg-[#10B981]/10 text-white shadow-xs font-bold'
-                        : 'border-sds-border text-sds-text-sec hover:border-[#10B981] hover:bg-[#071A35]/50'
-                    }`}
-                  >
-                    العربية (Arabic)
-                  </button>
-                </div>
-              </div>
-
-              {/* Notification Preferences Section */}
-              <div className="space-y-4 border-t border-sds-border/60 pt-6 text-left">
-                <div className="flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-[#10B981]" />
-                  <h4 className="text-[11px] font-black text-white uppercase tracking-wider font-mono">
-                    Notification Preferences
-                  </h4>
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {/* Engagement Notifications */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
-                    <input
-                      type="checkbox"
-                      checked={engagementEnabled}
-                      onChange={(e) => setEngagementEnabled(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-black text-white block">Engagement Notifications</span>
-                      <span className="text-[10px] text-sds-text-sec block">General tips, updates, and experience feedback.</span>
-                    </div>
-                  </label>
-
-                  {/* Rate Alerts */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
-                    <input
-                      type="checkbox"
-                      checked={rateEnabled}
-                      onChange={(e) => setRateEnabled(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-black text-white block">Rate & Provider Alerts</span>
-                      <span className="text-[10px] text-sds-text-sec block">Alerts for target rates and recommendation improvements.</span>
-                    </div>
-                  </label>
-
-                  {/* Transfer Notifications */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
-                    <input
-                      type="checkbox"
-                      checked={transferEnabled}
-                      onChange={(e) => setTransferEnabled(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-black text-white block">Transfer Notifications</span>
-                      <span className="text-[10px] text-sds-text-sec block">Confirmations when transfer records and savings are saved.</span>
-                    </div>
-                  </label>
-
-                  {/* Achievement Notifications */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
-                    <input
-                      type="checkbox"
-                      checked={achievementEnabled}
-                      onChange={(e) => setAchievementEnabled(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-black text-white block">Achievements & Milestones</span>
-                      <span className="text-[10px] text-sds-text-sec block">Notifications for new levels, badges, and milestones.</span>
-                    </div>
-                  </label>
-
-                  {/* Community Submissions */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
-                    <input
-                      type="checkbox"
-                      checked={communityEnabled}
-                      onChange={(e) => setCommunityEnabled(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-black text-white block">Community Verification</span>
-                      <span className="text-[10px] text-sds-text-sec block">Updates on your submitted rate evidence reviews.</span>
-                    </div>
-                  </label>
-
-                  {/* Security Notifications */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/30 rounded-xl border border-sds-border/30 select-none opacity-85">
-                    <input
-                      type="checkbox"
-                      checked={true}
-                      disabled
-                      className="mt-1 w-4 h-4 rounded text-[#10B981]/50 bg-[#0C2547] border-sds-border cursor-not-allowed"
-                    />
-                    <div className="space-y-0.5 flex-1">
-                      <span className="text-xs font-black text-white flex items-center justify-between gap-1.5 w-full">
-                        <span>Security Alerts</span>
-                        <Shield className="w-3.5 h-3.5 text-[#F59E0B]" />
-                      </span>
-                      <span className="text-[10px] text-[#F59E0B] font-mono block font-bold">Required for account safety.</span>
-                    </div>
-                  </label>
-
-                  {/* Push Notifications */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
-                    <input
-                      type="checkbox"
-                      checked={pushEnabled}
-                      onChange={(e) => setPushEnabled(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-black text-white block">Push Notifications</span>
-                      <span className="text-[10px] text-sds-text-sec block">Send instant notifications directly to this browser.</span>
-                    </div>
-                  </label>
-
-                  {/* Email Notifications */}
-                  <label className="flex items-start gap-3 p-3 bg-[#071A35]/60 hover:bg-[#071A35] rounded-xl border border-sds-border/60 cursor-pointer select-none transition-all">
-                    <input
-                      type="checkbox"
-                      checked={emailEnabled}
-                      onChange={(e) => setEmailEnabled(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded text-[#10B981] bg-[#0C2547] border-sds-border focus:ring-[#10B981] cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-black text-white block">Email Notifications</span>
-                      <span className="text-[10px] text-sds-text-sec block">Send daily or weekly summary digests to your email.</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                id="profile-save-btn"
-                disabled={isLoading}
-                className="w-full py-3 px-4 bg-[#10B981] hover:bg-[#10B981]/90 disabled:bg-slate-500 text-[#071A35] font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 stroke-[2.5]" />
-                )}
-                <span>Save Preferences</span>
-              </button>
-            </form>
-
-            {/* Logout Card */}
-            <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border flex items-center justify-between text-xs">
-              <div className="text-left space-y-0.5">
-                <p className="font-bold text-white uppercase text-[10px] tracking-wide font-mono">Switching accounts or logging off?</p>
-                <p className="text-sds-text-sec text-[11px]">This clears your active browser session cache.</p>
-              </div>
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="py-2 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold border border-red-500/35 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                className="w-full mt-4 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out</span>
+                <LogOut className="w-4 h-4" />
+                <span>{isRtl ? 'تسجيل الخروج' : 'Sign Out Account'}</span>
               </button>
             </div>
 
-            {/* SLCF Compliance Framework Card */}
-            <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border text-left space-y-3.5">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-[#10B981]" />
-                <h4 className="text-[11px] font-black text-white uppercase tracking-wider font-mono">
-                  SariRemit Legal & Compliance Framework (SLCF)
-                </h4>
-              </div>
-              <p className="text-sds-text-sec text-xs leading-relaxed">
-                {isRtl ? (
-                  "تلتزم ساري ريميت تماماً بنظام حماية البيانات الشخصية (PDPL) في المملكة العربية السعودية وإرشادات الامتثال القانوني لحماية خصوصية expats وأمان البيانات المالية."
-                ) : (
-                  "SariRemit is fully committed to the Saudi Personal Data Protection Law (PDPL) and absolute transparency for expat compliance."
-                )}
-              </p>
-              <div className="flex flex-wrap gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowTermsModal(true)}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#071A35] hover:bg-[#10B981]/15 text-white hover:text-[#10B981] border border-sds-border/40 hover:border-[#10B981]/30 transition-all font-bold text-xs cursor-pointer flex items-center gap-1.5 animate-pulse-subtle"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>{isRtl ? "شروط الاستخدام (SLCF)" : "Terms of Use (SLCF)"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPrivacyModal(true)}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#071A35] hover:bg-[#10B981]/15 text-white hover:text-[#10B981] border border-sds-border/40 hover:border-[#10B981]/30 transition-all font-bold text-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>{isRtl ? "سياسة الخصوصية (PDPL)" : "Privacy Policy (PDPL)"}</span>
-                </button>
-              </div>
+            {/* Content Display (Col span 8) */}
+            <div className="col-span-8 bg-[#0C2547] border border-sds-border rounded-3xl p-6 sm:p-8 shadow-sds-md min-h-[480px]">
+              {renderActiveSubTab()}
             </div>
           </div>
 
-          {/* Right: Contributor Profile Rank and Contribution History (Col span 5) */}
-          <div className="lg:col-span-5 space-y-6">
-            
-            {/* Dynamic Level & Progress Card */}
-            <div className="bg-gradient-to-br from-[#0C2547] to-[#071A35] text-white p-6 rounded-3xl shadow-sds-md space-y-4 border border-sds-border relative overflow-hidden text-left animate-fadeIn">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-[#F59E0B]/5 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-[#F59E0B]/10 text-[#F59E0B] flex items-center justify-center border border-[#F59E0B]/20 shrink-0 shadow-inner">
-                  <Trophy className="w-7 h-7" />
-                </div>
-                <div className="text-left flex-1">
-                  <span className="text-[9px] bg-[#10B981]/15 text-[#10B981] font-black tracking-widest px-2 py-0.5 rounded-md uppercase font-mono border border-[#10B981]/10">
-                    {userProgress?.currentLevel || (approvedCount >= 3 ? 'Elite Contributor' : 'Active Contributor')}
-                  </span>
-                  <div className="flex items-baseline justify-between mt-1">
-                    <h3 className="text-sm font-black uppercase tracking-wide">
-                      {userProgress?.currentLevel ? `Level: ${userProgress.currentLevel}` : (approvedCount >= 3 ? 'SariRemit Champion' : 'Verified Expat')}
-                    </h3>
-                    <span className="text-xs font-bold text-sds-text-sec font-mono">
-                      {userProgress?.progressPoints || 0} XP
-                    </span>
-                  </div>
+          {/* Mobile Layout (shown on mobile, hidden on md and above) */}
+          <div className="block md:hidden animate-fadeIn">
+            {activeSubTab !== 'overview' ? (
+              /* Mobile Sub-page view with Header Back button */
+              <div className="space-y-6">
+                <button
+                  type="button"
+                  onClick={() => handleSubTabChange('overview')}
+                  className="flex items-center gap-2 px-3 py-2 bg-[#071A35] border border-sds-border rounded-xl text-xs font-black uppercase tracking-wider font-mono text-[#10B981] hover:text-emerald-300 transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4 shrink-0" />
+                  <span>{isRtl ? '← العودة للحساب' : '← Back to Account'}</span>
+                </button>
+                <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-5 shadow-sds-md text-left animate-fadeIn">
+                  {renderActiveSubTab()}
                 </div>
               </div>
+            ) : (
+              /* Mobile Menu view */
+              <div className="space-y-5">
+                {/* Embedded Overview inside main mobile menu for beautiful rhythm */}
+                {renderActiveSubTab()}
 
-              {/* Progress Bar */}
-              {userProgress && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex justify-between text-[10px] font-bold text-sds-text-sec uppercase font-mono">
-                    <span>Next Rank Milestone</span>
-                    <span>{userProgress.progressPoints % 100}/100 XP</span>
-                  </div>
-                  <div className="w-full bg-[#071A35] rounded-full h-2 overflow-hidden border border-sds-border/40">
-                    <div 
-                      className="bg-[#10B981] h-full transition-all duration-500 rounded-full" 
-                      style={{ width: `${Math.min(100, userProgress.progressPoints % 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-3 pt-3 border-t border-sds-border/60 text-left font-mono">
-                <div>
-                  <span className="text-[9px] text-sds-text-sec block uppercase font-sans tracking-wider font-bold">Transfers</span>
-                  <span className="text-base font-black text-white">
-                    {userProgress ? userProgress.recordedTransferCount : 0}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[9px] text-sds-text-sec block uppercase font-sans tracking-wider font-bold">Contributions</span>
-                  <span className="text-base font-black text-white">
-                    {userProgress ? userProgress.approvedRateContributionCount : approvedCount}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[9px] text-sds-text-sec block uppercase font-sans tracking-wider font-bold">Savings (SAR)</span>
-                  <span className="text-base font-black text-[#10B981]">
-                    +{userProgress ? Math.round(userProgress.lifetimeEstimatedSavingsSar) : 0}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Smart Remittance Badge Grid */}
-            <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border shadow-sds-md space-y-4 text-left">
-              <div className="flex items-center justify-between border-b border-sds-border/60 pb-2">
-                <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono">
-                  SariRemit Badges
-                </h3>
-                <span className="text-[10px] font-bold text-[#F59E0B] font-mono">
-                  {userAchievements.length}/{ACHIEVEMENT_DEFINITIONS.length} Unlocked
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2.5">
-                {ACHIEVEMENT_DEFINITIONS.map(def => {
-                  const isUnlocked = userAchievements.some(a => a.achievementId === def.id);
-                  return (
-                    <div 
-                      key={def.id} 
-                      className={`p-2.5 rounded-2xl border transition-all flex flex-col items-center text-center space-y-1.5 ${isUnlocked ? 'bg-[#071A35] border-[#F59E0B]/30' : 'bg-[#071A35]/40 border-sds-border/40 opacity-50'}`}
-                      title={def.description}
-                    >
-                      <div className="shrink-0 flex items-center justify-center">
-                        <AchievementIcon achievement={def} size="sm" className={isUnlocked ? '' : 'grayscale opacity-60'} />
-                      </div>
-                      <div className="space-y-0.5">
-                        <span className={`text-[10px] font-extrabold line-clamp-1 leading-tight ${isUnlocked ? 'text-white' : 'text-sds-text-sec'}`}>
-                          {def.title}
-                        </span>
-                        <span className="text-[8px] text-sds-text-sec leading-none block line-clamp-2">
-                          {def.description}
-                        </span>
+                <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-4 space-y-4 shadow-sds-md">
+                  {navGroups.map((group, gIdx) => (
+                    <div key={gIdx} className="space-y-1.5 text-left">
+                      <h5 className="text-[9px] font-black uppercase tracking-widest text-sds-text-sec font-mono px-2">
+                        {isRtl ? group.titleAr : group.titleEn}
+                      </h5>
+                      <div className="space-y-1">
+                        {group.items.filter(item => item.id !== 'overview').map((item) => {
+                          const Icon = item.icon;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => handleSubTabChange(item.id)}
+                              className="w-full px-3 py-3 bg-[#071A35]/30 hover:bg-[#071A35]/60 border border-sds-border/40 rounded-2xl flex items-center justify-between text-sds-text transition-all cursor-pointer"
+                            >
+                              <div className="flex items-center gap-3 truncate">
+                                <div className="w-8 h-8 rounded-xl bg-[#071A35] border border-sds-border/60 flex items-center justify-center shrink-0">
+                                  <Icon className="w-4 h-4 text-emerald-400" />
+                                </div>
+                                <span className="text-xs font-bold text-white truncate">{isRtl ? item.labelAr : item.labelEn}</span>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-sds-text-sec shrink-0" />
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="w-full py-3 bg-red-600/10 hover:bg-red-600/20 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-wider rounded-2xl cursor-pointer flex items-center justify-center gap-2 transition-all"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>{isRtl ? 'تسجيل الخروج' : 'Sign Out Account'}</span>
+                  </button>
+                </div>
               </div>
-            </div>
-
-            {/* Past Submissions list */}
-            <div className="bg-[#0C2547] p-5 rounded-3xl border border-sds-border shadow-sds-md space-y-4 text-left">
-              <h3 className="text-xs font-black text-white uppercase tracking-wider font-mono border-b border-sds-border/60 pb-2">
-                Your Contribution History
-              </h3>
-
-              <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
-                {mySubmissions.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-sds-text-sec font-bold uppercase">
-                    No submissions yet. Be the first to share today's rate!
-                  </div>
-                ) : (
-                  mySubmissions.map((sub) => {
-                    const corr = CORRIDORS.find(c => c.id === sub.corridorId) || CORRIDORS[0];
-                    return (
-                      <div key={sub.id} className="p-3 bg-[#071A35]/80 rounded-xl border border-sds-border flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2.5">
-                          <CountryFlag country={corr.toCountry} currency={corr.currencyCode} size="xs" />
-                          <ProviderLogo channel={{ providerCode: sub.providerId, displayName: sub.providerName }} size="xs" shape="circle" />
-                          <div className="text-left">
-                            <span className="font-extrabold text-white block leading-tight">
-                              {sub.providerName}
-                            </span>
-                            <span className="text-[10px] text-sds-text-sec font-mono font-bold">
-                              1 SAR = <span className="text-[#F59E0B]">{sub.exchangeRate}</span> {corr.currencyCode}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="text-right flex items-center gap-1.5 font-mono font-bold">
-                          {sub.status === 'approved' ? (
-                            <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#10B981] font-bold text-[9px] flex items-center gap-1 border border-[#10B981]/25 uppercase">
-                              <CheckCircle className="w-3 h-3" /> VERIFIED
-                            </span>
-                          ) : sub.status === 'pending' ? (
-                            <span className="px-2 py-0.5 rounded bg-[#F59E0B]/15 text-[#F59E0B] font-bold text-[9px] flex items-center gap-1 border border-[#F59E0B]/25 uppercase animate-pulse">
-                              <Clock3 className="w-3 h-3" /> PENDING
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-red-500/15 text-red-400 font-bold text-[9px] flex items-center gap-1 border border-red-500/25 uppercase">
-                              <AlertTriangle className="w-3 h-3" /> REJECTED
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-            </div>
-
+            )}
           </div>
-
         </div>
       )}
 

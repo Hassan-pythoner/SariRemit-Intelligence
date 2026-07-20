@@ -3,6 +3,19 @@ import { Corridor, Provider } from '../types';
 export const ENABLE_SDS_3_USER_SHELL = true;
 export const ENABLE_SDS_3_DASHBOARD = true;
 
+// Centralized Theme System Rollout Flags
+export const ENABLE_LIGHT_MODE = true;
+export const ENABLE_SYSTEM_THEME = true;
+export const ENABLE_THEME_SYNC_TO_PROFILE = false;
+
+// Settings & Account Architecture Feature Flags
+export const ENABLE_SETTINGS_ACCOUNT_ARCHITECTURE = true;
+export const ENABLE_PROFILE_OVERVIEW_V2 = true;
+export const ENABLE_ACCOUNT_DATA_EXPORT = true;
+export const ENABLE_ACCOUNT_DELETION = true;
+export const ENABLE_ACTIVE_SESSION_MANAGEMENT = true;
+export const ENABLE_ACCOUNT_DELETION_RECOVERY_WINDOW = true;
+
 export const PROVIDERS: Provider[] = [
   { id: 'stc-pay', name: 'STC Pay / STC Bank', logoColor: 'bg-purple-600', logoText: 'stc', rating: 4.8 },
   { id: 'urpay', name: 'Urpay', logoColor: 'bg-blue-600', logoText: 'ur', rating: 4.7 },

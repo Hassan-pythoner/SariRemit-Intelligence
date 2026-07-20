@@ -104,6 +104,51 @@ export default function App() {
     });
   };
 
+  // Listen for success message from OAuth popup
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Validate origin
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+        return;
+      }
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        console.log('[SariRemit Main] OAuth success message received from popup.');
+        const session = event.data.session;
+        if (session && session.user) {
+          const resolvedProfile = {
+            id: session.user.id,
+            name: session.user.name,
+            email: session.user.email,
+            phone: session.user.phone,
+            preferredCorridorId: session.user.preferredCorridorId,
+            language: session.user.language,
+            onboarding_completed: session.user.onboarding_completed,
+            primary_destination_country: session.user.primary_destination_country,
+            primary_destination_currency: session.user.primary_destination_currency,
+            preferred_channels: session.user.preferred_channels,
+            estimated_monthly_send_amount: session.user.estimated_monthly_send_amount,
+          };
+          setProfile(resolvedProfile);
+          if (resolvedProfile.language) {
+            setLanguage(resolvedProfile.language);
+          }
+          const { getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
+          const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
+          setSrcmcAccess(access);
+
+          setActiveTab('dashboard');
+          triggerToast(language === 'en' ? "Signed in with Google successfully!" : "تم تسجيل الدخول باستخدام Google بنجاح!");
+        }
+      } else if (event.data?.type === 'OAUTH_AUTH_FAILURE') {
+        const errorMsg = event.data.message || 'Google login failed';
+        triggerToast(language === 'en' ? `Google login failed: ${errorMsg}` : `فشل تسجيل الدخول باستخدام Google: ${errorMsg}`);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [language]);
+
   // Verify and fetch authentic Supabase session/profile on mount
   useEffect(() => {
     async function checkSessionOnMount() {
@@ -121,6 +166,14 @@ export default function App() {
             
             if (session && session.user) {
               console.log('[SariRemit Auth Callback] Google login successful. User ID:', session.user.id);
+              
+              if (window.opener) {
+                console.log('[SariRemit Auth Callback] Popup mode: notifying parent opener window...');
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', session }, '*');
+                window.close();
+                return;
+              }
+
               const resolvedProfile = {
                 id: session.user.id,
                 name: session.user.name,
@@ -149,17 +202,24 @@ export default function App() {
             }
           } catch (err: any) {
             console.error('[SariRemit Auth Callback] Google authentication error:', err);
+            if (window.opener) {
+              window.opener.postMessage({ type: 'OAUTH_AUTH_FAILURE', message: err.message }, '*');
+              window.close();
+              return;
+            }
             triggerToast(language === 'en' ? `Google login failed: ${err.message}` : `فشل تسجيل الدخول باستخدام Google: ${err.message}`);
             setActiveTab('sign-in');
           } finally {
-            // Clean up url so that refreshing the page doesn't run the callback again!
-            try {
-              window.history.replaceState(null, '', '/');
-            } catch (e) {
-              console.warn('Failed to clean up URL:', e);
+            if (!window.opener) {
+              // Clean up url so that refreshing the page doesn't run the callback again!
+              try {
+                window.history.replaceState(null, '', '/');
+              } catch (e) {
+                console.warn('Failed to clean up URL:', e);
+              }
+              setSrcmcAccessLoading(false);
+              setAppLoading(false);
             }
-            setSrcmcAccessLoading(false);
-            setAppLoading(false);
           }
           return;
         }
@@ -707,12 +767,12 @@ export default function App() {
       >
         {/* Desktop Left Sidebar (hidden on mobile) */}
         <aside 
-          className={`hidden md:flex flex-col border-r border-slate-800 bg-[#030c18] transition-all duration-300 shrink-0 select-none ${
+          className={`hidden md:flex flex-col border-r border-sds-border bg-sds-bg-sidebar transition-all duration-300 shrink-0 select-none ${
             isSidebarCollapsed ? 'w-20' : 'w-64'
           }`}
         >
           {/* Sidebar Header */}
-          <div className="h-20 flex items-center justify-between px-4 border-b border-slate-800 bg-[#020a16]">
+          <div className="h-20 flex items-center justify-between px-4 border-b border-sds-border bg-sds-bg-surface-soft">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <SariRemitLogo 
                 variant={isSidebarCollapsed ? 'monogram' : 'primary'} 
@@ -761,10 +821,10 @@ export default function App() {
 
           {/* Sidebar Collapse Toggle for Collapsed State */}
           {isSidebarCollapsed && (
-            <div className="p-4 border-t border-slate-800 flex justify-center bg-[#020a16]">
+            <div className="p-4 border-t border-sds-border flex justify-center bg-sds-bg-surface-soft">
               <button 
                 onClick={toggleSidebar}
-                className="p-1.5 rounded-md bg-slate-900 border border-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                className="p-1.5 rounded-md bg-sds-bg-surface border border-sds-border text-sds-text-secondary hover:text-sds-text-primary cursor-pointer"
               >
                 {isRtl ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
@@ -772,7 +832,7 @@ export default function App() {
           )}
 
           {/* Sidebar Footer */}
-          <div className="p-4 border-t border-slate-800 bg-[#020a16]">
+          <div className="p-4 border-t border-sds-border bg-sds-bg-surface-soft">
             <div className="flex items-center justify-between gap-2.5">
               <div 
                 onClick={() => setActiveTab('profile')}
@@ -783,8 +843,8 @@ export default function App() {
                 </div>
                 {!isSidebarCollapsed && (
                   <div className="text-left min-w-0">
-                    <p className="text-xs font-bold text-white truncate max-w-[120px]">{profile.name}</p>
-                    <p className="text-[10px] text-slate-400 font-mono truncate">{canSeeSrcmc ? (isRtl ? 'مشرف' : 'Admin') : (isRtl ? 'مستخدم' : 'Verified User')}</p>
+                    <p className="text-xs font-bold text-sds-text-primary truncate max-w-[120px]">{profile.name}</p>
+                    <p className="text-[10px] text-sds-text-muted font-mono truncate">{canSeeSrcmc ? (isRtl ? 'مشرف' : 'Admin') : (isRtl ? 'مستخدم' : 'Verified User')}</p>
                   </div>
                 )}
               </div>
@@ -792,7 +852,7 @@ export default function App() {
                 <button 
                   onClick={handleLogout}
                   title={isRtl ? 'تسجيل الخروج' : 'Sign Out'}
-                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-red-400 hover:border-red-500/20 transition-all cursor-pointer"
+                  className="p-1.5 rounded-lg bg-sds-bg-surface border border-sds-border text-sds-text-secondary hover:text-red-400 hover:border-red-500/20 transition-all cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -804,10 +864,10 @@ export default function App() {
         {/* Content Panel Area */}
         <div className="flex-1 flex flex-col min-w-0 bg-sds-bg-canvas relative pb-20 md:pb-0">
           {/* Mobile compact header (hidden on desktop) */}
-          <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#030c18] border-b border-slate-800 shrink-0">
+          <div className="md:hidden flex items-center justify-between px-4 py-3 bg-sds-bg-sidebar border-b border-sds-border shrink-0">
             <div className="flex items-center gap-2">
               <SariRemitLogo variant="monogram" size="sm" surface="dark" />
-              <span className="font-extrabold text-xs text-white uppercase tracking-wider font-sans">
+              <span className="font-extrabold text-xs text-sds-text-primary uppercase tracking-wider font-sans">
                 {activeTab === 'dashboard' ? (isRtl ? 'الرئيسية' : 'Dashboard') : sidebarItems.find(i => i.id === activeTab)?.label}
               </span>
             </div>
@@ -825,9 +885,9 @@ export default function App() {
           </div>
 
           {/* Desktop Compact Top Utility Bar (hidden on mobile) */}
-          <header className="hidden md:flex h-16 border-b border-slate-800 bg-[#030c18]/40 backdrop-blur-md items-center justify-between px-6 shrink-0 select-none">
+          <header className="hidden md:flex h-16 border-b border-sds-border bg-sds-bg-sidebar/40 backdrop-blur-md items-center justify-between px-6 shrink-0 select-none">
             <div className="flex items-center gap-4">
-              <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              <span className="text-xs font-mono font-bold uppercase tracking-widest text-sds-text-muted flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-sds-emerald-primary animate-pulse" />
                 {isRtl ? 'نبض ساري ريميت - مباشر ومؤكد' : 'SariRemit Pulse - Live & Verified'}
               </span>
@@ -840,7 +900,7 @@ export default function App() {
               {/* Language Selector */}
               <button
                 onClick={toggleLanguage}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-850 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-200 transition-colors cursor-pointer border border-slate-800 font-mono"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sds-bg-surface hover:bg-sds-bg-surface-soft rounded-lg text-[10px] font-bold uppercase tracking-wider text-sds-text-primary transition-colors cursor-pointer border border-sds-border font-mono"
               >
                 <Globe className="w-3.5 h-3.5 text-amber-400" />
                 <span>{language === 'en' ? 'EN | عربي' : 'عربي | EN'}</span>
@@ -849,12 +909,12 @@ export default function App() {
               {/* Profile Card trigger */}
               <div 
                 onClick={() => setActiveTab('profile')}
-                className="flex items-center gap-2 px-2.5 py-1 bg-[#051326] border border-slate-800 hover:border-amber-400/40 rounded-xl cursor-pointer transition-all hover:scale-102"
+                className="flex items-center gap-2 px-2.5 py-1 bg-sds-bg-surface border border-sds-border hover:border-amber-400/40 rounded-xl cursor-pointer transition-all hover:scale-102"
               >
                 <div className="w-6 h-6 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center font-black text-[10px] shrink-0 font-mono uppercase">
                   {profile.name.charAt(0).toUpperCase() || <User className="w-3" />}
                 </div>
-                <span className="text-xs font-bold text-slate-200">{profile.name}</span>
+                <span className="text-xs font-bold text-sds-text-primary">{profile.name}</span>
               </div>
             </div>
           </header>
@@ -867,11 +927,11 @@ export default function App() {
           </main>
 
           {/* Mobile Bottom Navigation Bar (hidden on desktop) */}
-          <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#030c18] border-t border-slate-800 shadow-xl px-2 pb-safe">
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sds-bg-sidebar border-t border-sds-border shadow-xl px-2 pb-safe">
             <div className="grid grid-cols-5 h-16 max-w-lg mx-auto items-center">
               <button 
                 onClick={() => { setActiveTab('dashboard'); setIsMobileMoreOpen(false); }}
-                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'dashboard' ? 'text-amber-400' : 'text-slate-400'}`}
+                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'dashboard' ? 'text-amber-400' : 'text-sds-text-muted hover:text-sds-text-primary'}`}
               >
                 <LayoutDashboard className="w-4.5 h-4.5" />
                 <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'الرئيسية' : 'Home'}</span>
@@ -879,7 +939,7 @@ export default function App() {
               
               <button 
                 onClick={() => { setActiveTab('compare'); setIsMobileMoreOpen(false); }}
-                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'compare' ? 'text-amber-400' : 'text-slate-400'}`}
+                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'compare' ? 'text-amber-400' : 'text-sds-text-muted hover:text-sds-text-primary'}`}
               >
                 <ArrowLeftRight className="w-4.5 h-4.5" />
                 <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'المقارنة' : 'Compare'}</span>
@@ -894,12 +954,12 @@ export default function App() {
                 }`}>
                   <PlusCircle className="w-5 h-5 stroke-[2.5]" />
                 </div>
-                <span className={`text-[9px] font-black tracking-tight mt-1 ${activeTab === 'submit' ? 'text-amber-400' : 'text-slate-400'}`}>{isRtl ? 'توثيق' : 'Verify'}</span>
+                <span className={`text-[9px] font-black tracking-tight mt-1 ${activeTab === 'submit' ? 'text-amber-400' : 'text-sds-text-muted'}`}>{isRtl ? 'توثيق' : 'Verify'}</span>
               </button>
               
               <button 
                 onClick={() => { setActiveTab('savings'); setIsMobileMoreOpen(false); }}
-                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'savings' ? 'text-amber-400' : 'text-slate-400'}`}
+                className={`flex flex-col items-center justify-center cursor-pointer ${activeTab === 'savings' ? 'text-amber-400' : 'text-sds-text-muted hover:text-sds-text-primary'}`}
               >
                 <PiggyBank className="w-4.5 h-4.5" />
                 <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'المدخرات' : 'Savings'}</span>
@@ -907,7 +967,7 @@ export default function App() {
               
               <button 
                 onClick={() => setIsMobileMoreOpen(true)}
-                className={`flex flex-col items-center justify-center cursor-pointer ${isMobileMoreOpen ? 'text-amber-400' : 'text-slate-400'}`}
+                className={`flex flex-col items-center justify-center cursor-pointer ${isMobileMoreOpen ? 'text-amber-400' : 'text-sds-text-muted'}`}
               >
                 <Menu className="w-4.5 h-4.5" />
                 <span className="text-[9px] font-black tracking-tight mt-1">{isRtl ? 'المزيد' : 'More'}</span>
@@ -917,15 +977,15 @@ export default function App() {
 
           {/* Mobile More Drawer overlay */}
           {isMobileMoreOpen && (
-            <div className="fixed inset-0 z-50 bg-[#030c18]/85 backdrop-blur-sm flex justify-end flex-col animate-fadeIn md:hidden">
+            <div className="fixed inset-0 z-50 bg-sds-bg-sidebar/85 backdrop-blur-sm flex justify-end flex-col animate-fadeIn md:hidden">
               <div className="absolute inset-0 -z-10" onClick={() => setIsMobileMoreOpen(false)} />
               
-              <div className="bg-[#051326] border-t border-slate-800 rounded-t-3xl max-w-lg w-full mx-auto px-6 pt-5 pb-8 space-y-6">
-                <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
-                  <span className="text-sm font-black text-white uppercase tracking-wider">{isRtl ? 'خيارات إضافية' : 'More Options'}</span>
+              <div className="bg-sds-bg-surface border-t border-sds-border rounded-t-3xl max-w-lg w-full mx-auto px-6 pt-5 pb-8 space-y-6">
+                <div className="flex items-center justify-between border-b border-sds-border pb-3">
+                  <span className="text-sm font-black text-sds-text-primary uppercase tracking-wider">{isRtl ? 'خيارات إضافية' : 'More Options'}</span>
                   <button 
                     onClick={() => setIsMobileMoreOpen(false)}
-                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
+                    className="p-1.5 rounded-lg bg-sds-bg-surface-soft border border-sds-border text-sds-text-secondary hover:text-sds-text-primary"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -934,8 +994,8 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-3.5">
                   <button 
                     onClick={() => { setActiveTab('profile'); setIsMobileMoreOpen(false); }}
-                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
-                      activeTab === 'profile' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                    className={`p-3.5 bg-sds-bg-surface-soft border border-sds-border rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
+                      activeTab === 'profile' ? 'border-[#10B981] text-[#10B981]' : 'text-sds-text-primary'
                     }`}
                   >
                     <User className="w-5 h-5" />
@@ -944,8 +1004,8 @@ export default function App() {
                   
                   <button 
                     onClick={() => { setActiveTab('support'); setIsMobileMoreOpen(false); }}
-                    className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
-                      activeTab === 'support' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                    className={`p-3.5 bg-sds-bg-surface-soft border border-sds-border rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
+                      activeTab === 'support' ? 'border-[#10B981] text-[#10B981]' : 'text-sds-text-primary'
                     }`}
                   >
                     <MessageSquare className="w-5 h-5" />
@@ -955,8 +1015,8 @@ export default function App() {
                   {canSeeSrcmc && (
                     <button 
                       onClick={() => { setActiveTab('srcmc'); setIsMobileMoreOpen(false); }}
-                      className={`p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold col-span-2 ${
-                        activeTab === 'srcmc' ? 'border-[#10B981] text-[#10B981]' : 'text-slate-200'
+                      className={`p-3.5 bg-sds-bg-surface-soft border border-sds-border rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold col-span-2 ${
+                        activeTab === 'srcmc' ? 'border-[#10B981] text-[#10B981]' : 'text-sds-text-primary'
                       }`}
                     >
                       <ShieldCheck className="w-5 h-5" />
@@ -965,10 +1025,10 @@ export default function App() {
                   )}
                 </div>
                 
-                <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between gap-4">
+                <div className="pt-4 border-t border-sds-border flex items-center justify-between gap-4">
                   <button
                     onClick={() => { toggleLanguage(); setIsMobileMoreOpen(false); }}
-                    className="flex items-center gap-2 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold text-slate-200 font-mono"
+                    className="flex items-center gap-2 px-3.5 py-2 bg-sds-bg-surface-soft border border-sds-border rounded-xl text-xs font-bold text-sds-text-primary font-mono"
                   >
                     <Globe className="w-4 h-4 text-[#F59E0B]" />
                     <span>{language === 'en' ? 'English | عربي' : 'عربي | English'}</span>

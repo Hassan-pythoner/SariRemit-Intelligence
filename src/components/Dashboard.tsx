@@ -14,6 +14,7 @@ import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect, SDSSisGauge } from '
 import { ProviderLogo, ProviderBrandBlock, CountryFlag, BrandIllustration } from './SdsBamComponents';
 import { RecordTransferModal } from './RecordTransferModal';
 import { getProviderIdentity } from '../services/pisService';
+import { SisService } from '../services/sic/sisIntelligenceService';
 
 interface DashboardProps {
   language: 'en' | 'ar';
@@ -31,6 +32,28 @@ export default function Dashboard({
   setQuickSearch,
 }: DashboardProps) {
   const isRtl = language === 'ar';
+
+  const getConfidenceBadgeColor = (band: string) => {
+    if (band === 'Very High' || band === 'High') {
+      return 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20';
+    } else if (band === 'Moderate') {
+      return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+    } else if (band === 'Low' || band === 'Very Low') {
+      return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+    } else {
+      return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+    }
+  };
+
+  const getConfidenceLabel = (band: string) => {
+    const isRtlLang = isRtl;
+    if (band === 'Very High') return isRtlLang ? 'ثقة عالية جداً' : 'Very High Confidence';
+    if (band === 'High') return isRtlLang ? 'ثقة عالية' : 'High Confidence';
+    if (band === 'Moderate') return isRtlLang ? 'ثقة متوسطة' : 'Moderate Confidence';
+    if (band === 'Low') return isRtlLang ? 'ثقة منخفضة' : 'Low Confidence';
+    if (band === 'Very Low') return isRtlLang ? 'ثقة منخفضة جداً' : 'Very Low Confidence';
+    return isRtlLang ? 'غير متوفر' : 'Unavailable Confidence';
+  };
 
   // --- REVERT PATHWAY FALLBACK ---
   if (!ENABLE_SDS_3_DASHBOARD) {
@@ -146,11 +169,26 @@ export default function Dashboard({
 
           const bestOptionDetails = res.allOptions.find(o => o.resolved.provider_id === res.bestOption.best_provider_id);
           if (bestOptionDetails) {
-            setSisScore(bestOptionDetails.sis.sis_score);
-            setSisLabel(bestOptionDetails.sis.sis_label);
-            setRecommendedChannel(bestOptionDetails);
+            SisService.calculateSisV2ForOption(bestOptionDetails, selectedCorridorId)
+              .then((sisV2) => {
+                if (!isMounted) return;
+                setSisScore(sisV2.overallScore);
+                setSisLabel(sisV2.confidenceBand);
+                setConfidence(sisV2.confidenceBand);
+                setRecommendedChannel({
+                  ...bestOptionDetails,
+                  sis2: sisV2
+                });
+              })
+              .catch((err) => {
+                console.error('[SDS 3.0 Dashboard] SIS 2.0 calc failed:', err);
+                if (!isMounted) return;
+                setSisScore(bestOptionDetails.sis.sis_score);
+                setSisLabel(bestOptionDetails.sis.sis_label);
+                setRecommendedChannel(bestOptionDetails);
+              });
           } else {
-            setRecommendedChannel({
+            const fallbackOpt = {
               resolved: {
                 provider_id: res.bestOption.best_provider_id,
                 provider_code: res.bestOption.best_provider_id,
@@ -169,7 +207,24 @@ export default function Dashboard({
               },
               netAmount: res.bestOption.net_recipient_amount,
               totalFees: activeCorridor.typicalFee
-            });
+            };
+
+            SisService.calculateSisV2ForOption(fallbackOpt, selectedCorridorId)
+              .then((sisV2) => {
+                if (!isMounted) return;
+                setSisScore(sisV2.overallScore);
+                setSisLabel(sisV2.confidenceBand);
+                setConfidence(sisV2.confidenceBand);
+                setRecommendedChannel({
+                  ...fallbackOpt,
+                  sis2: sisV2
+                });
+              })
+              .catch((err) => {
+                console.error('[SDS 3.0 Dashboard] Fallback SIS 2.0 calc failed:', err);
+                if (!isMounted) return;
+                setRecommendedChannel(fallbackOpt);
+              });
           }
         }
         setIsLoading(false);
@@ -335,8 +390,8 @@ export default function Dashboard({
                         {isRtl ? `عبر ${recommendedChannelObj.source_label || 'قناة آمنة'}` : `via ${recommendedChannelObj.source_label || 'Direct Wallet'}`}
                       </p>
                       <div className="mt-1 flex items-center gap-1.5">
-                        <span className="px-2 py-0.5 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 rounded text-[9px] font-black uppercase tracking-wider">
-                          {isRtl ? 'ثقة عالية' : 'High Confidence'}
+                        <span className={`px-2 py-0.5 border rounded text-[9px] font-black uppercase tracking-wider ${getConfidenceBadgeColor(sisLabel)}`}>
+                          {getConfidenceLabel(sisLabel)}
                         </span>
                         <SDSBadge type="verified" />
                       </div>
@@ -378,7 +433,7 @@ export default function Dashboard({
                 <div className="grid grid-cols-2 gap-4 py-4 border-b border-slate-800/60 text-left">
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {isRtl ? 'المستلم يحصل على' : 'Recipient gets'}
+                       {isRtl ? 'المستلم يحصل على' : 'Recipient gets'}
                     </span>
                     <span className="text-xl md:text-2xl font-black text-[#10B981] font-mono leading-none block">
                       {netRecipient.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {activeCorridor.currencyCode}

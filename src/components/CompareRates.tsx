@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { TranslationDict, Corridor, TrueCostResult, BrandAsset } from '../types';
+import { TranslationDict, Corridor, TrueCostResult, BrandAsset, SisResultV2 } from '../types';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
 import { getProviderIdentity } from '../services/pisService';
 import { slf } from '../services/slfService';
+import { SisService } from '../services/sic/sisIntelligenceService';
 import { 
   getRecommendations, DbResolvedRate, DbSisScore, DbRecommendationResult, getAuthSession,
   resolveProviderBranding, fetchBrandAssets
@@ -69,6 +70,70 @@ export default function CompareRates({
   const session = getAuthSession();
   const user = session.user;
 
+  const renderConfidenceBadge = (optId: string) => {
+    const sisRes = sisResultsV2[optId];
+    if (!sisRes) return null;
+
+    const band = sisRes.confidenceBand;
+    let bgClass = 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20';
+    let dotClass = 'bg-[#10B981]';
+    
+    if (band === 'Very High' || band === 'High') {
+      bgClass = 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30';
+      dotClass = 'bg-[#10B981]';
+    } else if (band === 'Moderate') {
+      bgClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+      dotClass = 'bg-amber-500';
+    } else if (band === 'Low' || band === 'Very Low') {
+      bgClass = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+      dotClass = 'bg-rose-500';
+    } else {
+      bgClass = 'bg-slate-500/10 text-slate-400 border-slate-500/30';
+      dotClass = 'bg-slate-400';
+    }
+
+    const labelText = isRtl
+      ? (band === 'Very High' || band === 'High' ? 'ثقة عالية' : band === 'Moderate' ? 'ثقة متوسطة' : band === 'Unavailable' ? 'غير متوفر' : 'ثقة محدودة')
+      : `${band} Confidence`;
+
+    return (
+      <div className="relative group inline-flex items-center">
+        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-black border rounded-md uppercase tracking-wider ${bgClass} cursor-help transition-all hover:scale-105`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${dotClass} animate-pulse`}></span>
+          <span>{labelText}</span>
+        </span>
+
+        {/* Hover summary popover explaining why, NO scoring formulas */}
+        <div className="absolute z-50 left-0 bottom-full mb-2 w-64 p-3 bg-[#071A35] border border-sds-border rounded-xl shadow-xl hidden group-hover:block transition-all text-left">
+          <p className="text-[10px] text-white font-bold uppercase tracking-wider border-b border-sds-border/60 pb-1 mb-1.5">
+            {isRtl ? 'تفاصيل موثوقية السعر' : 'Reliability Summary'}
+          </p>
+          <p className="text-[10px] text-slate-300 font-medium mb-2 leading-relaxed">
+            {sisRes.userSummary}
+          </p>
+
+          {sisRes.strengths.length > 0 && (
+            <div className="mb-1.5">
+              <span className="text-[8px] text-[#10B981] font-black uppercase tracking-wider block mb-0.5">{isRtl ? 'نقاط القوة:' : 'Strengths'}</span>
+              <ul className="list-disc pl-3 text-[9px] text-slate-400 space-y-0.5">
+                {sisRes.strengths.map((s, idx) => <li key={idx}>{s}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {sisRes.limitations.length > 0 && (
+            <div>
+              <span className="text-[8px] text-amber-400 font-black uppercase tracking-wider block mb-0.5">{isRtl ? 'القيود:' : 'Limitations'}</span>
+              <ul className="list-disc pl-3 text-[9px] text-slate-400 space-y-0.5">
+                {sisRes.limitations.map((l, idx) => <li key={idx}>{l}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Load user's preferred country when logged in and no quickSearch is active
   useEffect(() => {
     if (!quickSearch) {
@@ -93,6 +158,23 @@ export default function CompareRates({
   const [loading, setLoading] = useState<boolean>(true);
   const [recommendation, setRecommendation] = useState<DbRecommendationResult | null>(null);
   const [options, setOptions] = useState<{ resolved: DbResolvedRate; sis: DbSisScore; netAmount: number; totalFees: number; trueCost?: TrueCostResult }[]>([]);
+  const [sisResultsV2, setSisResultsV2] = useState<Record<string, SisResultV2>>({});
+
+  useEffect(() => {
+    if (options.length > 0) {
+      const promises = options.map(opt => 
+        SisService.calculateSisV2ForOption(opt, corridorId)
+          .then(res => ({ id: opt.resolved.id, res }))
+      );
+      Promise.all(promises).then(results => {
+        const map: Record<string, SisResultV2> = {};
+        results.forEach(item => {
+          map[item.id] = item.res;
+        });
+        setSisResultsV2(map);
+      });
+    }
+  }, [options, corridorId]);
 
   // Load quick search parameters from landing page
   useEffect(() => {
@@ -330,7 +412,13 @@ export default function CompareRates({
                   <span className="text-xs font-bold text-sds-text-sec ml-1">{activeCorridor.currencyCode}</span>
                 </span>
                 <span className="text-[10px] text-sds-text-sec font-bold font-mono mt-1 block">{t.transferFee}: {targetOpt.resolved.transfer_fee} SAR</span>
-                <span className="text-[10px] text-sds-text-sec font-bold block">{t.confidenceScore}: {targetOpt.sis.sis_score}%</span>
+                <span className="text-[10px] text-sds-text-sec font-bold block">
+                  {t.confidenceScore}: {(() => {
+                    const sisRes = sisResultsV2[targetOpt.resolved.id];
+                    if (!sisRes) return '...';
+                    return `${sisRes.confidenceBand} (${sisRes.overallScore}/100)`;
+                  })()}
+                </span>
               </div>
 
               {/* Recommended Card */}
@@ -344,7 +432,13 @@ export default function CompareRates({
                     <span className="text-xs font-bold text-[#F59E0B] ml-1">{activeCorridor.currencyCode}</span>
                   </span>
                   <span className="text-[10px] text-sds-text-sec font-bold font-mono mt-1 block">{t.transferFee}: {recOpt.resolved.transfer_fee} SAR</span>
-                  <span className="text-[10px] text-[#10B981] font-bold block">{t.confidenceScore}: {recOpt.sis.sis_score}%</span>
+                  <span className="text-[10px] text-[#10B981] font-bold block">
+                    {t.confidenceScore}: {(() => {
+                      const sisRes = sisResultsV2[recOpt.resolved.id];
+                      if (!sisRes) return '...';
+                      return `${sisRes.confidenceBand} (${sisRes.overallScore}/100)`;
+                    })()}
+                  </span>
                 </div>
               ) : (
                 <div className="p-4 rounded-2xl border border-sds-border bg-[#091F3E] flex items-center justify-center text-center text-xs text-sds-text-sec">
@@ -794,11 +888,14 @@ export default function CompareRates({
                                 <h4 className="font-black text-white text-sm uppercase leading-none tracking-tight">
                                   {opt.resolved.provider_name}
                                 </h4>
-                                <div className="flex items-center gap-1 mt-1">
-                                  {getMethodIcon(opt.resolved.provider_id)}
-                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
-                                    {getMethodLabel(opt.resolved.provider_id)}
-                                  </span>
+                                <div className="flex flex-col gap-1 mt-1">
+                                  <div className="flex items-center gap-1">
+                                    {getMethodIcon(opt.resolved.provider_id)}
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                                      {getMethodLabel(opt.resolved.provider_id)}
+                                    </span>
+                                  </div>
+                                  {renderConfidenceBadge(opt.resolved.id)}
                                 </div>
                               </div>
                             </div>
@@ -869,9 +966,28 @@ export default function CompareRates({
                             <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                               <ShieldAlert className="w-3.5 h-3.5 text-[#10B981]" />
                               <span>{isRtl ? 'مستوى الثقة:' : 'Confidence Level:'}</span>
-                              <span className={getConfidenceLevel(opt.sis.sis_score).color}>
-                                {getConfidenceLevel(opt.sis.sis_score).label} ({opt.sis.sis_score}%)
-                              </span>
+                              {(() => {
+                                const sisRes = sisResultsV2[opt.resolved.id];
+                                if (!sisRes) {
+                                  return <span className="text-slate-400 font-mono">...</span>;
+                                }
+                                const band = sisRes.confidenceBand;
+                                const score = sisRes.overallScore;
+                                let colorClass = 'text-slate-400';
+                                if (band === 'Very High' || band === 'High') colorClass = 'text-[#10B981]';
+                                else if (band === 'Moderate') colorClass = 'text-amber-400';
+                                else if (band === 'Low' || band === 'Very Low') colorClass = 'text-rose-400';
+
+                                const labelText = isRtl
+                                  ? (band === 'Very High' || band === 'High' ? 'ثقة عالية' : band === 'Moderate' ? 'ثقة متوسطة' : band === 'Unavailable' ? 'غير متوفر' : 'ثقة محدودة')
+                                  : `${band} Confidence`;
+
+                                return (
+                                  <span className={`${colorClass} font-bold`}>
+                                    {labelText} ({score}/100)
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <p className="text-[9px] text-slate-400/80 font-medium leading-tight">
                               {isRtl ? 'يوضح مدى موثوقية وحداثة هذه البيانات المستخرجة.' : 'This shows how reliable and recent the extracted data is.'}
@@ -1000,10 +1116,10 @@ export default function CompareRates({
                                     <div className="space-y-0.5">
                                       <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                         <span>Comparison Confidence</span>
-                                        <span className="font-mono text-white">{opt.sis.true_cost_score ?? 80}/100</span>
+                                        <span className="font-mono text-white">{sisResultsV2[opt.resolved.id]?.overallScore ?? opt.sis.true_cost_score ?? 80}/100</span>
                                       </div>
                                       <div className="w-full h-1 bg-[#071A35] rounded-full overflow-hidden">
-                                        <div className="h-full bg-[#F59E0B]" style={{ width: `${opt.sis.true_cost_score ?? 80}%` }}></div>
+                                        <div className="h-full bg-[#F59E0B]" style={{ width: `${sisResultsV2[opt.resolved.id]?.overallScore ?? opt.sis.true_cost_score ?? 80}%` }}></div>
                                       </div>
                                     </div>
                                     <div className="space-y-0.5">
@@ -1072,11 +1188,14 @@ export default function CompareRates({
                                 <h4 className="font-extrabold text-white text-base leading-tight uppercase tracking-tight">
                                   {opt.resolved.provider_name}
                                 </h4>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  {getMethodIcon(opt.resolved.provider_id)}
-                                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                                    {getMethodLabel(opt.resolved.provider_id)}
-                                  </span>
+                                <div className="flex flex-col gap-1 mt-1">
+                                  <div className="flex items-center gap-1.5">
+                                    {getMethodIcon(opt.resolved.provider_id)}
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                                      {getMethodLabel(opt.resolved.provider_id)}
+                                    </span>
+                                  </div>
+                                  {renderConfidenceBadge(opt.resolved.id)}
                                 </div>
                               </div>
                             </div>
@@ -1136,76 +1255,156 @@ export default function CompareRates({
 
                           {/* Expanded detail accordion panel */}
                           {isExpanded && (
-                            <div className="pt-4 border-t border-sds-border/60 grid grid-cols-1 lg:grid-cols-12 gap-6 text-left">
-                              {/* Confidence indicators */}
-                              <div className="lg:col-span-7 space-y-4">
-                                <h5 className="font-extrabold text-[#F59E0B] text-[10px] uppercase tracking-widest">
-                                  {language === 'en' ? 'Confidence Metrics (0-100)' : 'مقاييس الثقة (٠-١٠٠)'}
-                                </h5>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                      <span>Rate Advantage</span>
-                                      <span className="font-mono text-white">{opt.sis.rate_advantage_score}/100</span>
+                            <div className="pt-4 border-t border-sds-border/60 space-y-4 text-left">
+                              
+                              {/* New SIS v2 Multidimensional Intelligence Breakdown */}
+                              {sisResultsV2[opt.resolved.id] ? (() => {
+                                const sisRes = sisResultsV2[opt.resolved.id];
+                                return (
+                                  <div className="bg-[#071A35]/60 p-5 rounded-2xl border border-sds-border space-y-4">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sds-border/40 pb-3">
+                                      <div>
+                                        <h5 className="text-xs font-black text-[#F59E0B] uppercase tracking-widest flex items-center gap-1.5">
+                                          <Sparkles className="w-3.5 h-3.5" />
+                                          {language === 'en' ? 'SIS 2.0 Multidimensional Confidence Model' : 'نموذج الثقة متعدد الأبعاد SIS 2.0'}
+                                        </h5>
+                                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                                          {isRtl ? 'حساب ثقة شامل يتم تقييمه عبر ٩ أبعاد و٧ مواضيع مستقلة.' : 'Comprehensive confidence evaluated across nine distinct dimensions and seven subject areas.'}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isRtl ? 'مؤشر الثقة:' : 'Confidence:'}</span>
+                                        <span className="px-2.5 py-0.5 text-[10px] font-black border rounded-md uppercase bg-amber-500/10 text-amber-400 border-amber-500/20">
+                                          {sisRes.confidenceBand} ({sisRes.overallScore}/100)
+                                        </span>
+                                      </div>
                                     </div>
-                                    <div className="w-full h-1.5 bg-[#071A35] rounded-full overflow-hidden">
-                                      <div className="h-full bg-[#10B981]" style={{ width: `${opt.sis.rate_advantage_score}%` }}></div>
+
+                                    {/* Explanation Statement */}
+                                    <div className="text-xs text-slate-300 font-medium bg-[#071A35] p-3 rounded-xl border border-sds-border/40 leading-relaxed">
+                                      {sisRes.userSummary}
+                                    </div>
+
+                                    {/* 2-Column Strengths & Limitations + Subject Confidence Scorecard */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                      
+                                      {/* Column 1: Strengths & Limitations */}
+                                      <div className="space-y-3">
+                                        <div>
+                                          <span className="text-[10px] font-black text-[#10B981] uppercase tracking-wider block mb-1.5">{isRtl ? 'نقاط القوة والمزايا:' : 'Evidence Strengths'}</span>
+                                          <ul className="list-none space-y-1">
+                                            {sisRes.strengths.map((s, idx) => (
+                                              <li key={idx} className="text-[11px] text-slate-300 flex items-start gap-1.5">
+                                                <span className="text-[#10B981] text-xs leading-none">✓</span>
+                                                <span>{s}</span>
+                                              </li>
+                                            ))}
+                                            {sisRes.strengths.length === 0 && <li className="text-[11px] text-slate-400 italic">No explicit strengths registered.</li>}
+                                          </ul>
+                                        </div>
+
+                                        <div>
+                                          <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider block mb-1.5">{isRtl ? 'القيود والتنبيهات:' : 'Evidence Limitations'}</span>
+                                          <ul className="list-none space-y-1">
+                                            {sisRes.limitations.map((l, idx) => (
+                                              <li key={idx} className="text-[11px] text-slate-300 flex items-start gap-1.5">
+                                                <span className="text-amber-400 text-xs leading-none">⚠</span>
+                                                <span>{l}</span>
+                                              </li>
+                                            ))}
+                                            {sisRes.limitations.length === 0 && <li className="text-[11px] text-slate-400 italic">No explicit limitations registered.</li>}
+                                          </ul>
+                                        </div>
+                                      </div>
+
+                                      {/* Column 2: Subject-Level Confidence Scorecard */}
+                                      <div className="bg-[#071A35] p-4 rounded-xl border border-sds-border/40 space-y-2.5">
+                                        <span className="text-[10px] font-black text-white uppercase tracking-wider block border-b border-sds-border/40 pb-1">{isRtl ? 'تفاصيل الثقة حسب الموضوع:' : 'Subject-Level Confidence Scorecard'}</span>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">
+                                          <div>
+                                            <span className="text-slate-400 block">{isRtl ? 'سعر الصرف:' : 'Exchange Rate'}</span>
+                                            <span className="font-mono text-white font-bold">{sisRes.subjectConfidence.exchangeRate.band} ({sisRes.subjectConfidence.exchangeRate.score}/100)</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block">{isRtl ? 'رسوم التحويل:' : 'Transfer Fee'}</span>
+                                            <span className="font-mono text-white font-bold">{sisRes.subjectConfidence.transferFee.band} ({sisRes.subjectConfidence.transferFee.score}/100)</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block">{isRtl ? 'ضريبة القيمة المضافة:' : 'VAT amount'}</span>
+                                            <span className="font-mono text-white font-bold">{sisRes.subjectConfidence.vat.band} ({sisRes.subjectConfidence.vat.score}/100)</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block">{isRtl ? 'تقدير التسليم:' : 'Delivery Estimate'}</span>
+                                            <span className="font-mono text-white font-bold">{sisRes.subjectConfidence.deliveryEstimate.band} ({sisRes.subjectConfidence.deliveryEstimate.score}/100)</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block">{isRtl ? 'توفر الخدمة:' : 'Availability'}</span>
+                                            <span className="font-mono text-white font-bold">{sisRes.subjectConfidence.availability.band} ({sisRes.subjectConfidence.availability.score}/100)</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-slate-400 block">{isRtl ? 'سعر المقارنة المرجعي:' : 'Benchmark rate'}</span>
+                                            <span className="font-mono text-white font-bold">{sisRes.subjectConfidence.benchmark.band} ({sisRes.subjectConfidence.benchmark.score}/100)</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                    </div>
+
+                                    {/* 9-Dimension scoring panel breakdown */}
+                                    <div className="pt-3 border-t border-sds-border/40 space-y-2">
+                                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">{isRtl ? 'أبعاد الثقة التفصيلية:' : 'Detailed Dimension Performance'}</span>
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-[10px]">
+                                        {Object.entries(sisRes.dimensionScores).map(([key, dim]: [string, any]) => {
+                                          const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                                          return (
+                                            <div key={key} className="space-y-0.5 text-left">
+                                              <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                                <span>{label}</span>
+                                                <span className="font-mono text-white">{dim.score}/100</span>
+                                              </div>
+                                              <div className="w-full h-1.5 bg-[#071A35] rounded-full overflow-hidden border border-sds-border/40">
+                                                <div className="h-full bg-amber-500" style={{ width: `${dim.score}%` }}></div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
                                   </div>
-                                  <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                      <span>Fee Advantage</span>
-                                      <span className="font-mono text-white">{opt.sis.fee_advantage_score}/100</span>
+                                );
+                              })() : (
+                                <div className="text-center py-4 text-slate-400 text-xs italic">
+                                  Calculating advanced confidence score...
+                                </div>
+                              )}
+
+                              {/* True Cost Explanation */}
+                              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                                <div className="lg:col-span-12 bg-[#071A35] p-4 rounded-2xl border border-sds-border text-[11px] font-mono space-y-2">
+                                  <h6 className="font-black font-sans text-white uppercase text-[9px] tracking-wider border-b border-sds-border/60 pb-1.5">
+                                    What You'll Really Pay
+                                  </h6>
+                                  {opt.trueCost ? (
+                                    <div className="space-y-1.5 text-slate-300">
+                                      <div className="flex justify-between">
+                                        <span>Transfer Fee & VAT:</span>
+                                        <span className="text-white font-bold">{opt.trueCost.visibleFees.toFixed(2)} SAR</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>Exchange Rate Difference:</span>
+                                        <span className="text-rose-400 font-bold">{opt.trueCost.exchangeRateLoss?.toFixed(1) ?? '0.0'} {activeCorridor.currencyCode}</span>
+                                      </div>
+                                      <div className="flex justify-between border-t border-sds-border/40 pt-1 text-[#10B981] font-black">
+                                        <span>Total Cost:</span>
+                                        <span>{opt.trueCost.trueCost ? `${opt.trueCost.trueCost.toFixed(1)} ${activeCorridor.currencyCode}` : `${(opt.trueCost.visibleFees * opt.resolved.resolved_rate).toFixed(1)} ${activeCorridor.currencyCode}`}</span>
+                                      </div>
                                     </div>
-                                    <div className="w-full h-1.5 bg-[#071A35] rounded-full overflow-hidden">
-                                      <div className="h-full bg-[#10B981]" style={{ width: `${opt.sis.fee_advantage_score}%` }}></div>
-                                    </div>
-                                  </div>
-                                  <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                      <span>Comparison Confidence</span>
-                                      <span className="font-mono text-white">{opt.sis.true_cost_score ?? 85}/100</span>
-                                    </div>
-                                    <div className="w-full h-1.5 bg-[#071A35] rounded-full overflow-hidden">
-                                      <div className="h-full bg-[#F59E0B]" style={{ width: `${opt.sis.true_cost_score ?? 85}%` }}></div>
-                                    </div>
-                                  </div>
-                                  <div className="space-y-1 text-left">
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                      <span>Freshness Score</span>
-                                      <span className="font-mono text-white">{opt.sis.freshness_score}/100</span>
-                                    </div>
-                                    <div className="w-full h-1.5 bg-[#071A35] rounded-full overflow-hidden">
-                                      <div className="h-full bg-blue-500" style={{ width: `${opt.sis.freshness_score}%` }}></div>
-                                    </div>
-                                  </div>
+                                  ) : (
+                                    <p className="text-slate-400 italic text-[10px]">No dynamic cost breakdown compiled today.</p>
+                                  )}
                                 </div>
                               </div>
 
-                              {/* True Cost Explanation */}
-                              <div className="lg:col-span-5 bg-[#071A35] p-4 rounded-2xl border border-sds-border text-[11px] font-mono space-y-2">
-                                <h6 className="font-black font-sans text-white uppercase text-[9px] tracking-wider border-b border-sds-border/60 pb-1.5">
-                                  What You'll Really Pay
-                                </h6>
-                                {opt.trueCost ? (
-                                  <div className="space-y-1.5 text-slate-300">
-                                    <div className="flex justify-between">
-                                      <span>Transfer Fee & VAT:</span>
-                                      <span className="text-white font-bold">{opt.trueCost.visibleFees.toFixed(2)} SAR</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Exchange Rate Difference:</span>
-                                      <span className="text-rose-400 font-bold">{opt.trueCost.exchangeRateLoss?.toFixed(1) ?? '0.0'} {activeCorridor.currencyCode}</span>
-                                    </div>
-                                    <div className="flex justify-between border-t border-sds-border/40 pt-1 text-[#10B981] font-black">
-                                      <span>Total Cost:</span>
-                                      <span>{opt.trueCost.trueCost ? `${opt.trueCost.trueCost.toFixed(1)} ${activeCorridor.currencyCode}` : `${(opt.trueCost.visibleFees * opt.resolved.resolved_rate).toFixed(1)} ${activeCorridor.currencyCode}`}</span>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <p className="text-slate-400 italic text-[10px]">No dynamic cost breakdown compiled today.</p>
-                                )}
-                              </div>
                             </div>
                           )}
 
@@ -1326,7 +1525,17 @@ export default function CompareRates({
                               {opt.netAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })} {activeCorridor.currencyCode}
                             </td>
                             <td className="py-3 text-right">
-                              <span className="font-bold text-white font-mono">{opt.sis.sis_score}%</span>
+                              {(() => {
+                                const sisRes = sisResultsV2[opt.resolved.id];
+                                if (!sisRes) {
+                                  return <span className="font-bold text-slate-400 font-mono">...</span>;
+                                }
+                                return (
+                                  <span className="font-bold text-white font-mono">
+                                    {sisRes.confidenceBand} ({sisRes.overallScore}/100)
+                                  </span>
+                                );
+                              })()}
                             </td>
                             <td className="py-3 text-right pl-4">
                               <button

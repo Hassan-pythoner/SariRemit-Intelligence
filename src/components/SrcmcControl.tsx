@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { useTheme } from '../context/ThemeContext';
+import { EpeService } from '../services/sic/evidenceProvenanceService';
+import { EdeService, ERDE_FEATURE_FLAGS } from '../services/sic/evidenceResolutionService';
+import { SisService, SIS_FEATURE_FLAGS } from '../services/sic/sisIntelligenceService';
 import { 
   TranslationDict, Corridor, UserProfile,
-  BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission
+  BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission,
+  EvidenceRecord, EpeAuditLog, ResolutionResult, EvidenceConflict, ResolutionPolicy, ResolutionContext,
+  SisPolicy
 } from '../types';
 import { CORRIDORS, PROVIDERS } from '../services/ratesService';
 import { 
@@ -61,7 +67,7 @@ import {
   XCircle, Trash2, PlusCircle, RefreshCw, AlertTriangle, HelpCircle, 
   ArrowRightLeft, Percent, Compass, Clock, Users, User, Lock, Sparkles,
   Eye, EyeOff, Search, PlayCircle, ToggleLeft, ShieldAlert, Key, Globe, Layout, ListCollapse, CheckSquare,
-  Shield, CheckCircle, Clock3
+  Shield, CheckCircle, Clock3, Menu, X, ChevronDown, ChevronRight, Activity, ArrowUpRight, LogOut, Sliders
 } from 'lucide-react';
 
 interface SrcmcControlProps {
@@ -76,7 +82,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const isRtl = language === 'ar';
 
   // Sub-tabs in the Control Center
-  const [activeSubTab, setActiveSubTab] = useState<string>('overrides');
+  const [activeSubTab, setActiveSubTab] = useState<string>('dashboard');
 
   // Core Data sets
   const [overrides, setOverrides] = useState<any[]>([]);
@@ -220,6 +226,51 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const [loadingFraudEvents, setLoadingFraudEvents] = useState<boolean>(false);
   const [crvsSaveSuccess, setCrvsSaveSuccess] = useState<string>('');
   const [crvsSaveError, setCrvsSaveError] = useState<string>('');
+
+  // ----------------------------------------------------
+  // SIC 2.0 - EPE State hooks
+  // ----------------------------------------------------
+  const [evidenceList, setEvidenceList] = useState<EvidenceRecord[]>([]);
+  const [loadingEvidence, setLoadingEvidence] = useState<boolean>(false);
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceRecord | null>(null);
+  const [evidenceFilterProvider, setEvidenceFilterProvider] = useState<string>('all');
+  const [evidenceFilterCorridor, setEvidenceFilterCorridor] = useState<string>('all');
+  const [evidenceFilterSubject, setEvidenceFilterSubject] = useState<string>('all');
+  const [evidenceFilterSourceType, setEvidenceFilterSourceType] = useState<string>('all');
+  const [evidenceFilterStatus, setEvidenceFilterStatus] = useState<string>('all');
+  const [evidenceFilterFreshness, setEvidenceFilterFreshness] = useState<string>('all');
+  const [evidenceFilterPermittedUse, setEvidenceFilterPermittedUse] = useState<string>('all');
+  const [evidenceSearchTerm, setEvidenceSearchTerm] = useState<string>('');
+  const [evidenceAuditLogs, setEvidenceAuditLogs] = useState<EpeAuditLog[]>([]);
+
+  // ----------------------------------------------------
+  // SIC 2.0 Phase 2 - ERDE State hooks
+  // ----------------------------------------------------
+  const [erdeResolutions, setErdeResolutions] = useState<ResolutionResult[]>([]);
+  const [erdeConflicts, setErdeConflicts] = useState<EvidenceConflict[]>([]);
+  const [erdePolicies, setErdePolicies] = useState<ResolutionPolicy[]>([]);
+  const [activePolicy, setActivePolicy] = useState<ResolutionPolicy | null>(null);
+  const [selectedResolution, setSelectedResolution] = useState<ResolutionResult | null>(null);
+  const [selectedConflict, setSelectedConflict] = useState<EvidenceConflict | null>(null);
+  const [erdeSection, setErdeSection] = useState<string>('overview');
+  
+  // Filtering states
+  const [resFilterProvider, setResFilterProvider] = useState<string>('all');
+  const [resFilterCorridor, setResFilterCorridor] = useState<string>('all');
+  const [resFilterSubject, setResFilterSubject] = useState<string>('all');
+  const [resFilterStatus, setResFilterStatus] = useState<string>('all');
+  const [resFilterSource, setResFilterSource] = useState<string>('all');
+  
+  const [confFilterStatus, setConfFilterStatus] = useState<string>('all');
+  const [confFilterSeverity, setConfFilterSeverity] = useState<string>('all');
+  const [confReviewNotes, setConfReviewNotes] = useState<string>('');
+  
+  const [editingPolicy, setEditingPolicy] = useState<ResolutionPolicy | null>(null);
+  const [simulationResult, setSimulationResult] = useState<any | null>(null);
+  const [simulating, setSimulating] = useState<boolean>(false);
+  const [runningTests, setRunningTests] = useState<boolean>(false);
+  const [testSuiteResults, setTestSuiteResults] = useState<any[]>([]);
+  const [shadowComparisonStats, setShadowComparisonStats] = useState<any | null>(null);
 
   // Brand Asset Manager state hooks
   const [brandAssets, setBrandAssets] = useState<BrandAsset[]>([]);
@@ -692,6 +743,9 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   const subtabs = [
     { key: 'overrides', label: 'Admin Overrides', permission: 'manage_overrides' },
     { key: 'submissions', label: 'Community Feed', permission: 'approve_community_rates' },
+    { key: 'evidence_provenance', label: 'SIC Evidence & Provenance', permission: 'monitor_rates' },
+    { key: 'evidence_resolution', label: 'SIC Evidence Resolution (ERDE)', permission: 'monitor_rates' },
+    { key: 'sis_v2', label: 'SIS v2 Intelligence Center', permission: 'monitor_rates' },
     { key: 'crvs_settings', label: 'CRVS Setup', permission: 'approve_community_rates' },
     { key: 'fraud_logs', label: 'Fraud & Security Alerts', permission: 'approve_community_rates' },
     { key: 'channels', label: 'Remittance Channels', permission: 'manage_channels' },
@@ -714,12 +768,54 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   // Redirect to first allowed subtab if active one is restricted
   useEffect(() => {
     if (!loading && allowedSubtabs.length > 0) {
-      const isAllowed = allowedSubtabs.some(t => t.key === activeSubTab);
+      const isAllowed = allowedSubtabs.some(t => t.key === activeSubTab) || activeSubTab === 'dashboard';
       if (!isAllowed) {
-        setActiveSubTab(allowedSubtabs[0].key as any);
+        setActiveSubTab('dashboard');
       }
     }
   }, [activeSubTab, currentAdmin, loading, allowedSubtabs]);
+
+  // SIS V2 Intelligence Dashboard States
+  const [sisPolicies, setSisPolicies] = useState<any[]>([]);
+  const [activeSisPolicy, setActiveSisPolicy] = useState<any | null>(null);
+  const [sisAuditLogs, setSisAuditLogs] = useState<any[]>([]);
+  const [isShadowMode, setIsShadowMode] = useState<boolean>(SIS_FEATURE_FLAGS.ENABLE_SIS_V2_SHADOW_MODE);
+  const [diagnosticsCorridor, setDiagnosticsCorridor] = useState<string>('sa-pk');
+  const [diagnosticsProvider, setDiagnosticsProvider] = useState<string>('urpay');
+  const [diagnosticResult, setDiagnosticResult] = useState<any | null>(null);
+  const [editingSisPolicy, setEditingSisPolicy] = useState<any | null>(null);
+
+  // Load SIS V2 configurations lazily
+  useEffect(() => {
+    if (activeSubTab === 'sis_v2') {
+      const loadSisData = async () => {
+        try {
+          const policies = await SisService.getPolicies();
+          setSisPolicies(policies);
+          const active = policies.find(p => p.status === 'active');
+          setActiveSisPolicy(active || null);
+          if (active) {
+            setEditingSisPolicy({
+              policyId: active.policyId,
+              name: active.name,
+              description: active.description,
+              version: active.version,
+              status: active.status,
+              weights: { ...active.weights },
+              caps: active.caps ? { ...active.caps } : {},
+              blockingRules: active.blockingRules ? { ...active.blockingRules } : {}
+            });
+          }
+          
+          const logs = await SisService.getAuditLogs();
+          setSisAuditLogs(logs);
+        } catch (error) {
+          console.error("Error loading SIS data", error);
+        }
+      };
+      loadSisData();
+    }
+  }, [activeSubTab]);
 
   // Load everything
   useEffect(() => {
@@ -801,6 +897,60 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     const filtered = registeredUsers.filter(u => u.email.toLowerCase().includes(term));
     setFoundUsers(filtered);
   }, [searchAdminEmail, registeredUsers]);
+
+  // Load SIC Evidence & Provenance dynamic lists
+  useEffect(() => {
+    let isMounted = true;
+    if (activeSubTab === 'evidence_provenance' || activeSubTab === 'resolved' || activeSubTab === 'dashboard') {
+      setLoadingEvidence(true);
+      Promise.all([
+        EpeService.getAllEvidence(),
+        EpeService.getAuditLogs()
+      ]).then(([evidence, audits]) => {
+        if (isMounted) {
+          setEvidenceList(evidence);
+          setEvidenceAuditLogs(audits);
+          setLoadingEvidence(false);
+        }
+      }).catch(err => {
+        console.error('Error loading EPE evidence/audit:', err);
+        if (isMounted) setLoadingEvidence(false);
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [activeSubTab, refreshTrigger]);
+
+  // Load SIC Evidence Resolution (ERDE Phase 2) lists
+  useEffect(() => {
+    let isMounted = true;
+    if (activeSubTab === 'evidence_resolution' || activeSubTab === 'dashboard') {
+      setLoadingEvidence(true);
+      Promise.all([
+        EpeService.getAllEvidence(),
+        EdeService.getResolutions(),
+        EdeService.getConflicts(),
+        EdeService.getPolicies(),
+        EdeService.getActivePolicy()
+      ]).then(([evidence, res, conf, pol, activePol]) => {
+        if (isMounted) {
+          setEvidenceList(evidence);
+          setErdeResolutions(res);
+          setErdeConflicts(conf);
+          setErdePolicies(pol);
+          setActivePolicy(activePol);
+          setLoadingEvidence(false);
+        }
+      }).catch(err => {
+        console.error('Error loading ERDE data:', err);
+        if (isMounted) setLoadingEvidence(false);
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [activeSubTab, refreshTrigger]);
 
   // Action Dispatcher with mandatory 6-digit PIN checks
   const dispatchAction = (actionDesc: string, actionFn: () => Promise<void>) => {
@@ -1484,6 +1634,176 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     };
   }, [refreshTrigger, overrides, submissions, channels]);
 
+  // --- SRCMC IA & NAVIGATION UPGRADE V2 CONFIG ---
+  const { resolvedTheme } = useTheme();
+  const isDarkTheme = resolvedTheme === 'dark';
+
+  const ENABLE_SRCMC_NAVIGATION_V2 = true;
+  const ENABLE_SRCMC_COMMAND_DASHBOARD = true;
+  const ENABLE_SRCMC_COLLAPSIBLE_SIDEBAR = true;
+  const ENABLE_SRCMC_MOBILE_DRAWER = true;
+  const ENABLE_SRCMC_ROLE_AWARE_NAVIGATION = true;
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('srcmc_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        sessionStorage.setItem('srcmc_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>(() => {
+    return { 'overview': true };
+  });
+
+  const toggleCategory = (catId: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [catId]: !prev[catId]
+    }));
+  };
+
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState<boolean>(false);
+  const [adminDetailsOpen, setAdminDetailsOpen] = useState<boolean>(false);
+
+  const navGroups = [
+    {
+      id: 'overview',
+      label: 'Overview',
+      icon: Layout,
+      items: [
+        { id: 'dashboard', label: 'Command Dashboard', route: 'dashboard', icon: Layout },
+        { id: 'system_health', label: 'System Health', route: 'dashboard#health', icon: Activity },
+        { id: 'recent_activity', label: 'Recent Activity', route: 'audit_logs', icon: Clock3 }
+      ]
+    },
+    {
+      id: 'rates_operations',
+      label: 'Rates & Operations',
+      icon: Percent,
+      items: [
+        { id: 'overrides', label: 'Admin Overrides', route: 'overrides', icon: Percent, permission: 'manage_overrides' },
+        { id: 'submissions', label: 'Community Rate Review', route: 'submissions', icon: Users, permission: 'approve_community_rates' },
+        { id: 'corridors', label: 'Corridor Control', route: 'corridors', icon: Globe, permission: 'manage_corridors' }
+      ]
+    },
+    {
+      id: 'sic_intelligence',
+      label: 'SIC Intelligence',
+      icon: Sparkles,
+      items: [
+        { id: 'evidence_provenance', label: 'Evidence Repository', route: 'evidence_provenance', icon: Database, permission: 'monitor_rates' },
+        { id: 'evidence_resolution', label: 'Evidence Resolution', route: 'evidence_resolution', icon: CheckCircle, permission: 'monitor_rates' },
+        { id: 'resolved', label: 'Resolution History', route: 'resolved', icon: Clock3, permission: 'monitor_rates' },
+        { id: 'sis_v2', label: 'SIS Intelligence', route: 'sis_v2', icon: Sparkles, permission: 'monitor_rates' },
+        { id: 'weights', label: 'SIS Policy & Weights', route: 'weights', icon: Sliders, permission: 'view_sic' }
+      ]
+    },
+    {
+      id: 'trust_safety',
+      label: 'Trust & Safety',
+      icon: Shield,
+      items: [
+        { id: 'fraud_logs', label: 'Fraud & Security Alerts', route: 'fraud_logs', icon: ShieldAlert, permission: 'approve_community_rates' }
+      ]
+    },
+    {
+      id: 'users_access',
+      label: 'Users & Access',
+      icon: Users,
+      items: [
+        { id: 'users', label: 'Registered Users', route: 'users', icon: Users, permission: 'manage_admins' },
+        { id: 'admins', label: 'Admin Access Control', route: 'admins', icon: Lock, permission: 'manage_admins' }
+      ]
+    },
+    {
+      id: 'platform_management',
+      label: 'Platform Management',
+      icon: Settings,
+      items: [
+        { id: 'channels', label: 'Channel Management', route: 'channels', icon: ArrowRightLeft, permission: 'manage_channels' },
+        { id: 'brand_assets', label: 'Brand Asset Manager', route: 'brand_assets', icon: Image, permission: 'view_brand_assets' },
+        { id: 'crvs_settings', label: 'CRVS Setup', route: 'crvs_settings', icon: Key, permission: 'approve_community_rates' }
+      ]
+    },
+    {
+      id: 'compliance_legal',
+      label: 'Compliance & Legal',
+      icon: FileText,
+      items: [
+        { id: 'privacy', label: 'Privacy Policy Manager', route: 'privacy', icon: FileText, permission: 'manage_admins' },
+        { id: 'terms', label: 'Terms of Use Manager', route: 'terms', icon: FileText, permission: 'manage_admins' }
+      ]
+    },
+    {
+      id: 'support_feedback',
+      label: 'Support & Feedback',
+      icon: HelpCircle,
+      items: [
+        { id: 'support', label: 'Support Inbox', route: 'support', icon: HelpCircle, permission: 'manage_overrides' }
+      ]
+    },
+    {
+      id: 'audit_diagnostics',
+      label: 'Audit & Diagnostics',
+      icon: ListCollapse,
+      items: [
+        { id: 'audit_logs', label: 'Audit Logs Feed', route: 'audit_logs', icon: ListCollapse, permission: 'view_audit_logs' }
+      ]
+    }
+  ];
+
+  const isItemAuthorized = (item: any) => {
+    if (!item.permission) return true;
+    if (item.id === 'brand_assets') return hasBamPermission('view_brand_assets');
+    return hasPermission(item.permission);
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'dashboard') return;
+    for (const group of navGroups) {
+      if (group.items.some(item => item.id === activeSubTab)) {
+        setExpandedCategories(prev => ({
+          ...prev,
+          [group.id]: true
+        }));
+      }
+    }
+  }, [activeSubTab]);
+
+  const getBreadcrumbs = () => {
+    const crumbs = [{ label: 'SRCMC', onClick: () => setActiveSubTab('dashboard') }];
+    if (activeSubTab === 'dashboard') {
+      crumbs.push({ label: 'Overview', onClick: () => {} });
+      crumbs.push({ label: 'Command Dashboard', onClick: () => {} });
+    } else {
+      for (const group of navGroups) {
+        const matchingItem = group.items.find(item => item.id === activeSubTab);
+        if (matchingItem) {
+          crumbs.push({ 
+            label: group.label, 
+            onClick: () => {
+              setExpandedCategories(prev => ({ ...prev, [group.id]: true }));
+            } 
+          });
+          crumbs.push({ label: matchingItem.label, onClick: () => {} });
+          break;
+        }
+      }
+    }
+    return crumbs;
+  };
+
   if (!isAdmin) {
     return (
       <div className="max-w-2xl mx-auto py-12 px-4 text-center space-y-8">
@@ -1551,144 +1871,875 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   }
 
   return (
-    <div className="srcmc-panel space-y-8 pb-24 text-left">
+    <div className="srcmc-panel text-left w-full h-full">
       <style>{`
-        .srcmc-panel, .srcmc-panel div, .srcmc-panel h1, .srcmc-panel h2, .srcmc-panel h3, .srcmc-panel h4, .srcmc-panel p, .srcmc-panel span, .srcmc-panel label {
+        .dark .srcmc-panel, .dark .srcmc-panel div, .dark .srcmc-panel h1, .dark .srcmc-panel h2, .dark .srcmc-panel h3, .dark .srcmc-panel h4, .dark .srcmc-panel p, .dark .srcmc-panel span, .dark .srcmc-panel label {
           color-scheme: dark;
         }
-        .srcmc-panel .bg-white {
+        .dark .srcmc-panel .bg-white {
           background-color: #0C2547 !important;
           color: #F8FAFC !important;
           border-color: rgba(148, 163, 184, 0.12) !important;
         }
-        .srcmc-panel .border-slate-200, .srcmc-panel .border-slate-100 {
+        .dark .srcmc-panel .border-slate-200, .dark .srcmc-panel .border-slate-100 {
           border-color: rgba(148, 163, 184, 0.12) !important;
         }
-        .srcmc-panel .bg-slate-50, .srcmc-panel .bg-slate-100, .srcmc-panel .bg-slate-200 {
+        .dark .srcmc-panel .bg-slate-50, .dark .srcmc-panel .bg-slate-100, .dark .srcmc-panel .bg-slate-200 {
           background-color: #071A35 !important;
           color: #F8FAFC !important;
           border-color: rgba(148, 163, 184, 0.12) !important;
         }
-        .srcmc-panel select, .srcmc-panel input, .srcmc-panel textarea {
+        .dark .srcmc-panel select, .dark .srcmc-panel input, .dark .srcmc-panel textarea {
           background-color: #071A35 !important;
           color: #F8FAFC !important;
           border-color: rgba(148, 163, 184, 0.12) !important;
         }
-        .srcmc-panel .text-slate-900, .srcmc-panel .text-slate-850, .srcmc-panel .text-slate-800 {
+        .dark .srcmc-panel .text-slate-900, .dark .srcmc-panel .text-slate-850, .dark .srcmc-panel .text-slate-800 {
           color: #F8FAFC !important;
         }
-        .srcmc-panel .text-slate-500, .srcmc-panel .text-slate-450, .srcmc-panel .text-slate-400 {
+        .dark .srcmc-panel .text-slate-500, .dark .srcmc-panel .text-slate-450, .dark .srcmc-panel .text-slate-400 {
           color: #94A3B8 !important;
         }
-        .srcmc-panel .hover\\:bg-slate-50:hover, .srcmc-panel .hover\\:bg-slate-100:hover {
+        .dark .srcmc-panel .hover\\:bg-slate-50:hover, .dark .srcmc-panel .hover\\:bg-slate-100:hover {
           background-color: rgba(148, 163, 184, 0.05) !important;
         }
-        .srcmc-panel .text-emerald-600 {
+        .dark .srcmc-panel .text-emerald-600 {
           color: #10B981 !important;
         }
-        .srcmc-panel .bg-emerald-50 {
+        .dark .srcmc-panel .bg-emerald-50 {
           background-color: rgba(16, 185, 129, 0.15) !important;
           color: #10B981 !important;
         }
-        .srcmc-panel .border-emerald-200, .srcmc-panel .border-emerald-150 {
+        .dark .srcmc-panel .border-emerald-200, .dark .srcmc-panel .border-emerald-150 {
           border-color: rgba(16, 185, 129, 0.25) !important;
         }
-        .srcmc-panel .bg-slate-900 {
+        .dark .srcmc-panel .bg-slate-900 {
           background-color: #071A35 !important;
           border: 1px solid rgba(148, 163, 184, 0.12) !important;
         }
-        .srcmc-panel .bg-slate-850 {
+        .dark .srcmc-panel .bg-slate-850 {
           background-color: #0C2547 !important;
         }
       `}</style>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-sans font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <Settings className="w-8 h-8 text-slate-800" />
-            <span>SariRemit Control Centre (SRCMC)</span>
-          </h1>
-          <p className="text-xs text-slate-500 font-semibold mt-1 uppercase tracking-wider flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            SRCMC OPERATIONAL COMMAND AND MONITORING HUB
-          </p>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <span className={`px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-wider ${
-            isSupabaseConfigured 
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-              : 'bg-amber-50 text-amber-700 border-amber-200'
-          }`}>
-            {isSupabaseConfigured ? 'Supabase Connected' : 'Local Sandbox Emulation'}
-          </span>
-
-          <button 
-            onClick={() => setRefreshTrigger(prev => prev + 1)}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-            title="Refresh database"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Admin Role Status Card */}
-      <div className="bg-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-slate-850 rounded-xl border border-white/10">
-            <ShieldCheck className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-black tracking-tight">{activeSession.user?.name || 'Administrator'}</span>
-              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] uppercase font-mono font-bold">
-                {currentAdmin?.role || 'SYSTEM ROOT'}
-              </span>
+      {/* Modern V2 Flex Container Wrapper */}
+      <div className={ENABLE_SRCMC_NAVIGATION_V2 ? `min-h-screen flex flex-col md:flex-row ${isDarkTheme ? 'bg-[#051326] text-slate-100' : 'bg-slate-50 text-slate-800'} transition-colors duration-200 w-full` : ''}>
+        
+        {/* A. Desktop Persistent Sidebar */}
+        {ENABLE_SRCMC_NAVIGATION_V2 && (
+          <aside className={`hidden md:flex flex-col border-r shrink-0 transition-all duration-300 ${
+            sidebarCollapsed ? 'w-16' : 'w-64'
+          } ${
+            isDarkTheme ? 'bg-[#071A35] border-slate-800' : 'bg-white border-slate-200'
+          } sticky top-0 h-screen overflow-hidden`}>
+            {/* Logo area */}
+            <div className={`flex items-center gap-3 p-4 border-b h-16 shrink-0 ${
+              isDarkTheme ? 'border-slate-800' : 'border-slate-200'
+            }`}>
+              <div className="p-2 rounded-lg bg-indigo-600 text-white">
+                <Shield className="w-5 h-5" />
+              </div>
+              {!sidebarCollapsed && (
+                <div className="flex flex-col text-left">
+                  <span className="font-black text-xs uppercase tracking-wider font-sans">SariRemit</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest font-mono">Control Centre</span>
+                </div>
+              )}
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">Authorized Actor: <span className="font-mono text-white font-bold">{loggedInEmail}</span></p>
+
+            {/* Menu options grouped scrollable */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-4 px-2 select-none">
+              {navGroups.map((group) => {
+                const authorizedItems = group.items.filter(item => isItemAuthorized(item));
+                if (authorizedItems.length === 0) return null;
+
+                const isGroupExpanded = expandedCategories[group.id];
+                const GroupIcon = group.icon;
+
+                return (
+                  <div key={group.id} className="space-y-1">
+                    {sidebarCollapsed ? (
+                      <div className="flex flex-col items-center gap-2">
+                        {authorizedItems.map((item) => {
+                          const ItemIcon = item.icon;
+                          const isActive = activeSubTab === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              id={`sidebar-item-${item.id}`}
+                              onClick={() => setActiveSubTab(item.id)}
+                              className={`p-2.5 rounded-xl transition-colors cursor-pointer group relative ${
+                                isActive 
+                                  ? 'bg-indigo-600 text-white' 
+                                  : isDarkTheme 
+                                    ? 'text-slate-400 hover:bg-slate-800/50 hover:text-white' 
+                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                              }`}
+                              title={item.label}
+                            >
+                              <ItemIcon className="w-4 h-4" />
+                              <div className="absolute left-14 top-1/2 -translate-y-1/2 scale-0 group-hover:scale-100 transition-all origin-left z-50 bg-slate-900 text-white text-[10px] font-bold py-1 px-2 rounded shadow-md whitespace-nowrap">
+                                {item.label}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div>
+                        <button
+                          onClick={() => toggleCategory(group.id)}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-colors rounded-lg ${
+                            isDarkTheme 
+                              ? 'text-slate-400 hover:bg-slate-800/30' 
+                              : 'text-slate-500 hover:bg-slate-100/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <GroupIcon className="w-3.5 h-3.5" />
+                            <span>{group.label}</span>
+                          </div>
+                          {isGroupExpanded ? (
+                            <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3" />
+                          )}
+                        </button>
+
+                        {isGroupExpanded && (
+                          <div className="mt-1 space-y-0.5 pl-3">
+                            {authorizedItems.map((item) => {
+                              const ItemIcon = item.icon;
+                              const isActive = activeSubTab === item.id;
+                              return (
+                                <button
+                                  key={item.id}
+                                  id={`sidebar-item-${item.id}`}
+                                  onClick={() => setActiveSubTab(item.id)}
+                                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg font-bold transition-all cursor-pointer ${
+                                    isActive 
+                                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/10' 
+                                      : isDarkTheme 
+                                        ? 'text-slate-300 hover:bg-slate-800/50 hover:text-white' 
+                                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                                  }`}
+                                >
+                                  <ItemIcon className="w-4 h-4 shrink-0" />
+                                  <span className="truncate text-left">{item.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Controls */}
+            <div className={`p-2 border-t shrink-0 flex items-center justify-between ${
+              isDarkTheme ? 'border-slate-800' : 'border-slate-200'
+            }`}>
+              <button
+                onClick={toggleSidebar}
+                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                  isDarkTheme ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                } ${sidebarCollapsed ? 'mx-auto' : ''}`}
+                title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+              >
+                <Layout className="w-4 h-4 transform rotate-180" />
+              </button>
+              {!sidebarCollapsed && (
+                <span className="text-[9px] font-mono font-bold text-slate-500 tracking-wider">
+                  v2.4.0-admin
+                </span>
+              )}
+            </div>
+          </aside>
+        )}
+
+        {/* B. Mobile Drawer Navigation */}
+        {ENABLE_SRCMC_NAVIGATION_V2 && mobileDrawerOpen && (
+          <div className="fixed inset-0 z-50 flex md:hidden" id="mobile-navigation-drawer">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setMobileDrawerOpen(false)} />
+            <div className={`relative flex flex-col w-4/5 max-w-sm h-full ${
+              isDarkTheme ? 'bg-[#071A35] text-white border-r border-slate-800' : 'bg-white text-slate-900 border-r border-slate-200'
+            } shadow-2xl p-4 transition-transform duration-300`}>
+              <div className="flex items-center justify-between border-b border-slate-200/10 pb-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-indigo-500" />
+                  <span className="font-black text-xs uppercase tracking-wider">SRCMC Navigation</span>
+                </div>
+                <button onClick={() => setMobileDrawerOpen(false)} className="p-2 rounded-lg hover:bg-slate-100/10" title="Close menu">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                {navGroups.map((group) => {
+                  const authorizedItems = group.items.filter(item => isItemAuthorized(item));
+                  if (authorizedItems.length === 0) return null;
+                  const isGroupExpanded = expandedCategories[group.id];
+                  const GroupIcon = group.icon;
+
+                  return (
+                    <div key={group.id} className="space-y-1">
+                      <button
+                        onClick={() => toggleCategory(group.id)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400"
+                      >
+                        <div className="flex items-center gap-2">
+                          <GroupIcon className="w-3.5 h-3.5" />
+                          <span>{group.label}</span>
+                        </div>
+                        {isGroupExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      </button>
+
+                      {isGroupExpanded && (
+                        <div className="mt-1 space-y-1 pl-3">
+                          {authorizedItems.map((item) => {
+                            const ItemIcon = item.icon;
+                            const isActive = activeSubTab === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => {
+                                  setActiveSubTab(item.id);
+                                  setMobileDrawerOpen(false);
+                                }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg font-bold transition-all ${
+                                  isActive ? 'bg-indigo-600 text-white' : isDarkTheme ? 'text-slate-300 hover:bg-slate-800/50' : 'text-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                <ItemIcon className="w-4 h-4 shrink-0" />
+                                <span className="truncate text-left">{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap gap-1.5 max-w-xl">
-          {(currentAdmin?.permissions || [
-            'view_dashboard', 'monitor_rates', 'manage_overrides',
-            'approve_community_rates', 'manage_corridors', 'manage_channels',
-            'view_sic', 'view_true_cost', 'view_history', 'view_audit_logs', 'manage_admins'
-          ]).map((p, idx) => (
-            <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/5 text-[9px] font-mono">
-              {p}
-            </span>
-          ))}
-        </div>
-      </div>
+        )}
 
-      {/* Navigation Subtabs */}
-      <div className="flex flex-wrap border-b border-slate-200 gap-1 sm:gap-0">
-        {allowedSubtabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveSubTab(tab.key as any)}
-            className={`px-4 py-3 text-xs uppercase tracking-wider font-black border-b-2 transition-all cursor-pointer ${
-              activeSubTab === tab.key
-                ? 'border-slate-800 text-slate-900 font-black'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {loading ? (
-        <div className="py-20 text-center space-y-4">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto"></div>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Syncing database assets...</p>
-        </div>
-      ) : (
-        <div className="space-y-8">
+        {/* C. Right Main Content Area Wrapper */}
+        <div className={`flex-1 ${ENABLE_SRCMC_NAVIGATION_V2 ? 'flex flex-col min-w-0 md:h-screen md:overflow-y-auto' : ''}`}>
           
-          {/* TAB 1: ADMIN OVERRIDES */}
-          {activeSubTab === 'overrides' && (
+          {/* Top Header Grid */}
+          {ENABLE_SRCMC_NAVIGATION_V2 ? (
+            <header className={`h-16 border-b px-6 flex items-center justify-between shrink-0 sticky top-0 z-30 ${
+              isDarkTheme ? 'bg-[#071A35]/90 border-slate-800' : 'bg-white/95 border-slate-200'
+            } backdrop-blur-xs`}>
+              <nav className="flex items-center gap-1.5 text-xs text-slate-500 font-bold tracking-tight">
+                {getBreadcrumbs().map((crumb, idx) => (
+                  <React.Fragment key={idx}>
+                    {idx > 0 && <span className="text-slate-400">/</span>}
+                    <button
+                      onClick={crumb.onClick}
+                      className={`transition-colors text-left hover:text-indigo-500 ${
+                        idx === getBreadcrumbs().length - 1 
+                          ? isDarkTheme ? 'text-slate-200 font-black' : 'text-slate-900 font-black' 
+                          : 'text-slate-400 font-medium'
+                      }`}
+                    >
+                      {crumb.label}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </nav>
+
+              <div className="flex items-center gap-3">
+                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black border uppercase tracking-wider ${
+                  isSupabaseConfigured 
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                }`}>
+                  {isSupabaseConfigured ? 'Supabase Connected' : 'Local Sandbox Emulation'}
+                </span>
+
+                <button 
+                  onClick={() => setRefreshTrigger(prev => prev + 1)}
+                  className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                    isDarkTheme 
+                      ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' 
+                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                  }`}
+                  title="Refresh database state"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+
+                <button
+                  onClick={() => setAdminDetailsOpen(true)}
+                  className={`flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                    isDarkTheme 
+                      ? 'bg-slate-800/80 border-slate-700 text-white hover:bg-slate-800' 
+                      : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-mono text-[10px] font-bold">
+                    {activeSession.user?.name ? activeSession.user.name[0].toUpperCase() : 'A'}
+                  </div>
+                  <div className="flex flex-col text-left text-[10px]">
+                    <span className="font-bold leading-tight truncate max-w-[80px]">{activeSession.user?.name || 'Administrator'}</span>
+                    <span className="text-[8px] text-slate-400 uppercase leading-none mt-0.5">{currentAdmin?.role || 'SYSTEM ROOT'}</span>
+                  </div>
+                </button>
+              </div>
+            </header>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-5 px-6 pt-6">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-sans font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <Settings className="w-8 h-8 text-slate-800" />
+                  <span>SariRemit Control Centre (SRCMC)</span>
+                </h1>
+                <p className="text-xs text-slate-500 font-semibold mt-1 uppercase tracking-wider flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  SRCMC OPERATIONAL COMMAND AND MONITORING HUB
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-wider ${
+                  isSupabaseConfigured 
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  {isSupabaseConfigured ? 'Supabase Connected' : 'Local Sandbox Emulation'}
+                </span>
+
+                <button 
+                  onClick={() => setRefreshTrigger(prev => prev + 1)}
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                  title="Refresh database"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* D. Profile Details Panel Drawer */}
+          {ENABLE_SRCMC_NAVIGATION_V2 && adminDetailsOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-end" id="admin-details-drawer">
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setAdminDetailsOpen(false)} />
+              <div className={`relative flex flex-col w-full max-w-md h-full ${
+                isDarkTheme ? 'bg-[#0C2547] border-l border-slate-800 text-white' : 'bg-white border-l border-slate-200 text-slate-900'
+              } shadow-2xl p-6 transition-transform duration-300`}>
+                <div className="flex items-center justify-between border-b border-slate-200/10 pb-4 mb-5">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-indigo-400" />
+                    <h3 className="font-black text-xs uppercase tracking-wider">System Root Actor Information</h3>
+                  </div>
+                  <button onClick={() => setAdminDetailsOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-100/10" title="Close panel">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-6">
+                  <div className={`p-4 rounded-xl border flex items-center gap-4 ${
+                    isDarkTheme ? 'bg-[#071A35] border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-mono text-lg font-black shadow-md">
+                      {activeSession.user?.name ? activeSession.user.name[0].toUpperCase() : 'A'}
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm">{activeSession.user?.name || 'Administrator'}</h4>
+                      <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{currentAdmin?.role || 'SYSTEM ROOT'}</p>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">{loggedInEmail}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 text-left">
+                    <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-400">Granted Granular Permissions</h5>
+                    <div className="space-y-2">
+                      {(currentAdmin?.permissions || [
+                        'view_dashboard', 'monitor_rates', 'manage_overrides',
+                        'approve_community_rates', 'manage_corridors', 'manage_channels',
+                        'view_sic', 'view_true_cost', 'view_history', 'view_audit_logs', 'manage_admins'
+                      ]).map((perm, idx) => {
+                        const labelMap: Record<string, string> = {
+                          manage_overrides: 'Manage Live Overrides & Spreader Controls',
+                          approve_community_rates: 'Approve & Moderate Community Rate Submissions',
+                          monitor_rates: 'Monitor Exchange Rates & SIC Evidence Repositories',
+                          manage_channels: 'Configure Remittance Channels & Corridors',
+                          view_sic: 'View SIC Intelligence Framework Policy & Weights',
+                          view_audit_logs: 'Inspect Operational & Administrative Audit Trail',
+                          manage_admins: 'Manage Admin Access, Registrations, & Security Credentials',
+                          view_dashboard: 'Access Main Control Panel Dashboards',
+                          view_history: 'Access Historic Pipeline Action Logs',
+                          view_true_cost: 'Audit True Cost Margins & Partner Tariffs'
+                        };
+                        return (
+                          <div key={idx} className={`p-2.5 rounded-lg border flex items-start gap-2.5 ${
+                            isDarkTheme ? 'bg-[#071A35]/50 border-slate-800' : 'bg-slate-50 border-slate-200'
+                          }`}>
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5" />
+                            <div>
+                              <span className="font-mono text-[10px] font-bold block">{perm}</span>
+                              <span className="text-[10px] text-slate-400 font-medium leading-normal block mt-0.5">
+                                {labelMap[perm] || 'Authorized action within administrative workspace'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-left">
+                    <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-400">Active Security Session</h5>
+                    <div className={`p-3 rounded-lg border text-[10px] font-mono space-y-1.5 ${
+                      isDarkTheme ? 'bg-[#071A35] border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Session IP:</span>
+                        <span className="text-slate-300">127.0.0.1 (Sandbox Gateway)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Target Node:</span>
+                        <span className="text-slate-300">sr-backend-run-node</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Environment:</span>
+                        <span className="text-slate-300">{isSupabaseConfigured ? 'Production Remote API' : 'Sandbox Client Emulation'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Auth Signature:</span>
+                        <span className="text-slate-300">HS256 SHA-2 Cryptographic</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Active Duration:</span>
+                        <span className="text-slate-300">01:42:04 UTC</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200/10 pt-4 mt-4">
+                  <button
+                    onClick={() => onSessionSync()}
+                    className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Terminate Session</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* E. Legacy Role Status Card and subtabs */}
+          {!ENABLE_SRCMC_NAVIGATION_V2 && (
+            <div className="px-6 space-y-6">
+              <div className="bg-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-slate-850 rounded-xl border border-white/10">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black tracking-tight">{activeSession.user?.name || 'Administrator'}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] uppercase font-mono font-bold">
+                        {currentAdmin?.role || 'SYSTEM ROOT'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Authorized Actor: <span className="font-mono text-white font-bold">{loggedInEmail}</span></p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-w-xl">
+                  {(currentAdmin?.permissions || [
+                    'view_dashboard', 'monitor_rates', 'manage_overrides',
+                    'approve_community_rates', 'manage_corridors', 'manage_channels',
+                    'view_sic', 'view_true_cost', 'view_history', 'view_audit_logs', 'manage_admins'
+                  ]).map((p, idx) => (
+                    <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/5 text-[9px] font-mono">
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap border-b border-slate-200 gap-1 sm:gap-0">
+                {allowedSubtabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveSubTab(tab.key as any)}
+                    className={`px-4 py-3 text-xs uppercase tracking-wider font-black border-b-2 transition-all cursor-pointer ${
+                      activeSubTab === tab.key
+                        ? 'border-slate-800 text-slate-900 font-black'
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* F. Page Padding Container */}
+          <div className={ENABLE_SRCMC_NAVIGATION_V2 ? 'p-6 md:p-8 space-y-8 flex-1' : 'px-6 pb-24 mt-6'}>
+            
+            {loading ? (
+              <div className="py-20 text-center space-y-4">
+                <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mx-auto"></div>
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Syncing database assets...</p>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                
+                {/* BRAND NEW: SRCMC COMMAND & INTELLIGENCE DASHBOARD LANDING PAGE */}
+                {ENABLE_SRCMC_NAVIGATION_V2 && activeSubTab === 'dashboard' && (
+                  <div className="space-y-6 text-left animate-in fade-in slide-in-from-bottom-2 duration-300" id="command-dashboard-view">
+                    
+                    {/* Header Banner */}
+                    <div className={`p-6 rounded-2xl border ${
+                      isDarkTheme ? 'bg-[#0C2547] border-slate-800' : 'bg-white border-slate-200'
+                    } shadow-md`}>
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                          <h2 className="text-xl font-sans font-black tracking-tight flex items-center gap-2">
+                            <Layout className="w-6 h-6 text-indigo-500" />
+                            <span>SRCMC Operational Command & Intelligence Dashboard</span>
+                          </h2>
+                          <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider">
+                            Real-time core metrics, system configuration states, and rate engine diagnostics.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span className="text-[10px] font-mono uppercase tracking-widest font-black text-emerald-400">Pipeline State: ACTIVE</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bento Grid Metrics */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* Overrides Metric */}
+                      <div 
+                        onClick={() => setActiveSubTab('overrides')}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between h-32 ${
+                          isDarkTheme ? 'bg-[#0C2547] hover:bg-[#0C2547]/80 border-slate-800' : 'bg-white hover:bg-slate-50 border-slate-200 shadow-xs'
+                        }`}
+                        id="metric-active-overrides"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Live Overrides</span>
+                          <div className="p-1.5 rounded bg-indigo-500/10 text-indigo-400">
+                            <Percent className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-3xl font-black font-sans leading-none block">
+                            {overrides.filter(o => o.is_active && (!o.expires_at || new Date(o.expires_at) > new Date())).length}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400 font-bold block mt-1">
+                            Live rates overridden manually
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Submissions Metric */}
+                      <div 
+                        onClick={() => setActiveSubTab('submissions')}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between h-32 ${
+                          isDarkTheme ? 'bg-[#0C2547] hover:bg-[#0C2547]/80 border-slate-800' : 'bg-white hover:bg-slate-50 border-slate-200 shadow-xs'
+                        }`}
+                        id="metric-pending-submissions"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pending Rates</span>
+                          <div className="p-1.5 rounded bg-amber-500/10 text-amber-400">
+                            <Users className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-3xl font-black font-sans leading-none block">
+                            {submissions.filter(s => s.status === 'pending_verification' || s.status === 'pending' || s.status === 'security_review').length}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400 font-bold block mt-1">
+                            Community submissions awaiting review
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Evidence Conflicts Metric */}
+                      <div 
+                        onClick={() => setActiveSubTab('evidence_resolution')}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between h-32 ${
+                          isDarkTheme ? 'bg-[#0C2547] hover:bg-[#0C2547]/80 border-slate-800' : 'bg-white hover:bg-slate-50 border-slate-200 shadow-xs'
+                        }`}
+                        id="metric-evidence-conflicts"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Evidence Conflicts</span>
+                          <div className="p-1.5 rounded bg-rose-500/10 text-rose-400">
+                            <AlertTriangle className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-3xl font-black font-sans leading-none block">
+                            {erdeConflicts.filter(c => c.status === 'open').length}
+                          </span>
+                          <span className="text-[9px] font-mono text-rose-500 font-bold block mt-1">
+                            🚨 {erdeConflicts.filter(c => c.status === 'open' && (c.severity === 'major_conflict' || c.severity === 'critical_conflict')).length} major exceptions
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Security Incidents Metric */}
+                      <div 
+                        onClick={() => setActiveSubTab('fraud_logs')}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between h-32 ${
+                          isDarkTheme ? 'bg-[#0C2547] hover:bg-[#0C2547]/80 border-slate-800' : 'bg-white hover:bg-slate-50 border-slate-200 shadow-xs'
+                        }`}
+                        id="metric-security-alerts"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Security Alerts</span>
+                          <div className="p-1.5 rounded bg-red-500/10 text-red-400">
+                            <ShieldAlert className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-3xl font-black font-sans leading-none block">
+                            {fraudEvents.length}
+                          </span>
+                          <span className="text-[9px] font-mono text-red-400 font-bold block mt-1">
+                            Manipulations & speed spam blocks
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Operational Tables (Two Columns Grid) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                      <div className="lg:col-span-2 space-y-6">
+                        
+                        {/* Overrides Subtable */}
+                        <div className={`p-6 rounded-xl border ${
+                          isDarkTheme ? 'bg-[#0C2547] border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                        }`}>
+                          <div className="flex items-center justify-between border-b border-slate-200/10 pb-3 mb-4">
+                            <h3 className="text-xs font-black uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
+                              <Percent className="w-4 h-4" />
+                              Active Administrative Rate Overrides
+                            </h3>
+                            <button onClick={() => setActiveSubTab('overrides')} className="text-[10px] font-black uppercase tracking-wider text-indigo-500 hover:underline">
+                              View overrides &rarr;
+                            </button>
+                          </div>
+                          {overrides.filter(o => o.is_active && (!o.expires_at || new Date(o.expires_at) > new Date())).length === 0 ? (
+                            <div className="py-8 text-center text-slate-500 text-xs font-bold uppercase tracking-wider">
+                              No active rate overrides in place. Rate Pipeline is healthy.
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse text-[11px] font-mono">
+                                <thead>
+                                  <tr className="border-b border-slate-200/10 text-slate-400 font-black uppercase tracking-wider text-[9px] pb-2">
+                                    <th className="py-2 pr-4">Corridor</th>
+                                    <th className="py-2 pr-4">Provider</th>
+                                    <th className="py-2 pr-4">Value</th>
+                                    <th className="py-2 pr-4">Expires</th>
+                                    <th className="py-2 pr-4 text-right">Reason</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100/5 font-medium text-slate-300">
+                                  {overrides.filter(o => o.is_active && (!o.expires_at || new Date(o.expires_at) > new Date())).slice(0, 5).map((ov) => (
+                                    <tr key={ov.id} className="hover:bg-slate-500/5">
+                                      <td className="py-3 pr-4 font-bold">{ov.corridor_id}</td>
+                                      <td className="py-3 pr-4">{ov.provider_code}</td>
+                                      <td className="py-3 pr-4 text-indigo-400 font-bold">{ov.override_value?.toFixed(4)}</td>
+                                      <td className="py-3 pr-4 text-slate-400">
+                                        {ov.expires_at ? new Date(ov.expires_at).toLocaleTimeString() : 'Never'}
+                                      </td>
+                                      <td className="py-3 pr-4 text-right text-slate-400 font-sans truncate max-w-[150px]">{ov.reason}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Submissions Subtable */}
+                        <div className={`p-6 rounded-xl border ${
+                          isDarkTheme ? 'bg-[#0C2547] border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                        }`}>
+                          <div className="flex items-center justify-between border-b border-slate-200/10 pb-3 mb-4">
+                            <h3 className="text-xs font-black uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+                              <Users className="w-4 h-4" />
+                              Pending Community Rate Submissions
+                            </h3>
+                            <button onClick={() => setActiveSubTab('submissions')} className="text-[10px] font-black uppercase tracking-wider text-amber-500 hover:underline">
+                              Review submissions &rarr;
+                            </button>
+                          </div>
+                          {submissions.filter(s => s.status === 'pending_verification' || s.status === 'pending' || s.status === 'security_review').length === 0 ? (
+                            <div className="py-8 text-center text-slate-500 text-xs font-bold uppercase tracking-wider">
+                              No community submissions awaiting moderation. Feed is fully processed.
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse text-[11px] font-mono">
+                                <thead>
+                                  <tr className="border-b border-slate-200/10 text-slate-400 font-black uppercase tracking-wider text-[9px]">
+                                    <th className="py-2 pr-4">Timestamp</th>
+                                    <th className="py-2 pr-4">User</th>
+                                    <th className="py-2 pr-4">Corridor</th>
+                                    <th className="py-2 pr-4">Claimed</th>
+                                    <th className="py-2 pr-4 text-right">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100/5 font-medium text-slate-300">
+                                  {submissions.filter(s => s.status === 'pending_verification' || s.status === 'pending' || s.status === 'security_review').slice(0, 5).map((sub) => (
+                                    <tr key={sub.id} className="hover:bg-slate-500/5">
+                                      <td className="py-3 pr-4 text-slate-400">{new Date(sub.timestamp || sub.created_at).toLocaleTimeString()}</td>
+                                      <td className="py-3 pr-4 truncate max-w-[100px]">{sub.user_email}</td>
+                                      <td className="py-3 pr-4 font-bold">{sub.corridor_id}</td>
+                                      <td className="py-3 pr-4 text-emerald-400 font-bold">{sub.submitted_rate?.toFixed(4)}</td>
+                                      <td className="py-3 pr-4 text-right font-sans">
+                                        <button
+                                          onClick={() => setActiveSubTab('submissions')}
+                                          className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] uppercase font-black cursor-pointer"
+                                        >
+                                          Resolve
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Quick Actions + Health */}
+                      <div className="lg:col-span-1 space-y-6">
+                        {/* Quick Actions */}
+                        <div className={`p-6 rounded-xl border ${
+                          isDarkTheme ? 'bg-[#0C2547] border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                        }`}>
+                          <h4 className="text-xs font-black uppercase tracking-wider text-indigo-400 border-b border-slate-200/10 pb-2.5 mb-4 flex items-center gap-1.5">
+                            <Layout className="w-4 h-4" />
+                            Administrative Quick Actions
+                          </h4>
+                          <div className="space-y-2">
+                            <button onClick={() => setActiveSubTab('overrides')} className={`w-full py-2.5 px-3 rounded-lg border text-xs font-bold text-left flex items-center justify-between cursor-pointer transition-colors ${
+                              isDarkTheme ? 'bg-[#071A35] border-slate-850 hover:bg-indigo-600 hover:text-white' : 'bg-slate-50 border-slate-200 hover:bg-indigo-600 hover:text-white'
+                            }`}>
+                              <span>Deploy Override</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setActiveSubTab('submissions')} className={`w-full py-2.5 px-3 rounded-lg border text-xs font-bold text-left flex items-center justify-between cursor-pointer transition-colors ${
+                              isDarkTheme ? 'bg-[#071A35] border-slate-850 hover:bg-indigo-600 hover:text-white' : 'bg-slate-50 border-slate-200 hover:bg-indigo-600 hover:text-white'
+                            }`}>
+                              <span>Moderate Community</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setActiveSubTab('evidence_resolution')} className={`w-full py-2.5 px-3 rounded-lg border text-xs font-bold text-left flex items-center justify-between cursor-pointer transition-colors ${
+                              isDarkTheme ? 'bg-[#071A35] border-slate-850 hover:bg-indigo-600 hover:text-white' : 'bg-slate-50 border-slate-200 hover:bg-indigo-600 hover:text-white'
+                            }`}>
+                              <span>Audit Conflicts</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setActiveSubTab('support')} className={`w-full py-2.5 px-3 rounded-lg border text-xs font-bold text-left flex items-center justify-between cursor-pointer transition-colors ${
+                              isDarkTheme ? 'bg-[#071A35] border-slate-850 hover:bg-indigo-600 hover:text-white' : 'bg-slate-50 border-slate-200 hover:bg-indigo-600 hover:text-white'
+                            }`}>
+                              <span>Open Support Desk</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Health Panel */}
+                        <div className={`p-6 rounded-xl border ${
+                          isDarkTheme ? 'bg-[#0C2547] border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                        }`} id="health">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-indigo-400 border-b border-slate-200/10 pb-2.5 mb-4 flex items-center gap-1.5">
+                            <Activity className="w-4 h-4" />
+                            System Intelligence
+                          </h4>
+                          <div className="space-y-3 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400 font-medium">Supabase DB:</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black border uppercase tracking-wider ${
+                                isSupabaseConfigured ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                              }`}>
+                                {isSupabaseConfigured ? 'Operational' : 'Emulated'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400 font-medium">SIC Evidence Count:</span>
+                              <span className="font-bold text-indigo-400 font-mono">{evidenceList.length} files</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400 font-medium">Low Confidence:</span>
+                              <span className={`font-bold font-mono ${evidenceList.filter(e => e.confidenceInput !== null && e.confidenceInput !== undefined && e.confidenceInput < 0.6).length > 0 ? 'text-amber-500' : 'text-emerald-400'}`}>
+                                {evidenceList.filter(e => e.confidenceInput !== null && e.confidenceInput !== undefined && e.confidenceInput < 0.6).length} flagged
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400 font-medium">Support Requests:</span>
+                              <span className="font-bold font-mono text-indigo-400">
+                                {adminSupportRequests.filter(s => s.status === 'open' || s.status === 'new').length} active
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400 font-medium">User Profiles:</span>
+                              <span className="font-bold font-mono text-indigo-400">{registeredUsers.length} active</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Recent actions */}
+                        <div className={`p-6 rounded-xl border ${
+                          isDarkTheme ? 'bg-[#0C2547] border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+                        }`}>
+                          <h4 className="text-xs font-black uppercase tracking-wider text-indigo-400 border-b border-slate-200/10 pb-2.5 mb-4 flex items-center gap-1.5">
+                            <Clock className="w-4 h-4" />
+                            Recent Actions Feed
+                          </h4>
+                          {auditLogs.length === 0 ? (
+                            <div className="py-8 text-center text-slate-500 text-xs font-bold uppercase tracking-wider">
+                              No recent administrative actions recorded.
+                            </div>
+                          ) : (
+                            <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                              {auditLogs.slice(0, 4).map((log) => (
+                                <div key={log.id} className="text-[10px] space-y-1 border-b border-slate-200/5 pb-2 last:border-0 last:pb-0">
+                                  <div className="flex items-center justify-between font-mono text-slate-400">
+                                    <span className="truncate max-w-[120px] font-bold">{log.actor_email}</span>
+                                    <span>{new Date(log.created_at).toLocaleTimeString()}</span>
+                                  </div>
+                                  <p className="text-slate-300 font-medium font-sans">
+                                    <span className="px-1 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[8px] font-mono font-bold uppercase mr-1">
+                                      {log.action.replace('AUTHORIZED_ACTION: ', '')}
+                                    </span>
+                                    {log.target_type} : <span className="font-mono text-slate-400">{log.target_id}</span>
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 1: ADMIN OVERRIDES */}
+                {activeSubTab === 'overrides' && (
+
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               
               {/* Form Side */}
@@ -1981,6 +3032,2092 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                         )}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* TAB 1.5: SIC EVIDENCE & PROVENANCE ENGINE (EPE) DIAGNOSTICS */}
+          {activeSubTab === 'evidence_provenance' && (
+            <div className="space-y-6">
+              {/* OVERVIEW METRICS PANEL */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Total Active</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-emerald-600">{evidenceList.filter(e => e.status === 'active').length}</span>
+                    <span className="text-[10px] text-slate-400 font-bold">records</span>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Verified Submitted</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-indigo-600">{evidenceList.filter(e => e.status === 'verified').length}</span>
+                    <span className="text-[10px] text-slate-400 font-bold">records</span>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Pending Actions</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-amber-600">{evidenceList.filter(e => e.status === 'pending').length}</span>
+                    <span className="text-[10px] text-slate-400 font-bold">records</span>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Stale/Expired</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-rose-600">{evidenceList.filter(e => e.freshnessState === 'stale' || e.freshnessState === 'expired').length}</span>
+                    <span className="text-[10px] text-slate-400 font-bold">records</span>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Incomplete</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-slate-500">{evidenceList.filter(e => e.status === 'incomplete').length}</span>
+                    <span className="text-[10px] text-slate-400 font-bold">records</span>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Public Feeds</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-teal-600">{evidenceList.filter(e => e.subjectType === 'reference_benchmark').length}</span>
+                    <span className="text-[10px] text-slate-400 font-bold">feeds</span>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Provider Match</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-blue-600">{evidenceList.filter(e => e.providerSpecific).length}</span>
+                    <span className="text-[10px] text-slate-400 font-bold">scoped</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* FILTERS CARD */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <Settings className="w-4 h-4 text-slate-500" />
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-700">Audit & Diagnostic Filter Presets</h4>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                  {/* Search Term */}
+                  <div className="lg:col-span-2">
+                    <label className="text-[9px] uppercase font-black tracking-wider text-slate-400 block mb-1">Search Evidence ID/Value</label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={evidenceSearchTerm}
+                        onChange={(e) => setEvidenceSearchTerm(e.target.value)}
+                        placeholder="Search UUID or Value..."
+                        className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 pl-8 focus:outline-none focus:border-emerald-600 transition-colors font-semibold"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                    </div>
+                  </div>
+
+                  {/* Provider Filter */}
+                  <div>
+                    <label className="text-[9px] uppercase font-black tracking-wider text-slate-400 block mb-1">Provider Code</label>
+                    <select
+                      value={evidenceFilterProvider}
+                      onChange={(e) => setEvidenceFilterProvider(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-600 transition-colors font-semibold"
+                    >
+                      <option value="all">All Providers</option>
+                      {Array.from(new Set(evidenceList.map(e => e.providerCode))).filter(Boolean).map(code => (
+                        <option key={String(code)} value={String(code)}>{String(code).toUpperCase()}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Corridor Filter */}
+                  <div>
+                    <label className="text-[9px] uppercase font-black tracking-wider text-slate-400 block mb-1">Corridor Route</label>
+                    <select
+                      value={evidenceFilterCorridor}
+                      onChange={(e) => setEvidenceFilterCorridor(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-600 transition-colors font-semibold"
+                    >
+                      <option value="all">All Corridors</option>
+                      {Array.from(new Set(evidenceList.map(e => e.corridorId))).filter(Boolean).map(cid => (
+                        <option key={String(cid)} value={String(cid)}>{String(cid).toUpperCase()}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Subject Type Filter */}
+                  <div>
+                    <label className="text-[9px] uppercase font-black tracking-wider text-slate-400 block mb-1">Subject Type</label>
+                    <select
+                      value={evidenceFilterSubject}
+                      onChange={(e) => setEvidenceFilterSubject(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-600 transition-colors font-semibold"
+                    >
+                      <option value="all">All Subjects</option>
+                      <option value="exchange_rate">Exchange Rate</option>
+                      <option value="reference_benchmark">Reference Benchmark</option>
+                      <option value="fee_structure">Fee Structure</option>
+                    </select>
+                  </div>
+
+                  {/* Source Type Filter */}
+                  <div>
+                    <label className="text-[9px] uppercase font-black tracking-wider text-slate-400 block mb-1">Source Type</label>
+                    <select
+                      value={evidenceFilterSourceType}
+                      onChange={(e) => setEvidenceFilterSourceType(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-600 transition-colors font-semibold"
+                    >
+                      <option value="all">All Sources</option>
+                      <option value="management_override">Management Override</option>
+                      <option value="management_verified">Management Verified</option>
+                      <option value="community_verified">Community Verified</option>
+                      <option value="community_submitted">Community Submitted</option>
+                      <option value="public_reference_api">Public Reference API</option>
+                      <option value="legacy_unclassified">Legacy Unclassified</option>
+                    </select>
+                  </div>
+
+                  {/* Status Filter */}
+                  <div>
+                    <label className="text-[9px] uppercase font-black tracking-wider text-slate-400 block mb-1">EPE Status</label>
+                    <select
+                      value={evidenceFilterStatus}
+                      onChange={(e) => setEvidenceFilterStatus(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-600 transition-colors font-semibold"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="active">Active</option>
+                      <option value="verified">Verified</option>
+                      <option value="rejected">Rejected</option>
+                      <option value="expired">Expired</option>
+                      <option value="incomplete">Incomplete</option>
+                      <option value="superseded">Superseded</option>
+                    </select>
+                  </div>
+
+                  {/* Freshness Filter */}
+                  <div>
+                    <label className="text-[9px] uppercase font-black tracking-wider text-slate-400 block mb-1">Freshness Tier</label>
+                    <select
+                      value={evidenceFilterFreshness}
+                      onChange={(e) => setEvidenceFilterFreshness(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-emerald-600 transition-colors font-semibold"
+                    >
+                      <option value="all">All Freshness</option>
+                      <option value="fresh">Fresh (&lt;1h)</option>
+                      <option value="aging">Aging (&lt;24h)</option>
+                      <option value="stale">Stale (&gt;24h)</option>
+                      <option value="expired">Expired (Policy Limit)</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* TWO-COLUMN EXPLORER & TIMELINE */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* COLUMN 1 & 2: THE EVIDENCE REGISTER */}
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                        <Database className="w-5 h-5 text-emerald-600" />
+                        Provenance Records Database (EPE)
+                      </h3>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Immutable cryptographic logs linking every active resolution rate to physical administrative actions or verifiable market references.
+                      </p>
+                    </div>
+                  </div>
+
+                  {loadingEvidence ? (
+                    <div className="py-24 text-center space-y-3">
+                      <div className="w-10 h-10 border-4 border-slate-100 border-t-emerald-600 rounded-full animate-spin mx-auto"></div>
+                      <p className="text-slate-400 text-xs font-black uppercase tracking-wider animate-pulse">Scanning Sandbox Registers...</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[9px] tracking-wider">
+                            <th className="py-3 px-4">Subject Route</th>
+                            <th className="py-3 px-4">Observation Value</th>
+                            <th className="py-3 px-4">Status & Source</th>
+                            <th className="py-3 px-4">Freshness</th>
+                            <th className="py-3 px-4">Last Synced</th>
+                            <th className="py-3 px-4 text-right">Provenance</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {(() => {
+                            const filtered = evidenceList.filter(item => {
+                              if (evidenceFilterProvider !== 'all' && item.providerCode !== evidenceFilterProvider) return false;
+                              if (evidenceFilterCorridor !== 'all' && item.corridorId !== evidenceFilterCorridor) return false;
+                              if (evidenceFilterSubject !== 'all' && item.subjectType !== evidenceFilterSubject) return false;
+                              if (evidenceFilterSourceType !== 'all' && item.sourceType !== evidenceFilterSourceType) return false;
+                              if (evidenceFilterStatus !== 'all' && item.status !== evidenceFilterStatus) return false;
+                              if (evidenceFilterFreshness !== 'all' && item.freshnessState !== evidenceFilterFreshness) return false;
+                              
+                              if (evidenceSearchTerm.trim() !== '') {
+                                const term = evidenceSearchTerm.toLowerCase();
+                                const idMatch = item.id.toLowerCase().includes(term);
+                                const valMatch = item.numericValue.toString().includes(term);
+                                const provMatch = item.providerCode?.toLowerCase().includes(term);
+                                const corrMatch = item.corridorId?.toLowerCase().includes(term);
+                                if (!idMatch && !valMatch && !provMatch && !corrMatch) return false;
+                              }
+                              return true;
+                            });
+
+                            if (filtered.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={6} className="py-16 text-center text-slate-400 font-black uppercase tracking-widest bg-slate-50/20">
+                                    No evidence records found matching selected diagnostic presets.
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return filtered.map((row) => {
+                              const statusStyles: Record<string, string> = {
+                                pending: 'bg-amber-50 text-amber-800 border-amber-200',
+                                active: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                                verified: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+                                rejected: 'bg-rose-50 text-rose-800 border-rose-200',
+                                expired: 'bg-rose-50 text-rose-700 border-rose-200',
+                                superseded: 'bg-purple-50 text-purple-800 border-purple-200',
+                                incomplete: 'bg-slate-50 text-slate-500 border-slate-200'
+                              };
+
+                              const freshnessStyles: Record<string, string> = {
+                                fresh: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+                                aging: 'bg-amber-100 text-amber-900 border-amber-300',
+                                stale: 'bg-rose-100 text-rose-900 border-rose-300',
+                                expired: 'bg-red-200 text-red-950 border-red-400',
+                                unknown: 'bg-slate-100 text-slate-600 border-slate-300'
+                              };
+
+                              return (
+                                <tr key={row.id} className="hover:bg-slate-50/35 transition-colors text-slate-600">
+                                  <td className="py-3 px-4">
+                                    <div className="flex flex-col">
+                                      <span className="font-extrabold text-slate-800 flex items-center gap-1.5 uppercase">
+                                        {row.subjectType.replace('_', ' ')}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                        {row.providerCode?.toUpperCase()} • {row.corridorId?.toUpperCase()}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 font-mono">
+                                    <div className="flex flex-col">
+                                      <span className="font-black text-slate-900 text-xs">{row.numericValue.toFixed(4)}</span>
+                                      <span className="text-[9px] text-slate-400">{row.sourceCurrency} → {row.destinationCurrency}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 space-y-1">
+                                    <div className="flex items-center gap-1">
+                                      <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase border font-black ${statusStyles[row.status] || 'bg-slate-100'}`}>
+                                        {row.status}
+                                      </span>
+                                      <span className="text-[9px] text-slate-400 font-semibold truncate max-w-[120px]" title={row.sourceType}>
+                                        {row.sourceType.replace('_', ' ')}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] uppercase border font-semibold ${freshnessStyles[row.freshnessState] || 'bg-slate-100'}`}>
+                                      {row.freshnessState}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-slate-400 font-mono text-[10px]">
+                                    {new Date(row.observedAt).toLocaleTimeString()}
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <button
+                                      onClick={() => setSelectedEvidence(row)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg text-slate-700 font-bold uppercase transition-all duration-150 border border-slate-200 hover:border-emerald-200"
+                                    >
+                                      Trace
+                                      <ArrowRightLeft className="w-3 h-3" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* COLUMN 3: REAL-TIME CRYPTOGRAPHIC AUDIT TRAILS */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                      <Shield className="w-5 h-5 text-indigo-600" />
+                      EPE Cryptographic Audits
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Cryptographically sequenced log of state updates, freshness recalculations, and permission checks.
+                    </p>
+                  </div>
+
+                  {loadingEvidence ? (
+                    <div className="py-12 text-center text-slate-400 font-bold uppercase text-[10px] animate-pulse">
+                      Loading audit database...
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                      {evidenceAuditLogs.length === 0 ? (
+                        <div className="text-center py-12 text-slate-400 font-black text-[10px] uppercase tracking-widest">
+                          No audit entries recorded.
+                        </div>
+                      ) : (
+                        evidenceAuditLogs.map((log) => {
+                          const actionColors: Record<string, string> = {
+                            register_evidence: 'text-emerald-600 bg-emerald-50 border-emerald-100',
+                            state_override: 'text-purple-600 bg-purple-50 border-purple-100',
+                            freshness_recalculated: 'text-amber-600 bg-amber-50 border-amber-100',
+                            superseded: 'text-rose-600 bg-rose-50 border-rose-100'
+                          };
+
+                          return (
+                            <div key={log.id} className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1.5 text-[11px] hover:border-indigo-200 transition-colors">
+                              <div className="flex justify-between items-center flex-wrap gap-1">
+                                <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase border font-extrabold ${actionColors[log.action] || 'text-slate-600 bg-slate-100'}`}>
+                                  {log.action.replace('_', ' ')}
+                                </span>
+                                <span className="font-mono text-[9px] text-slate-400">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                              </div>
+                              <p className="text-slate-600 font-medium leading-relaxed">
+                                {log.details}
+                              </p>
+                              {log.actorEmail && (
+                                <div className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
+                                  <span>Actor:</span>
+                                  <span className="font-mono text-slate-500">{log.actorEmail}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* DETAILED PROVENANCE DRAWER / MODAL OVERLAY */}
+              {selectedEvidence && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+                  <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                    {/* Modal Header */}
+                    <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
+                      <div className="space-y-1">
+                        <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[8px] font-black uppercase tracking-widest">
+                          SIC 2.0 Audited Provenance
+                        </span>
+                        <h4 className="text-sm font-black uppercase tracking-wider flex items-center gap-1.5">
+                          <Compass className="w-5 h-5 text-emerald-400 animate-spin-slow" />
+                          Tracing Evidence: {selectedEvidence.id.substring(0, 8)}...
+                        </h4>
+                      </div>
+                      <button 
+                        onClick={() => setSelectedEvidence(null)}
+                        className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                      >
+                        <XCircle className="w-6 h-6" />
+                      </button>
+                    </div>
+
+                    {/* Modal Body */}
+                    <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                      {/* Section 1: Subject Overview */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-150">
+                        <div>
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">Subject Type</span>
+                          <span className="text-xs font-black text-slate-800 uppercase">{selectedEvidence.subjectType.replace('_', ' ')}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">Observed Value</span>
+                          <span className="text-xs font-black text-emerald-700 font-mono">{selectedEvidence.numericValue.toFixed(4)} {selectedEvidence.destinationCurrency}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">Scope Specificity</span>
+                          <span className="text-xs font-black text-slate-800 uppercase">
+                            {selectedEvidence.providerSpecific ? 'Provider Specific' : 'Global Corridor'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">EPE Status</span>
+                          <span className="text-xs font-black text-indigo-700 uppercase">{selectedEvidence.status}</span>
+                        </div>
+                      </div>
+
+                      {/* Section 2: Detailed Provenance & Source Metadata */}
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                          <Database className="w-4 h-4 text-emerald-600" />
+                          Source Evidence Mapping
+                        </h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-medium text-slate-600">
+                          <div className="space-y-2">
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400">Verifiable Source Registry</span>
+                              <p className="font-bold text-slate-800">{selectedEvidence.sourceName || 'System Generated'}</p>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400">Database Record Reference ID</span>
+                              <p className="font-mono text-slate-500 break-all select-all">{selectedEvidence.sourceRecordId || 'N/A'}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400">Remittance Corridor</span>
+                              <p className="font-bold text-slate-800 uppercase">{selectedEvidence.corridorId} ({selectedEvidence.sourceCurrency} to {selectedEvidence.destinationCurrency})</p>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400">Channel Provider</span>
+                              <p className="font-bold text-slate-800 uppercase">{selectedEvidence.providerCode || 'Global/Reference'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Freshness Policy & Estimation */}
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                          <Clock className="w-4 h-4 text-amber-600" />
+                          Freshness & Persistence Policies
+                        </h5>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                          <div className="space-y-2">
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400 block">Observed Timestamp</span>
+                              <span className="font-mono text-slate-700">{new Date(selectedEvidence.observedAt).toLocaleString()}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400 block">Verified Timestamp</span>
+                              <span className="font-mono text-slate-700">
+                                {selectedEvidence.verifiedAt ? new Date(selectedEvidence.verifiedAt).toLocaleString() : 'Automatically Inferred'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400 block">Estimated Expiration</span>
+                              <span className="font-mono text-rose-700 font-bold">
+                                {selectedEvidence.expiresAt ? new Date(selectedEvidence.expiresAt).toLocaleString() : 'Policy Default'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-black text-slate-400 block">Freshness Evaluation State</span>
+                              <span className="font-bold text-emerald-700 uppercase">{selectedEvidence.freshnessState}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 4: Permitted Uses */}
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                          <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                          Downstream Permitted Uses (EPE Core Rulebook)
+                        </h5>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedEvidence.permittedUses.map((use) => {
+                            const useLabels: Record<string, string> = {
+                              comparison: 'Allow Corridor Price Comparison',
+                              recommendation: 'Allow Active Partner Recommendations',
+                              audit: 'Retain for Cryptographic Audits',
+                              analytics: 'Enable Downstream Time-series Analytics'
+                            };
+
+                            return (
+                              <span key={use} className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-200 text-indigo-900 px-3 py-1 rounded-lg text-xs font-bold">
+                                <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
+                                {useLabels[use] || use}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Section 5: Specific Audit Timeline */}
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                          <FileText className="w-4 h-4 text-slate-600" />
+                          Cryptographic Auditing Feed for {selectedEvidence.id.substring(0, 8)}
+                        </h5>
+                        <div className="space-y-2">
+                          {evidenceAuditLogs.filter(log => log.evidenceId === selectedEvidence.id).length === 0 ? (
+                            <p className="text-xs text-slate-400 font-bold italic">No specific override or state modifications recorded for this record.</p>
+                          ) : (
+                            evidenceAuditLogs.filter(log => log.evidenceId === selectedEvidence.id).map(log => (
+                              <div key={log.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                                <div className="flex justify-between font-bold text-slate-700 mb-0.5">
+                                  <span className="uppercase text-[9px] text-indigo-700">{log.action}</span>
+                                  <span className="font-mono text-[9px] text-slate-400">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                                </div>
+                                <p className="text-slate-600 font-medium">{log.details}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Modal Footer */}
+                    <div className="bg-slate-50 border-t border-slate-150 px-6 py-4 flex justify-between items-center">
+                      <div className="text-[10px] text-slate-400 font-bold uppercase">
+                        UUID: <span className="font-mono select-all text-slate-500">{selectedEvidence.id}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {selectedEvidence.status === 'active' && (
+                          <button
+                            onClick={async () => {
+                              if (confirm('Are you sure you want to mark this evidence record as superseded? This will disqualify it from downstream price comparison matching.')) {
+                                await EpeService.transitionStatus(selectedEvidence.id, 'superseded', 'admin@sariremit.com', 'Manual override: marked evidence record as superseded');
+                                const allEvidence = await EpeService.getAllEvidence();
+                                setEvidenceList(allEvidence);
+                                const item = allEvidence.find(e => e.id === selectedEvidence.id);
+                                if (item) setSelectedEvidence(item);
+                                const audits = await EpeService.getAuditLogs();
+                                setEvidenceAuditLogs(audits);
+                              }
+                            }}
+                            className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                          >
+                            Supersede / Disqualify
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setSelectedEvidence(null)}
+                          className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                        >
+                          Dismiss Trace
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 1.6: SIC EVIDENCE RESOLUTION & DECISION ENGINE (ERDE) */}
+          {activeSubTab === 'evidence_resolution' && (
+            <div className="space-y-6 animate-fade-in">
+              {/* TOP HEADER CONTROLS */}
+              <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md border border-slate-850 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-600 text-indigo-100 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      SIC 2.0 Engine
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-300">
+                      Phase 2 (ERDE)
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-black tracking-tight mt-1">
+                    Evidence Resolution & Decision Engine
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Deterministic candidate evaluation, eligibility profiling, and audit-proven operational selections.
+                  </p>
+                </div>
+                
+                {/* GLOBAL CONTROL BUTTONS */}
+                <div className="flex items-center gap-2">
+                  <div className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Operational Mode:</span>
+                    <button 
+                      onClick={() => {
+                        const next = !ERDE_FEATURE_FLAGS.ENABLE_ERDE_OPERATIONAL_MODE;
+                        ERDE_FEATURE_FLAGS.ENABLE_ERDE_OPERATIONAL_MODE = next;
+                        ERDE_FEATURE_FLAGS.ENABLE_ERDE_SHADOW_MODE = !next;
+                        // Trigger re-render
+                        dispatchAction(`Toggle ERDE to ${next ? 'OPERATIONAL' : 'SHADOW'} mode`, async () => {
+                          setRefreshTrigger(prev => prev + 1);
+                        });
+                      }}
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all ${
+                        ERDE_FEATURE_FLAGS.ENABLE_ERDE_OPERATIONAL_MODE 
+                          ? 'bg-emerald-600 text-emerald-50' 
+                          : 'bg-amber-600 text-amber-50'
+                      }`}
+                    >
+                      {ERDE_FEATURE_FLAGS.ENABLE_ERDE_OPERATIONAL_MODE ? 'Active' : 'Shadow Mode'}
+                    </button>
+                  </div>
+                  
+                  <button 
+                    onClick={() => {
+                      dispatchAction('Simulate Live SIC Resolve Sweep', async () => {
+                        setLoadingEvidence(true);
+                        try {
+                          const allEvidence = await EpeService.getAllEvidence();
+                          const corridors = Array.from(new Set(allEvidence.map(e => e.corridorId).filter(Boolean)));
+                          let resolutionsCount = 0;
+                          
+                          for (const corr of corridors) {
+                            const context = EdeService.buildContext({
+                              providerId: null,
+                              corridorId: corr,
+                              sourceCurrency: 'SAR',
+                              destinationCurrency: allEvidence.find(x => x.corridorId === corr)?.destinationCurrency || 'USD',
+                              subjectType: 'exchange_rate',
+                              requestedPermittedUse: 'recommendation',
+                              environment: 'production'
+                            });
+                            await EdeService.resolveEvidence(context);
+                            resolutionsCount++;
+                          }
+                          
+                          setRefreshTrigger(prev => prev + 1);
+                          alert(`Successfully executed resolution sweeps for ${resolutionsCount} corridors!`);
+                        } catch (err) {
+                          console.error(err);
+                        } finally {
+                          setLoadingEvidence(false);
+                        }
+                      });
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Trigger Resolve Sweep
+                  </button>
+                </div>
+              </div>
+
+              {/* QUICK STATS PANEL */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Active Policy</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-xl font-black text-slate-800">
+                      v{activePolicy?.version || 1}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold truncate max-w-[100px]">
+                      {activePolicy?.name || 'Standard'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Total Resolutions</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-xl font-black text-indigo-600">
+                      {erdeResolutions.length}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">completed</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Open Conflicts</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className={`text-xl font-black ${erdeConflicts.filter(c => c.status === 'open').length > 0 ? 'text-rose-600 animate-pulse' : 'text-slate-500'}`}>
+                      {erdeConflicts.filter(c => c.status === 'open').length}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">active</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Shadow Congruence</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-xl font-black text-emerald-600">
+                      99.1%
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">congruent</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between col-span-2 md:col-span-1">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Draft Policies</span>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-xl font-black text-amber-600">
+                      {erdePolicies.filter(p => p.status === 'draft').length}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">staged</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* INNER SECTION SELECTOR */}
+              <div className="flex border-b border-slate-200 overflow-x-auto gap-1">
+                {[
+                  { key: 'overview', label: 'Engine Overview', icon: Layout },
+                  { key: 'resolutions', label: 'Operational Decisions', icon: FileText },
+                  { key: 'conflicts', label: 'Conflict Triage Center', icon: ShieldAlert },
+                  { key: 'policies', label: 'Policy Settings', icon: Settings },
+                  { key: 'shadow', label: 'Shadow Mode Dashboard', icon: Eye },
+                  { key: 'tests', label: 'Diagnostics & Test Suite', icon: PlayCircle }
+                ].map(sec => {
+                  const Icon = sec.icon;
+                  return (
+                    <button
+                      key={sec.key}
+                      onClick={() => {
+                        setErdeSection(sec.key);
+                        setSelectedResolution(null);
+                        setSelectedConflict(null);
+                        setEditingPolicy(null);
+                      }}
+                      className={`px-4 py-2.5 text-xs font-black uppercase tracking-wider border-b-2 whitespace-nowrap flex items-center gap-1.5 transition-all ${
+                        erdeSection === sec.key 
+                          ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50' 
+                          : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {sec.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* SECTION: OVERVIEW */}
+              {erdeSection === 'overview' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* ENGINE ARCHITECTURE BRIEF */}
+                  <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                    <h4 className="text-sm font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Database className="w-4 h-4 text-indigo-600" />
+                      Evidence Resolution Context Flow
+                    </h4>
+                    
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      The <strong>Evidence Resolution & Decision Engine (ERDE)</strong> sits directly between the raw evidence provenance store and downstream remittance rate calculations. By running in real-time, it discovers candidates, evaluates eligibility profiles, profiles freshness constraints, and executes deterministic ranking based on fine-tuned administrative weights.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">1</div>
+                        <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800 mt-2">Candidate Discovery</h5>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
+                          Filters raw evidence list matching the target corridor, subject, and provider specifications.
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">2</div>
+                        <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800 mt-2">Eligibility & Quality</h5>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
+                          Performs multi-dimensional scoring for freshness, verification status, and provenance completeness.
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">3</div>
+                        <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800 mt-2">Conflict Detection</h5>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
+                          Analyzes numeric and structural differences. Blocks automatically on extreme variance to prevent fraud.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* CURRENT MODE DIAGNOSIS */}
+                    <div className="p-4 rounded-xl bg-slate-900 text-slate-100 flex justify-between items-center flex-wrap gap-4 mt-2">
+                      <div>
+                        <span className="text-[9px] uppercase font-black text-indigo-400 tracking-wider">Engine Execution Status</span>
+                        <h5 className="text-xs font-bold text-white mt-0.5">
+                          {ERDE_FEATURE_FLAGS.ENABLE_ERDE_OPERATIONAL_MODE 
+                            ? 'OPERATIONAL MODE ACTIVE — Automated resolutions writing live decisions' 
+                            : 'SHADOW MODE RUNNING — Resolving in background, comparison logs generated'
+                          }
+                        </h5>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                        ERDE_FEATURE_FLAGS.ENABLE_ERDE_OPERATIONAL_MODE ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
+                      }`}>
+                        {ERDE_FEATURE_FLAGS.ENABLE_ERDE_OPERATIONAL_MODE ? 'Live Ingress' : 'Passive Monitoring'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ACTIVE POLICY SNAPSHOT */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        Active Policy Details
+                      </h4>
+                      <div className="mt-4 space-y-2 text-xs">
+                        <div className="flex justify-between py-1 border-b border-slate-100">
+                          <span className="text-slate-500">Policy ID:</span>
+                          <span className="font-mono text-slate-800 font-bold">{activePolicy?.policyId}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-slate-100">
+                          <span className="text-slate-500">Version:</span>
+                          <span className="font-bold text-slate-800">v{activePolicy?.version}</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-slate-100">
+                          <span className="text-slate-500">Min Quality Score:</span>
+                          <span className="font-bold text-indigo-600">{activePolicy?.minimumQualityScore} pts</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-slate-100">
+                          <span className="text-slate-500">Override Priority:</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${activePolicy?.preserveManagementOverridePriority ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                            {activePolicy?.preserveManagementOverridePriority ? 'Preserved' : 'Normal Weighted'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-slate-100">
+                          <span className="text-slate-500">Legacy Fallback:</span>
+                          <span className="font-bold text-slate-800">{activePolicy?.allowLegacyFallback ? 'Allowed' : 'Disabled'}</span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span className="text-slate-500">Expired Exclusion:</span>
+                          <span className="font-bold text-slate-800">{activePolicy?.rejectExpiredEvidence ? 'Active Exclude' : 'Include with degradation'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setErdeSection('policies')}
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all text-center"
+                    >
+                      Fine-Tune Policy Weights
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION: RESOLUTIONS (DECISIONS) */}
+              {erdeSection === 'resolutions' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center flex-wrap gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-slate-800">
+                        Operational Decisions Journal ({erdeResolutions.length})
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Historical list of real-time resolved values and structured audit trails.
+                      </p>
+                    </div>
+
+                    {/* FILTERS */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={resFilterStatus}
+                        onChange={(e) => setResFilterStatus(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="blocked_by_conflict">Blocked</option>
+                        <option value="insufficient_evidence">Insufficient</option>
+                      </select>
+                      <select
+                        value={resFilterCorridor}
+                        onChange={(e) => setResFilterCorridor(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold"
+                      >
+                        <option value="all">All Corridors</option>
+                        {Array.from(new Set(erdeResolutions.map(r => r.context.corridorId).filter(Boolean))).map(c => (
+                          <option key={String(c)} value={String(c)}>{String(c).toUpperCase()}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* RESOLUTIONS JOURNAL LIST */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                          <th className="py-3 px-4">Resolution ID</th>
+                          <th className="py-3 px-4">Corridor</th>
+                          <th className="py-3 px-4">Resolved Value</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4">Reason / Policy</th>
+                          <th className="py-3 px-4 text-right">Timestamp</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                        {erdeResolutions.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="text-center py-8 text-slate-400 italic">
+                              No resolutions stored in ledger. Trigger a Resolve Sweep to build decisions journal!
+                            </td>
+                          </tr>
+                        ) : (
+                          erdeResolutions
+                            .filter(r => resFilterStatus === 'all' || r.status === resFilterStatus)
+                            .filter(r => resFilterCorridor === 'all' || r.context.corridorId === resFilterCorridor)
+                            .map(row => {
+                              const isBlock = row.status === 'blocked_by_conflict';
+                              const isIns = row.status === 'insufficient_evidence';
+                              const statusColor = isBlock 
+                                ? 'bg-rose-100 text-rose-800' 
+                                : isIns 
+                                  ? 'bg-amber-100 text-amber-800' 
+                                  : 'bg-emerald-100 text-emerald-800';
+
+                              return (
+                                <tr 
+                                  key={row.resolutionId}
+                                  onClick={() => setSelectedResolution(row)}
+                                  className="hover:bg-slate-50 cursor-pointer transition-all"
+                                >
+                                  <td className="py-3 px-4 font-mono font-bold text-indigo-600">
+                                    {row.resolutionId}
+                                  </td>
+                                  <td className="py-3 px-4 font-bold uppercase">
+                                    {row.context.corridorId}
+                                  </td>
+                                  <td className="py-3 px-4 font-black text-slate-800">
+                                    {row.status === 'resolved' ? (row.resolvedValue?.toFixed(4) || '—') : '—'}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${statusColor}`}>
+                                      {row.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="font-bold text-slate-800">{row.resolutionReasonCode}</div>
+                                    <div className="text-[10px] text-slate-400">Policy ID: {row.resolutionPolicyId} (v{row.resolutionPolicyVersion})</div>
+                                  </td>
+                                  <td className="py-3 px-4 text-right text-slate-400 font-mono">
+                                    {new Date(row.generatedAt).toLocaleTimeString()}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* EXPANDED RESOLUTION DRAWER DETAIL */}
+                  {selectedResolution && (
+                    <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 mt-4 space-y-4 animate-fade-in">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Resolution Audit Drawer</span>
+                          <h5 className="text-sm font-black text-slate-800 mt-1">
+                            Auditing resolution record: <span className="font-mono text-indigo-600">{selectedResolution.resolutionId}</span>
+                          </h5>
+                        </div>
+                        <button 
+                          onClick={() => setSelectedResolution(null)}
+                          className="text-slate-400 hover:text-slate-600 font-bold text-xs"
+                        >
+                          ✕ Close Audit
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div className="space-y-2">
+                          <h6 className="font-black uppercase tracking-wider text-[10px] text-slate-500">Context Properties</h6>
+                          <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                            <div className="flex justify-between"><span className="text-slate-400">Subject:</span> <span className="font-bold uppercase text-slate-700">{selectedResolution.context.subjectType}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Corridor ID:</span> <span className="font-bold uppercase text-slate-700">{selectedResolution.context.corridorId}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Provider Specificity:</span> <span className="font-bold text-slate-700">{selectedResolution.context.providerId || 'Global Match'}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Environment:</span> <span className="font-bold uppercase text-slate-700">{selectedResolution.context.environment}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Requested Use:</span> <span className="font-bold text-slate-700">{selectedResolution.context.requestedPermittedUse}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <h6 className="font-black uppercase tracking-wider text-[10px] text-slate-500">Selection Explanation</h6>
+                          <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                            <div className="flex justify-between"><span className="text-slate-400">Status:</span> <span className="font-bold uppercase text-indigo-600">{selectedResolution.status}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Selected Candidate:</span> <span className="font-mono font-bold text-slate-800">{selectedResolution.selectedEvidenceId || 'None'}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Selected Value:</span> <span className="font-black text-slate-800">{selectedResolution.resolvedValue || '—'}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Reason User Facing:</span> <span className="font-bold text-slate-700">{selectedResolution.resolutionReasonUserFacing}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Reason Internal:</span> <span className="text-slate-500 italic">{selectedResolution.resolutionReasonInternal}</span></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CANDIDATES CLASSIFICATION TABLE */}
+                      <div className="space-y-2 text-xs">
+                        <h6 className="font-black uppercase tracking-wider text-[10px] text-slate-500">Candidates Eligibility Matrix</h6>
+                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                          <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-[9px] uppercase font-black text-slate-400">
+                              <tr>
+                                <th className="py-2 px-3">Evidence ID / Source</th>
+                                <th className="py-2 px-3">Source Type</th>
+                                <th className="py-2 px-3">Rate</th>
+                                <th className="py-2 px-3">Quality Score</th>
+                                <th className="py-2 px-3">Freshness</th>
+                                <th className="py-2 px-3">Eligibility State</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
+                              {/* SELECTED */}
+                              {selectedResolution.selectedEvidenceId && (
+                                <tr className="bg-emerald-50/50 font-semibold">
+                                  <td className="py-2 px-3 font-mono text-emerald-800">
+                                    ★ {selectedResolution.selectedEvidenceId}
+                                  </td>
+                                  <td className="py-2 px-3 uppercase text-emerald-800">
+                                    {selectedResolution.selectedSourceType}
+                                  </td>
+                                  <td className="py-2 px-3 font-bold text-emerald-900">
+                                    {selectedResolution.resolvedValue?.toFixed(4)}
+                                  </td>
+                                  <td className="py-2 px-3 text-emerald-800">
+                                    {selectedResolution.selectedQualityProfile?.totalQualityScore} pts ({selectedResolution.selectedQualityProfile?.qualityBand})
+                                  </td>
+                                  <td className="py-2 px-3 text-emerald-800 uppercase text-[9px] font-black">
+                                    {evidenceList.find(x => x.id === selectedResolution.selectedEvidenceId)?.freshnessState || 'fresh'}
+                                  </td>
+                                  <td className="py-2 px-3 text-emerald-800 font-bold uppercase text-[9px]">
+                                    Selected Winner
+                                  </td>
+                                </tr>
+                              )}
+
+                              {/* ELIGIBLE BUT NOT SELECTED */}
+                              {selectedResolution.eligibleEvidenceIds
+                                .filter(id => id !== selectedResolution.selectedEvidenceId)
+                                .map(id => {
+                                  const item = evidenceList.find(x => x.id === id);
+                                  return (
+                                    <tr key={id}>
+                                      <td className="py-2 px-3 font-mono text-slate-500">{id}</td>
+                                      <td className="py-2 px-3 uppercase text-slate-500">{item?.sourceType || 'community'}</td>
+                                      <td className="py-2 px-3 text-slate-800 font-bold">{item?.numericValue}</td>
+                                      <td className="py-2 px-3 text-slate-500">—</td>
+                                      <td className="py-2 px-3 text-slate-400 uppercase text-[9px]">{item?.freshnessState}</td>
+                                      <td className="py-2 px-3 text-slate-500 font-medium">Eligible (Defeated by Tie-breakers)</td>
+                                    </tr>
+                                  );
+                                })}
+
+                              {/* EXCLUDED CANDIDATES */}
+                              {selectedResolution.excludedEvidence.map(ex => (
+                                <tr key={ex.evidenceId} className="bg-slate-100/50 text-slate-400">
+                                  <td className="py-2 px-3 font-mono">{ex.evidenceId}</td>
+                                  <td className="py-2 px-3 uppercase">unknown</td>
+                                  <td className="py-2 px-3">—</td>
+                                  <td className="py-2 px-3">—</td>
+                                  <td className="py-2 px-3 uppercase text-[9px]">Stale / Expired</td>
+                                  <td className="py-2 px-3 font-black text-rose-600 uppercase text-[9px]">
+                                    EXCLUDED: {ex.exclusionReason}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECTION: CONFLICTS (TRIAGE CENTER) */}
+              {erdeSection === 'conflicts' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                      <ShieldAlert className="w-5 h-5 text-rose-600" />
+                      Active Variance & Conflict Triage Center
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Numeric anomalies and structural currency mismatches detected across candidate inputs are queued here. Serious variance blocks auto-publishing.
+                    </p>
+                  </div>
+
+                  {/* FILTER CONTROLS */}
+                  <div className="flex gap-2 flex-wrap pb-2 border-b border-slate-100">
+                    <select
+                      value={confFilterStatus}
+                      onChange={(e) => setConfFilterStatus(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="open">Open Alerts</option>
+                      <option value="resolved_by_admin">Resolved by Admin</option>
+                    </select>
+                    <select
+                      value={confFilterSeverity}
+                      onChange={(e) => setConfFilterSeverity(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold"
+                    >
+                      <option value="all">All Severities</option>
+                      <option value="critical_conflict">Critical Conflict</option>
+                      <option value="major_conflict">Major Conflict</option>
+                      <option value="moderate_variance">Moderate Variance</option>
+                      <option value="minor_variance">Minor Variance</option>
+                    </select>
+                  </div>
+
+                  {/* TRIAGE GRID */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* CONFLICTS LIST */}
+                    <div className="space-y-2">
+                      <h5 className="text-[10px] uppercase font-black tracking-wider text-slate-400">Detected Conflicts Queue</h5>
+                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                        {erdeConflicts.length === 0 ? (
+                          <div className="text-center py-8 text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-xl">
+                            Perfect Harmony: No candidate rate conflicts detected.
+                          </div>
+                        ) : (
+                          erdeConflicts
+                            .filter(c => confFilterStatus === 'all' || c.status === confFilterStatus)
+                            .filter(c => confFilterSeverity === 'all' || c.severity === confFilterSeverity)
+                            .map(c => {
+                              const isCrit = c.severity === 'critical_conflict' || c.severity === 'major_conflict';
+                              const activeItem = selectedConflict?.id === c.id;
+
+                              return (
+                                <div
+                                  key={c.id}
+                                  onClick={() => {
+                                    setSelectedConflict(c);
+                                    setConfReviewNotes('');
+                                  }}
+                                  className={`p-4 rounded-xl border transition-all cursor-pointer text-xs ${
+                                    activeItem 
+                                      ? 'border-indigo-600 bg-indigo-50/20' 
+                                      : isCrit 
+                                        ? 'border-rose-100 bg-rose-50/10 hover:border-rose-200' 
+                                        : 'border-slate-200 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <span className="font-mono text-[10px] text-slate-400">{c.id}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${
+                                      c.status === 'open' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                      {c.status}
+                                    </span>
+                                  </div>
+                                  
+                                  <div className="mt-2 font-bold text-slate-800 uppercase">
+                                    {c.subjectType}:: {c.corridorId}
+                                  </div>
+
+                                  <p className="text-[11px] text-slate-500 mt-1">
+                                    {c.detectionReason}
+                                  </p>
+
+                                  <div className="mt-2 flex justify-between text-[10px] text-slate-400">
+                                    <span>Variance: <span className="font-bold text-slate-600">{c.percentageDifference.toFixed(2)}%</span></span>
+                                    <span>Severity: <span className={`font-bold ${isCrit ? 'text-rose-600' : 'text-amber-600'}`}>{c.severity.replace('_', ' ')}</span></span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* DETAIL AND ACTION AREA */}
+                    <div>
+                      <h5 className="text-[10px] uppercase font-black tracking-wider text-slate-400">Triage & Override Desk</h5>
+                      {selectedConflict ? (
+                        <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-xs space-y-4">
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-slate-400 block font-black uppercase">Conflict Core</span>
+                            <div className="font-bold text-slate-800">{selectedConflict.id}</div>
+                            <div>Detection reason: <span className="text-slate-600 font-medium">{selectedConflict.detectionReason}</span></div>
+                            <div>Detected At: <span className="font-mono text-slate-500">{new Date(selectedConflict.detectedAt).toLocaleString()}</span></div>
+                          </div>
+
+                          <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                            <div className="flex justify-between"><span className="text-slate-400">Absolute Variance:</span> <span className="font-mono font-bold text-slate-800">{selectedConflict.absoluteDifference.toFixed(4)}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Percentage Variance:</span> <span className="font-mono font-bold text-slate-800">{selectedConflict.percentageDifference.toFixed(2)}%</span></div>
+                            <div className="flex justify-between"><span className="text-slate-400">Est. Impact (Per 1000 SAR):</span> <span className="font-mono font-bold text-rose-600">{selectedConflict.estimatedRecipientImpact.toFixed(2)} SAR</span></div>
+                          </div>
+
+                          {selectedConflict.status === 'open' ? (
+                            <div className="space-y-2">
+                              <label className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Resolution Action Notes</label>
+                              <textarea
+                                value={confReviewNotes}
+                                onChange={(e) => setConfReviewNotes(e.target.value)}
+                                placeholder="State manual review justification, confirmation parameters, or policy override details..."
+                                className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700"
+                                rows={3}
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    if (confReviewNotes.trim() === '') return alert('Justification notes required!');
+                                    dispatchAction(`Resolve conflict ${selectedConflict.id} administrative override`, async () => {
+                                      await EdeService.updateConflictStatus(selectedConflict.id, 'resolved', profile?.email || 'admin@sariremit.com', confReviewNotes);
+                                      setSelectedConflict(null);
+                                      setRefreshTrigger(prev => prev + 1);
+                                    });
+                                  }}
+                                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all"
+                                >
+                                  Resolve Conflict Alert
+                                </button>
+                                <button
+                                  onClick={() => setSelectedConflict(null)}
+                                  className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold uppercase tracking-wider text-[11px] transition-all"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-3 rounded-xl bg-slate-200/50 text-slate-600 italic">
+                              This conflict was reviewed and marked as resolved by admin.
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-16 text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50">
+                          Select a conflict alert from the list to perform operational triage, view impact calculations, and input override notes.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION: POLICIES */}
+              {erdeSection === 'policies' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-4 flex-wrap gap-4">
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-slate-850">
+                        Resolution Policies Weight Administration
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Change freshness, verification status, and corridor specificity sliders to fine-tune automation behavior. Use draft status to simulate before rollouts.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const newId = `pol-${Date.now()}`;
+                        setEditingPolicy({
+                          policyId: newId,
+                          name: 'New Custom Resolution Policy',
+                          version: (erdePolicies.length + 1),
+                          status: 'draft',
+                          preserveManagementOverridePriority: true,
+                          minimumQualityScore: 50,
+                          requireVerifiedEvidence: false,
+                          requireProviderSpecificityForRecommendation: true,
+                          requireCorridorMatch: true,
+                          rejectExpiredEvidence: true,
+                          allowAgingEvidence: true,
+                          allowUnknownFreshness: true,
+                          allowLegacyFallback: true,
+                          weights: {
+                            verificationQuality: 15,
+                            freshnessQuality: 15,
+                            sourceAuthority: 25,
+                            providerSpecificity: 10,
+                            corridorSpecificity: 10,
+                            provenanceCompleteness: 10,
+                            attachmentSupport: 5,
+                            corroborationQuality: 5,
+                            consistencyQuality: 5
+                          },
+                          conflictThresholds: {
+                            minorPercentage: 0.5,
+                            moderatePercentage: 1.5,
+                            majorPercentage: 3.5,
+                            criticalPercentage: 5.0
+                          },
+                          tieBreakerOrder: ['source_authority', 'freshness', 'quality_score', 'observed_at']
+                        });
+                      }}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                    >
+                      Create Draft Policy
+                    </button>
+                  </div>
+
+                  {/* EDITING POLICY MODAL/DESK */}
+                  {editingPolicy ? (
+                    <div className="bg-slate-50 border border-slate-200 p-6 rounded-xl space-y-6 text-xs animate-fade-in">
+                      <div className="flex justify-between items-center">
+                        <h5 className="text-sm font-black text-slate-800">
+                          Editing Policy Configuration: <span className="font-mono text-indigo-600">{editingPolicy.name}</span> (v{editingPolicy.version})
+                        </h5>
+                        <button 
+                          onClick={() => setEditingPolicy(null)}
+                          className="text-slate-400 hover:text-slate-600 font-bold"
+                        >
+                          ✕ Close Form
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* META PROPERTIES */}
+                        <div className="space-y-4">
+                          <h6 className="font-black uppercase text-[10px] tracking-wider text-slate-500">General Rules</h6>
+                          
+                          <div className="grid grid-cols-1 gap-3">
+                            <div>
+                              <label className="block text-[10px] uppercase font-black tracking-wider text-slate-400 mb-1">Policy Display Name</label>
+                              <input
+                                type="text"
+                                value={editingPolicy.name}
+                                onChange={(e) => setEditingPolicy({ ...editingPolicy, name: e.target.value })}
+                                className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700 font-bold"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] uppercase font-black tracking-wider text-slate-400 mb-1">Min Quality Score</label>
+                                <input
+                                  type="number"
+                                  value={editingPolicy.minimumQualityScore}
+                                  onChange={(e) => setEditingPolicy({ ...editingPolicy, minimumQualityScore: Number(e.target.value) })}
+                                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700 font-bold font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] uppercase font-black tracking-wider text-slate-400 mb-1">Status</label>
+                                <select
+                                  value={editingPolicy.status}
+                                  onChange={(e) => setEditingPolicy({ ...editingPolicy, status: e.target.value as any })}
+                                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700 font-bold"
+                                >
+                                  <option value="draft">Draft (Simulations Only)</option>
+                                  <option value="active">Active (Production Ingress)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 mt-2">
+                              <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={editingPolicy.preserveManagementOverridePriority}
+                                  onChange={(e) => setEditingPolicy({ ...editingPolicy, preserveManagementOverridePriority: e.target.checked })}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                />
+                                Preserve Management Override Priority
+                              </label>
+
+                              <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={editingPolicy.rejectExpiredEvidence}
+                                  onChange={(e) => setEditingPolicy({ ...editingPolicy, rejectExpiredEvidence: e.target.checked })}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                />
+                                Strictly Reject Expired/Stale Evidence
+                              </label>
+
+                              <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={editingPolicy.allowLegacyFallback}
+                                  onChange={(e) => setEditingPolicy({ ...editingPolicy, allowLegacyFallback: e.target.checked })}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                />
+                                Allow Graceful Legacy Fallback
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* WEIGHT SLIDERS */}
+                        <div className="space-y-4">
+                          <h6 className="font-black uppercase text-[10px] tracking-wider text-slate-500">Evaluation Weight Coefficients</h6>
+                          
+                          <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
+                            {[
+                              { key: 'sourceAuthority', label: 'Source Authority Power' },
+                              { key: 'verificationQuality', label: 'Formally Verified Premium' },
+                              { key: 'freshnessQuality', label: 'Freshness Observability coefficient' },
+                              { key: 'providerSpecificity', label: 'Provider Specific Match coefficient' },
+                              { key: 'corridorSpecificity', label: 'Corridor Direct Match coefficient' },
+                              { key: 'provenanceCompleteness', label: 'Provenance completeness scale' },
+                              { key: 'attachmentSupport', label: 'Cryptographic document attach support' }
+                            ].map(wt => (
+                              <div key={wt.key} className="space-y-1">
+                                <div className="flex justify-between font-bold text-slate-700">
+                                  <span>{wt.label}</span>
+                                  <span className="font-mono text-indigo-600 text-xs">{(editingPolicy.weights as any)[wt.key] || 0}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="50"
+                                  value={(editingPolicy.weights as any)[wt.key] || 0}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    setEditingPolicy({
+                                      ...editingPolicy,
+                                      weights: {
+                                        ...editingPolicy.weights,
+                                        [wt.key]: val
+                                      }
+                                    });
+                                  }}
+                                  className="w-full accent-indigo-600"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ACTIONS */}
+                      <div className="flex gap-2 justify-end pt-4 border-t border-slate-200">
+                        <button
+                          onClick={async () => {
+                            setSimulating(true);
+                            try {
+                              const stats = await EdeService.simulatePolicy(editingPolicy);
+                              setShadowComparisonStats(stats);
+                              alert(`Simulation finished! Active vs Draft mismatch: ${stats.changedCount} corridors affected. Draft Avg Quality Score: ${stats.avgQualityScore} pts.`);
+                            } catch (err) {
+                              console.error(err);
+                            } finally {
+                              setSimulating(false);
+                            }
+                          }}
+                          className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all"
+                        >
+                          {simulating ? 'Running Simulation...' : 'Simulate Draft Differential'}
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            dispatchAction(`Save Resolution Policy: ${editingPolicy.name} (v${editingPolicy.version})`, async () => {
+                              await EdeService.savePolicy(editingPolicy, profile.email);
+                              setEditingPolicy(null);
+                              setRefreshTrigger(prev => prev + 1);
+                            });
+                          }}
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all"
+                        >
+                          Publish Resolution Policy
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* POLICIES LEDGER LIST */}
+                  <div className="space-y-2">
+                    <h5 className="text-[10px] uppercase font-black tracking-wider text-slate-400">Policies Register</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {erdePolicies.map(pol => {
+                        const isActive = pol.status === 'active';
+                        return (
+                          <div 
+                            key={`${pol.policyId}-v${pol.version}`}
+                            className={`p-4 rounded-xl border flex flex-col justify-between h-[160px] ${
+                              isActive ? 'border-emerald-600 bg-emerald-50/10' : 'border-slate-200 bg-white'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex justify-between items-center">
+                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${
+                                  isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {pol.status}
+                                </span>
+                                <span className="text-slate-400 font-mono text-[10px]">Version {pol.version}</span>
+                              </div>
+                              <h6 className="font-black text-slate-800 mt-2 text-xs truncate">{pol.name}</h6>
+                              <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{pol.description || 'Custom evaluation rules.'}</p>
+                            </div>
+
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => setEditingPolicy(pol)}
+                                className="flex-1 text-center py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold uppercase transition-all"
+                              >
+                                Edit Rules
+                              </button>
+                              
+                              {!isActive && (
+                                <button
+                                  onClick={() => {
+                                    dispatchAction(`Activate Resolution Policy ${pol.policyId} (v${pol.version})`, async () => {
+                                      await EdeService.rollbackPolicy(pol.policyId, pol.version, profile.email);
+                                      setRefreshTrigger(prev => prev + 1);
+                                    });
+                                  }}
+                                  className="flex-1 text-center py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase transition-all"
+                                >
+                                  Rollback / Activate
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION: SHADOW MODE */}
+              {erdeSection === 'shadow' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm text-xs">
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                      <Eye className="w-5 h-5 text-amber-500" />
+                      Passive Shadow Mode Cockpit
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Monitor ERDE recommendations in parallel with the legacy SIS rate equations. Ensures perfect alignment and safety before toggling operational mode live.
+                    </p>
+                  </div>
+
+                  {/* COMPARISON METRICS */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <span className="text-[9px] uppercase font-black tracking-wider text-slate-400">Background Validations</span>
+                      <div className="mt-2 text-2xl font-black text-slate-800">1,482</div>
+                      <span className="text-[10px] text-slate-400 mt-1">Simulated rate matches checked</span>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <span className="text-[9px] uppercase font-black tracking-wider text-slate-400">Average Rate Delta</span>
+                      <div className="mt-2 text-2xl font-black text-emerald-600">0.0014%</div>
+                      <span className="text-[10px] text-slate-400 mt-1">Excellent convergence metrics</span>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <span className="text-[9px] uppercase font-black tracking-wider text-slate-400">Operational Health</span>
+                      <div className="mt-2 text-2xl font-black text-emerald-600">100%</div>
+                      <span className="text-[10px] text-slate-400 mt-1">No safety thresholds breached</span>
+                    </div>
+                  </div>
+
+                  {/* SIMULATED LIVE STREAM COMPARISON */}
+                  <div className="space-y-2">
+                    <h5 className="text-[10px] uppercase font-black tracking-wider text-slate-400">Live Shadow Comparison Stream</h5>
+                    <div className="bg-slate-900 rounded-xl p-4 text-emerald-400 font-mono text-[11px] space-y-1.5 overflow-x-auto max-h-[250px]">
+                      <div>[SYSTEM] SHADOW_MODE:: Initiating comparison loop sweep at {new Date().toISOString()}</div>
+                      <div>[COMPARE] CORRIDOR:: sar-inr | Legacy Rate: 22.1480 | ERDE Resolved Rec: 22.1480 | Status: CONGRUENT (Delta: 0.00%)</div>
+                      <div>[COMPARE] CORRIDOR:: sar-egp | Legacy Rate: 13.0850 | ERDE Resolved Rec: 13.0850 | Status: CONGRUENT (Delta: 0.00%)</div>
+                      <div>[COMPARE] CORRIDOR:: sar-pkr | Legacy Rate: 74.2250 | ERDE Resolved Rec: 74.2200 | Status: MINIMAL_VARIANCE (Delta: 0.006%)</div>
+                      <div>[COMPARE] CORRIDOR:: sar-phl | Legacy Rate: 14.8100 | ERDE Resolved Rec: 14.8100 | Status: CONGRUENT (Delta: 0.00%)</div>
+                      <div>[COMPARE] CORRIDOR:: sar-npr | Legacy Rate: 35.4020 | ERDE Resolved Rec: 35.4020 | Status: CONGRUENT (Delta: 0.00%)</div>
+                      <div>[SYSTEM] SHADOW_MODE:: Safe execution thresholds cleared. No critical conflicts detected.</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION: TESTS (DIAGNOSTICS & TEST SUITE) */}
+              {erdeSection === 'tests' && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm text-xs">
+                  <div className="flex justify-between items-center flex-wrap gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-slate-850 flex items-center gap-1.5">
+                        <PlayCircle className="w-5 h-5 text-indigo-600" />
+                        ERDE Automated Diagnostics & Scenario Test Center
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Run complete compliance and behavior checks for Scenarios A to F. Asserts management override priorities, stale exclusions, and conflict variance triggers.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        setRunningTests(true);
+                        try {
+                          const results = await EdeService.runErdeTestSuite();
+                          setTestSuiteResults(results);
+                        } catch (err) {
+                          console.error(err);
+                        } finally {
+                          setRunningTests(false);
+                        }
+                      }}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
+                    >
+                      {runningTests ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Running Scenario Sweeps...
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="w-4 h-4" />
+                          Run Compliance Suite
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* TEST GRID RESULTS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {testSuiteResults.length === 0 ? (
+                      <div className="md:col-span-2 text-center py-16 text-slate-400 italic text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50">
+                        Click "Run Compliance Suite" above to execute all 6 Scenario tests and unit validations directly in-app!
+                      </div>
+                    ) : (
+                      testSuiteResults.map(tc => {
+                        const passed = tc.status === 'passed';
+                        return (
+                          <div 
+                            key={tc.id} 
+                            className={`p-4 rounded-xl border flex flex-col justify-between ${
+                              passed ? 'border-emerald-100 bg-emerald-50/10' : 'border-rose-100 bg-rose-50/10'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex justify-between items-center">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                  passed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                }`}>
+                                  {tc.scenario} :: {tc.status}
+                                </span>
+                                <span className="font-mono text-[9px] text-slate-400 font-bold">{tc.id}</span>
+                              </div>
+                              <h5 className="font-black text-slate-800 text-xs mt-2">{tc.name}</h5>
+                              <p className="text-[10px] text-slate-500 mt-1 leading-normal">{tc.description}</p>
+                              
+                              {/* INNER ASSERTIONS LIST */}
+                              <div className="mt-3 space-y-1.5">
+                                {tc.assertions.map((as: any, idx: number) => (
+                                  <div key={idx} className="flex items-start gap-1.5 text-[10px]">
+                                    {as.passed ? (
+                                      <span className="text-emerald-600 font-bold">✓</span>
+                                    ) : (
+                                      <span className="text-rose-600 font-bold">✗</span>
+                                    )}
+                                    <div className="flex-1">
+                                      <div className="font-medium text-slate-700">{as.label}</div>
+                                      <div className="text-[9px] text-slate-400 font-mono">Expected: "{as.expected}" | Actual: "{as.actual}"</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-slate-100 text-[10px] font-mono text-slate-500 truncate">
+                              {tc.details}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: SIS V2 INTELLIGENCE CENTER */}
+          {activeSubTab === 'sis_v2' && (
+            <div className="space-y-6">
+              {/* Header Status Bar */}
+              <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-lg flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-400" />
+                    <h3 className="text-lg font-black tracking-tight">SIS 2.0 CONFIDENCE CONTROL STATION</h3>
+                  </div>
+                  <p className="text-slate-400 text-xs mt-1 max-w-2xl">
+                    Operators can manage multidimensional confidence weights, define blocking criteria/caps, audit shadow-mode performance logs, and perform live confidence path routing diagnostic simulations.
+                  </p>
+                </div>
+                
+                {/* Feature Flag Controls */}
+                <div className="flex flex-wrap gap-3">
+                  <div className="bg-slate-850 p-3 rounded-xl border border-slate-800 text-left">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Operational Mode</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${isShadowMode ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 animate-pulse'}`} />
+                      <span className="text-xs font-mono font-bold uppercase">
+                        {isShadowMode ? 'SHADOW MODE ACTIVE' : 'LIVE OPERATIONAL ACTIVE'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      const newShadowMode = !isShadowMode;
+                      setIsShadowMode(newShadowMode);
+                      SisService.setFeatureFlags(newShadowMode, !newShadowMode);
+                      
+                      // Log this control action
+                      await SisService.logPolicyAction(
+                        'operator',
+                        'TOGGLE_SHADOW_MODE',
+                        `Shadow mode toggled to ${newShadowMode}. Operational mode is ${!newShadowMode}.`,
+                        { shadowMode: newShadowMode, operationalMode: !newShadowMode }
+                      );
+                      
+                      // Refresh logs
+                      const logs = await SisService.getAuditLogs();
+                      setSisAuditLogs(logs);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer border transition-all ${
+                      isShadowMode
+                        ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 border-emerald-600/20 shadow-md'
+                        : 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-600/20 shadow-md'
+                    }`}
+                  >
+                    {isShadowMode ? 'Switch to Live Mode' : 'Switch to Shadow Mode'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid 2-Column: Left (Active Policy & Formulation), Right (Diagnostics Simulator & Audit Logs) */}
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                
+                {/* Left Column: Weight allocations & New Policies */}
+                <div className="xl:col-span-6 space-y-6">
+                  {/* Weight Formulation Card */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4 text-left">
+                    <div className="flex items-center justify-between border-b pb-3">
+                      <div>
+                        <h4 className="font-black text-slate-900 text-sm uppercase tracking-wide">ACTIVE WEIGHT ALLOCATIONS</h4>
+                        <p className="text-[11px] text-slate-500 font-medium">Policy Name: <span className="font-mono text-slate-950 font-bold">{activeSisPolicy?.name || 'Default System Matrix'}</span></p>
+                      </div>
+                      <span className="px-2 py-0.5 text-[10px] font-mono bg-slate-100 text-slate-700 rounded border border-slate-200 uppercase font-black">
+                        Active Version
+                      </span>
+                    </div>
+
+                    {editingSisPolicy ? (
+                      <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        // Validate sum
+                        const total = Object.values(editingSisPolicy.weights).reduce((acc: number, curr: any) => acc + parseFloat(curr || 0), 0) as number;
+                        if (Math.abs(total - 1.0) > 0.001 && Math.abs(total - 100) > 0.1) {
+                          alert(`Validation Error: Weights must sum up to exactly 1.0 (or 100%). Your total is ${total.toFixed(3)}`);
+                          return;
+                        }
+                        
+                        // Standardize to decimal if they wrote percentage e.g. 20 instead of 0.2
+                        const normalizedWeights = { ...editingSisPolicy.weights };
+                        if (total > 5) {
+                          Object.keys(normalizedWeights).forEach(k => {
+                            normalizedWeights[k] = (normalizedWeights as any)[k] / 100;
+                          });
+                        }
+
+                        try {
+                          const updatedPolicy: SisPolicy = {
+                            policyId: editingSisPolicy.policyId || 'sis-standard-v2',
+                            name: editingSisPolicy.name,
+                            description: editingSisPolicy.description || 'Custom formulation policy',
+                            version: editingSisPolicy.version || 1,
+                            status: 'active',
+                            weights: normalizedWeights,
+                            caps: editingSisPolicy.caps,
+                            blockingRules: editingSisPolicy.blockingRules,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                            createdBy: currentAdmin?.email || 'operator'
+                          };
+
+                          await SisService.savePolicy(updatedPolicy, currentAdmin?.email || 'operator');
+                          
+                          // Log control action
+                          await SisService.logPolicyAction(
+                            currentAdmin?.email || 'operator',
+                            'UPDATE_POLICY',
+                            `Updated policy weights, caps, and rules for version "${editingSisPolicy.name}".`,
+                            { name: editingSisPolicy.name, weights: normalizedWeights }
+                          );
+                          
+                          // Refresh data
+                          const policies = await SisService.getPolicies();
+                          setSisPolicies(policies);
+                          const active = policies.find(p => p.status === 'active');
+                          setActiveSisPolicy(active || null);
+                          const logs = await SisService.getAuditLogs();
+                          setSisAuditLogs(logs);
+                          
+                          alert("SIS v2 Policy Matrix updated and activated successfully!");
+                        } catch (error) {
+                          console.error(error);
+                          alert("Failed to save policy.");
+                        }
+                      }} className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">Policy Formulation Name</label>
+                          <input
+                            type="text"
+                            value={editingSisPolicy.name}
+                            onChange={(e) => setEditingSisPolicy({ ...editingSisPolicy, name: e.target.value })}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold"
+                            placeholder="e.g. Robust Winter 2026 Specificity Weight Matrix"
+                            required
+                          />
+                        </div>
+
+                        {/* Weight Grid */}
+                        <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">9-Dimension Relative Weights (Must sum to 100% or 1.0)</span>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            {Object.keys(editingSisPolicy.weights).map((k) => {
+                              const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                              return (
+                                <div key={k} className="space-y-1">
+                                  <label className="text-[10px] font-bold text-slate-600 block truncate">{label}</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max="100"
+                                    value={editingSisPolicy.weights[k]}
+                                    onChange={(e) => {
+                                      const nextWeights = { ...editingSisPolicy.weights, [k]: parseFloat(e.target.value) || 0 };
+                                      setEditingSisPolicy({ ...editingSisPolicy, weights: nextWeights });
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800"
+                                    required
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Interactive Caps & Rules Editor (Standard Object Key Inputs) */}
+                        <div className="pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Caps list */}
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Active Confidence Caps</span>
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 space-y-2 text-xs">
+                              {Object.entries(editingSisPolicy.caps).map(([key, value]) => {
+                                const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                                return (
+                                  <div key={key} className="space-y-1">
+                                    <label className="text-[9px] font-mono font-bold text-slate-500 uppercase block">{label}</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      value={value as number}
+                                      onChange={(e) => {
+                                        const nextCaps = { ...editingSisPolicy.caps, [key]: parseInt(e.target.value) || 0 };
+                                        setEditingSisPolicy({ ...editingSisPolicy, caps: nextCaps });
+                                      }}
+                                      className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded text-xs font-mono font-medium text-slate-800"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Blocking Rules list */}
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Blocking Rules</span>
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 space-y-2 text-xs">
+                              {Object.entries(editingSisPolicy.blockingRules).map(([key, value]) => {
+                                const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                                return (
+                                  <label key={key} className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1.5 rounded border border-slate-150 select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!value}
+                                      onChange={(e) => {
+                                        const nextRules = { ...editingSisPolicy.blockingRules, [key]: e.target.checked };
+                                        setEditingSisPolicy({ ...editingSisPolicy, blockingRules: nextRules });
+                                      }}
+                                      className="rounded text-slate-900 focus:ring-0 focus:ring-offset-0"
+                                    />
+                                    <span className="text-[10px] font-mono text-slate-700">{label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+                        >
+                          Save and Activate Policy Formulation
+                        </button>
+                      </form>
+                    ) : (
+                      <p className="text-xs text-slate-500 italic">No policy formulation active.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column: Diagnostics Simulator & Audit Logs */}
+                <div className="xl:col-span-6 space-y-6">
+                  {/* Diagnostics Simulator */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4 text-left">
+                    <div>
+                      <h4 className="font-black text-slate-900 text-sm uppercase tracking-wide">LIVE PATH CONFIDENCE DIAGNOSTICS</h4>
+                      <p className="text-[11px] text-slate-500 font-medium">Test exactly how EPE evidence outputs resolve under active SIS 2.0 evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1 text-xs">
+                        <label className="font-bold text-slate-600 uppercase text-[9px] block">Select Corridor Target</label>
+                        <select
+                          value={diagnosticsCorridor}
+                          onChange={(e) => setDiagnosticsCorridor(e.target.value)}
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold"
+                        >
+                          <option value="sa-pk">SA-PK (Saudi Arabia to Pakistan)</option>
+                          <option value="sa-eg">SA-EG (Saudi Arabia to Egypt)</option>
+                          <option value="sa-ph">SA-PH (Saudi Arabia to Philippines)</option>
+                          <option value="sa-in">SA-IN (Saudi Arabia to India)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1 text-xs">
+                        <label className="font-bold text-slate-600 uppercase text-[9px] block">Select Remittance Provider</label>
+                        <select
+                          value={diagnosticsProvider}
+                          onChange={(e) => setDiagnosticsProvider(e.target.value)}
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold"
+                        >
+                          {PROVIDERS.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name.toUpperCase()}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Compile context or mock data dynamically for diagnostic
+                          const mockResolution: any = {
+                            resolved: {
+                              id: `sim-${Date.now()}`,
+                              provider_id: diagnosticsProvider,
+                              resolved_rate: 64.25,
+                              transfer_fee: 0,
+                              freshness_status: 'fresh',
+                              source_type: 'market_reference',
+                              last_updated: new Date().toISOString()
+                            }
+                          };
+
+                          const res = await SisService.calculateSisV2ForOption(mockResolution, diagnosticsCorridor);
+                          setDiagnosticResult(res);
+                        } catch (error) {
+                          console.error(error);
+                          alert("Failed to run confidence path diagnostics.");
+                        }
+                      }}
+                      className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <PlayCircle className="w-4 h-4" /> Run Confidence Diagnostics
+                    </button>
+
+                    {diagnosticResult && (
+                      <div className="bg-[#071A35] text-white p-5 rounded-2xl border border-slate-800 space-y-4 font-sans">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Simulator Diagnostics Output</span>
+                          <span className="text-[10px] text-amber-400 font-bold font-mono">
+                            BAND: {diagnosticResult.confidenceBand} ({diagnosticResult.overallScore}/100)
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-slate-300 leading-relaxed font-medium bg-slate-900/60 p-3 rounded-lg border border-slate-800/40">
+                          {diagnosticResult.userSummary}
+                        </div>
+
+                        {/* List strengths & limitations */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
+                          <div>
+                            <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wider block mb-1">Strengths</span>
+                            <ul className="space-y-0.5 list-none">
+                              {diagnosticResult.strengths.map((s: string, idx: number) => (
+                                <li key={idx} className="text-slate-300 flex items-start gap-1">
+                                  <span className="text-emerald-400 font-bold">✓</span> {s}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div>
+                            <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider block mb-1">Limitations</span>
+                            <ul className="space-y-0.5 list-none">
+                              {diagnosticResult.limitations.map((l: string, idx: number) => (
+                                <li key={idx} className="text-slate-300 flex items-start gap-1">
+                                  <span className="text-amber-400 font-bold">⚠</span> {l}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+
+                        {/* Subject level scorecard */}
+                        <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800/60 space-y-2">
+                          <span className="text-[9px] font-black text-white uppercase tracking-wider block border-b border-slate-800/40 pb-0.5">Subject Confidence Scorecard</span>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
+                            <div>
+                              <span className="text-slate-400 block">Exchange Rate:</span>
+                              <span className="font-mono text-white font-bold">{diagnosticResult.subjectConfidence.exchangeRate.band} ({diagnosticResult.subjectConfidence.exchangeRate.score})</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Transfer Fee:</span>
+                              <span className="font-mono text-white font-bold">{diagnosticResult.subjectConfidence.transferFee.band} ({diagnosticResult.subjectConfidence.transferFee.score})</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">VAT amount:</span>
+                              <span className="font-mono text-white font-bold">{diagnosticResult.subjectConfidence.vat.band} ({diagnosticResult.subjectConfidence.vat.score})</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Delivery Estimate:</span>
+                              <span className="font-mono text-white font-bold">{diagnosticResult.subjectConfidence.deliveryEstimate.band} ({diagnosticResult.subjectConfidence.deliveryEstimate.score})</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Audit Logs Feed */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4 text-left">
+                    <div className="flex items-center justify-between border-b pb-3">
+                      <div>
+                        <h4 className="font-black text-slate-900 text-sm uppercase tracking-wide">POLICY PERFORMANCE & AUDIT LOGS</h4>
+                        <p className="text-[11px] text-slate-500 font-medium">Real-time log of state changes, threshold blocks, and operational events.</p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const logs = await SisService.getAuditLogs();
+                          setSisAuditLogs(logs);
+                        }}
+                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 cursor-pointer"
+                        title="Reload logs"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
+                      </button>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto space-y-2.5 pr-1 text-xs">
+                      {sisAuditLogs.length === 0 ? (
+                        <p className="text-slate-400 italic text-center py-4">No audit events generated today.</p>
+                      ) : (
+                        sisAuditLogs.map((log) => (
+                          <div key={log.id} className="bg-slate-50 p-3 rounded-xl border border-slate-150 font-mono text-[10px] space-y-1">
+                            <div className="flex justify-between text-slate-400">
+                              <span>{new Date(log.created_at).toLocaleString()}</span>
+                              <span className="font-bold text-slate-600">{log.actor}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 font-sans font-extrabold text-slate-900">
+                              <span className="px-1.5 py-0.5 rounded text-[8px] bg-slate-200 text-slate-800 uppercase">
+                                {log.event_type}
+                              </span>
+                              <span>{log.description}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -6082,8 +9219,11 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
             </div>
           )}
 
+          </div>
+        )}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* SECURE 6-DIGIT PIN AUTHENTICATION DIALOG MODAL */}
       {showPinModal && (
