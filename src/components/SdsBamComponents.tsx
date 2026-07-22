@@ -132,72 +132,12 @@ export function SariRemitLogo({
   className = '',
   id
 }: SariRemitLogoProps) {
-  const resolved = variant === 'monogram' || variant === 'favicon-style' 
-    ? getSariRemitMonogram(surface, size) 
-    : getSariRemitLogo(surface, size);
-
-  const [imgState, setImgState] = useState<'loading' | 'success' | 'error'>(resolved.url ? 'loading' : 'error');
-
-  useEffect(() => {
-    if (resolved.url) {
-      setImgState('loading');
-    } else {
-      setImgState('error');
-    }
-  }, [resolved.url]);
-
-  const sizeClass = SDS_ASSET_SIZES[size] || SDS_ASSET_SIZES.md;
-
-  const logoImageSizes = {
-    xs: 'h-5 w-auto max-w-[40px] md:max-w-[50px]',
-    sm: 'h-7 w-auto max-w-[60px] md:max-w-[75px]',
-    md: 'h-10 w-auto max-w-[100px] md:max-w-[125px]',
-    lg: 'h-14 w-auto max-w-[140px] md:max-w-[175px]',
-    xl: 'h-20 w-auto max-w-[200px] md:max-w-[250px]',
-  };
-  const sizeStyleClass = logoImageSizes[size] || logoImageSizes.md;
-
-  // Render official BAM image logo if successful
-  if (resolved.url && imgState !== 'error') {
-    return (
-      <div id={id} className={`flex items-center gap-2.5 ${className}`}>
-        <div className="relative shrink-0">
-          {imgState === 'loading' && <AssetSkeleton size={size} shape="rounded" />}
-          <img
-            src={resolved.url}
-            alt={resolved.altText}
-            referrerPolicy="no-referrer"
-            onLoad={() => setImgState('success')}
-            onError={() => {
-              runDevWarning('SariRemitLogo failed to load from URL: ' + resolved.url);
-              setImgState('error');
-            }}
-            className={`${sizeStyleClass} rounded-lg object-contain transition-all ${imgState === 'loading' ? 'hidden' : 'block'}`}
-          />
-        </div>
-        {variant !== 'monogram' && variant !== 'favicon-style' && variant !== 'compact' && (
-          <div className="flex flex-col text-left">
-            <span className="font-sans font-black tracking-tight text-slate-900 dark:text-white leading-none">
-              SariRemit
-            </span>
-            {(variant === 'logo_with_slogan' || showSlogan) && (
-              <span className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-widest mt-1">
-                Know Before You Send.
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Pure CSS / SDS Fallback rendering
   const containerSizes = {
-    xs: 'w-6 h-6 rounded-md text-xs',
-    sm: 'w-7 h-7 rounded-lg text-sm',
-    md: 'w-10 h-10 rounded-xl text-lg',
-    lg: 'w-14 h-14 rounded-2xl text-2xl',
-    xl: 'w-20 h-20 rounded-3xl text-3xl',
+    xs: 'w-6 h-6',
+    sm: 'w-7 h-7',
+    md: 'w-9 h-9',
+    lg: 'w-11 h-11',
+    xl: 'w-14 h-14',
   };
 
   const textSizes = {
@@ -212,18 +152,52 @@ export function SariRemitLogo({
 
   return (
     <div id={id} className={`flex items-center gap-2.5 ${className}`}>
-      <div className={`${containerSizes[size]} bg-emerald-600 flex items-center justify-center font-black text-white relative shrink-0 transition-all hover:scale-105`}>
-        <span>S</span>
-        <span className="text-amber-500 absolute bottom-1 right-1 w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+      {/* Original Compass-S Emblem (SDS 2.0) */}
+      <div className={`relative shrink-0 flex items-center justify-center ${containerSizes[size]} transition-all duration-300 hover:scale-105`}>
+        <svg viewBox="0 0 48 48" fill="none" className="w-full h-full drop-shadow-sm">
+          {/* Compass Outer Gold Ring */}
+          <circle cx="24" cy="24" r="17" stroke="#D4A017" strokeWidth="2.5" className="opacity-90" />
+          
+          {/* 4 Directional Compass Arrow Points */}
+          <path d="M24 2 L26.5 6.5 L21.5 6.5 Z" fill="#D4A017" />
+          <path d="M24 46 L26.5 41.5 L21.5 41.5 Z" fill="#D4A017" />
+          <path d="M2 24 L6.5 21.5 L6.5 26.5 Z" fill="#D4A017" />
+          <path d="M46 24 L41.5 21.5 L41.5 26.5 Z" fill="#D4A017" />
+
+          {/* Compass Needles (NW to SE) */}
+          <path d="M24 24 L10 10 L16 16 Z" fill="#D4A017" />
+          <path d="M24 24 L38 38 L32 32 Z" fill={isDarkSurface ? "#38BDF8" : "#0F2747"} />
+
+          {/* Dynamic Sweeping 'S' Curve */}
+          <path 
+            d="M 33 13 C 27 8, 15 12, 19 22 C 23 30, 35 26, 29 36 C 25 42, 13 38, 12 33" 
+            stroke="#D4A017" 
+            strokeWidth="3.2" 
+            strokeLinecap="round" 
+            fill="none" 
+          />
+          <path 
+            d="M 32 14 C 26 9.5, 16 13, 20 22 C 24 30, 34 26, 28 35" 
+            stroke={isDarkSurface ? "#38BDF8" : "#0F2747"} 
+            strokeWidth="2.2" 
+            strokeLinecap="round" 
+            fill="none" 
+          />
+
+          {/* Center Pivot Point */}
+          <circle cx="24" cy="24" r="2.5" fill="#FFFFFF" stroke="#D4A017" strokeWidth="1.2" />
+        </svg>
       </div>
-      {variant !== 'monogram' && variant !== 'favicon-style' && (
+
+      {variant !== 'monogram' && variant !== 'favicon-style' && variant !== 'compact' && (
         <div className="flex flex-col text-left">
-          <span className={`font-sans font-black tracking-tight ${isDarkSurface ? 'text-white' : 'text-slate-850'} ${textSizes[size]} leading-none`}>
-            SariRemit
-          </span>
-          {(variant === 'logo_with_slogan' || showSlogan) && (
-            <span className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-widest mt-1">
-              Know Before You Send.
+          <div className={`font-sans font-black tracking-tight ${textSizes[size]} leading-none flex items-center`}>
+            <span className={isDarkSurface ? 'text-white' : 'text-[#0F2747]'}>Sari</span>
+            <span className="text-[#D4A017]">Remit</span>
+          </div>
+          {(variant === 'logo_with_slogan' || showSlogan !== false) && (
+            <span className="text-[8px] sm:text-[9px] text-sds-text-muted font-mono font-bold uppercase tracking-[0.18em] mt-1">
+              SEND SMART. SAVE MORE.
             </span>
           )}
         </div>

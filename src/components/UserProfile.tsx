@@ -538,14 +538,14 @@ export default function UserProfile({
 
       {!isAuthenticated ? (
         /* Authentication Section (Unauthenticated State) */
-        <div className="max-w-4xl mx-auto bg-[#0C2547] border border-sds-border rounded-3xl overflow-hidden grid grid-cols-1 md:grid-cols-12 shadow-sds-lg text-left">
+        <div className="max-w-4xl mx-auto bg-sds-card border border-sds-border rounded-3xl overflow-hidden grid grid-cols-1 md:grid-cols-12 shadow-sds-md text-left">
           
           {/* Welcome Info Panel */}
-          <div className="md:col-span-5 bg-[#071A35]/60 p-6 sm:p-8 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-sds-border relative">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-[#10B981]/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="md:col-span-5 bg-sds-bg-sec/60 p-6 sm:p-8 text-sds-text flex flex-col justify-between border-b md:border-b-0 md:border-r border-sds-border relative">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-sds-success/5 rounded-full blur-2xl pointer-events-none" />
             <div className="space-y-4">
               <SariRemitMonogram surface="dark" size="md" />
-              <h3 className="text-sm font-black tracking-wider uppercase text-white font-mono">
+              <h3 className="text-sm font-black tracking-wider uppercase text-sds-text font-mono">
                 SariRemit Network
               </h3>
               <p className="text-xs text-sds-text-sec leading-relaxed">
@@ -555,32 +555,32 @@ export default function UserProfile({
 
             <div className="pt-6 space-y-3.5 border-t border-sds-border/60 text-[11px] text-sds-text-sec">
               <div className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                <CheckCircle className="w-4 h-4 text-sds-success shrink-0 mt-0.5" />
                 <span>Save default corridors for instant calculation</span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                <CheckCircle className="w-4 h-4 text-sds-success shrink-0 mt-0.5" />
                 <span>Submit rates and earn high-tier contributor reputation</span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                <CheckCircle className="w-4 h-4 text-sds-success shrink-0 mt-0.5" />
                 <span>Gain exclusive insights into hidden fee thresholds</span>
               </div>
             </div>
           </div>
 
           {/* Form Panel */}
-          <div className="md:col-span-7 p-6 sm:p-8 space-y-6 bg-[#0C2547]">
+          <div className="md:col-span-7 p-6 sm:p-8 space-y-6 bg-sds-card">
             
             {/* Form Mode Selector */}
-            <div className="flex bg-[#071A35] p-1 rounded-xl border border-sds-border">
+            <div className="flex bg-sds-bg-sec p-1 rounded-xl border border-sds-border">
               <button
                 type="button"
                 onClick={() => { setActiveAuthTab('signin'); setAuthError(''); setAuthSuccess(''); }}
                 className={`flex-1 py-2 rounded-lg font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeAuthTab === 'signin' 
-                    ? 'bg-[#10B981] text-[#071A35] shadow-sds-sm' 
-                    : 'text-sds-text-sec hover:text-white'
+                    ? 'bg-sds-primary text-white shadow-sds-sm' 
+                    : 'text-sds-text-sec hover:text-sds-text'
                 }`}
               >
                 <LogIn className="w-3.5 h-3.5" />
@@ -591,8 +591,8 @@ export default function UserProfile({
                 onClick={() => { setActiveAuthTab('signup'); setAuthError(''); setAuthSuccess(''); }}
                 className={`flex-1 py-2 rounded-lg font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeAuthTab === 'signup' 
-                    ? 'bg-[#10B981] text-[#071A35] shadow-sds-sm' 
-                    : 'text-sds-text-sec hover:text-white'
+                    ? 'bg-sds-primary text-white shadow-sds-sm' 
+                    : 'text-sds-text-sec hover:text-sds-text'
                 }`}
               >
                 <UserPlus className="w-3.5 h-3.5" />
@@ -907,10 +907,10 @@ export default function UserProfile({
           {/* Desktop Layout (hidden on mobile, shown on md and above) */}
           <div className="hidden md:grid grid-cols-12 gap-8 items-start">
             {/* Sidebar Navigation (Col span 4) */}
-            <div className="col-span-4 bg-[#0C2547] border border-sds-border rounded-3xl p-5 space-y-5 shadow-sds-sm animate-fadeIn">
+            <div className="col-span-4 bg-sds-card border border-sds-border rounded-3xl p-5 space-y-5 shadow-sds-sm animate-fadeIn">
               <div className="space-y-1 pb-3.5 border-b border-sds-border/50 text-left">
                 <span className="text-[10px] text-sds-text-sec uppercase tracking-widest font-mono font-bold">Authenticated User</span>
-                <h3 className="text-sm font-black text-white truncate max-w-full leading-none mt-1">{profile.name || 'Expat User'}</h3>
+                <h3 className="text-sm font-black text-sds-text truncate max-w-full leading-none mt-1">{profile.name || 'Expat User'}</h3>
                 <span className="text-[10px] text-sds-text-sec truncate block">{profile.email}</span>
               </div>
 
@@ -931,15 +931,15 @@ export default function UserProfile({
                             onClick={() => handleSubTabChange(item.id)}
                             className={`w-full px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-between transition-colors cursor-pointer ${
                               isSelected 
-                                ? 'bg-[#10B981]/10 text-[#10B981]' 
-                                : 'text-sds-text-sec hover:bg-[#071A35]/40 hover:text-white'
+                                ? 'bg-sds-success/10 text-sds-success font-black' 
+                                : 'text-sds-text-sec hover:bg-sds-bg-sec hover:text-sds-text'
                             }`}
                           >
                             <div className="flex items-center gap-2.5 truncate">
                               <Icon className="w-4 h-4 shrink-0" />
                               <span className="truncate">{isRtl ? item.labelAr : item.labelEn}</span>
                             </div>
-                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />}
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-sds-success" />}
                           </button>
                         );
                       })}
@@ -951,7 +951,7 @@ export default function UserProfile({
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="w-full mt-4 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all"
+                className="w-full mt-4 px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all"
               >
                 <LogOut className="w-4 h-4" />
                 <span>{isRtl ? 'تسجيل الخروج' : 'Sign Out Account'}</span>
@@ -959,7 +959,7 @@ export default function UserProfile({
             </div>
 
             {/* Content Display (Col span 8) */}
-            <div className="col-span-8 bg-[#0C2547] border border-sds-border rounded-3xl p-6 sm:p-8 shadow-sds-md min-h-[480px]">
+            <div className="col-span-8 bg-sds-card border border-sds-border rounded-3xl p-6 sm:p-8 shadow-sds-md min-h-[480px]">
               {renderActiveSubTab()}
             </div>
           </div>

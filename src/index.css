@@ -1,91 +1,91 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
 :root {
-  /* Dynamic CSS Custom Properties - Default is Dark Mode to preserve original appearance */
-  --color-page-background: #051326;
-  --color-surface-primary: #0C2547;
-  --color-surface-secondary: #091F3E;
-  --color-surface-elevated: #11315C;
-  --color-card-background: #0C2547;
-  --color-card-border: rgba(148, 163, 184, 0.12);
-  --color-navigation-background: #030C18;
+  /* Dynamic CSS Custom Properties - Default is Dark Mode (GitHub/Linear/Apple style) */
+  --color-page-background: #0F172A;
+  --color-surface-primary: #1E293B;
+  --color-surface-secondary: #0F172A;
+  --color-surface-elevated: #334155;
+  --color-card-background: #1E293B;
+  --color-card-border: rgba(255, 255, 255, 0.1);
+  --color-navigation-background: rgba(15, 23, 42, 0.85);
   --color-text-primary: #F8FAFC;
   --color-text-secondary: #CBD5E1;
-  --color-text-muted: #64748B;
+  --color-text-muted: #94A3B8;
   --color-heading: #F8FAFC;
-  --color-divider: rgba(148, 163, 184, 0.12);
-  --color-input-background: rgba(12, 37, 71, 0.5);
-  --color-input-border: rgba(148, 163, 184, 0.2);
-  --color-button-primary: #10B981;
-  --color-button-primary-text: #051326;
-  --color-button-secondary: #091F3E;
+  --color-divider: rgba(255, 255, 255, 0.1);
+  --color-input-background: rgba(15, 23, 42, 0.5);
+  --color-input-border: rgba(255, 255, 255, 0.15);
+  --color-button-primary: #F8FAFC;
+  --color-button-primary-text: #0F172A;
+  --color-button-secondary: #1E293B;
   --color-button-secondary-text: #F8FAFC;
-  --color-focus-ring: rgba(16, 185, 129, 0.4);
-  --color-overlay: rgba(3, 12, 24, 0.8);
-  --color-shadow: rgba(0, 0, 0, 0.4);
+  --color-focus-ring: rgba(56, 189, 248, 0.4);
+  --color-overlay: rgba(15, 23, 42, 0.8);
+  --color-shadow: rgba(0, 0, 0, 0.35);
 
   --color-confidence-high: #10B981;
   --color-confidence-moderate: #F59E0B;
   --color-confidence-low: #EF4444;
-  --color-confidence-unavailable: #64748B;
+  --color-confidence-unavailable: #94A3B8;
   --color-value-strong: #10B981;
   --color-value-moderate: #F59E0B;
   --color-warning: #F59E0B;
   --color-success: #10B981;
   --color-error: #EF4444;
-  --color-info: #3B82F6;
+  --color-info: #38BDF8;
 
-  --color-brand-primary: #10B981;
-  --color-brand-secondary: #051326;
-  --color-brand-accent: #34D399;
+  --color-brand-primary: #38BDF8;
+  --color-brand-secondary: #FFFFFF;
+  --color-brand-accent: #60A5FA;
   --color-brand-gold: #F59E0B;
 }
 
 html.light {
-  /* Light Mode values - Clean, calm, modern slate-gray and navy financial palette */
-  --color-page-background: #F1F5F9;
+  /* Light Mode values - SDS 2.0 precise modern fintech spec */
+  --color-page-background: #F8FAFC;
   --color-surface-primary: #FFFFFF;
-  --color-surface-secondary: #E2E8F0;
-  --color-surface-elevated: #F8FAFC;
+  --color-surface-secondary: #F1F5F9;
+  --color-surface-elevated: #FFFFFF;
   --color-card-background: #FFFFFF;
-  --color-card-border: rgba(148, 163, 184, 0.24);
-  --color-navigation-background: #FFFFFF;
+  --color-card-border: rgba(15, 39, 71, 0.1);
+  --color-navigation-background: rgba(255, 255, 255, 0.85);
   --color-text-primary: #0F172A;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748B;
+  --color-text-secondary: #334155;
+  --color-text-muted: #475569;
   --color-heading: #0F172A;
-  --color-divider: rgba(148, 163, 184, 0.18);
+  --color-divider: rgba(15, 39, 71, 0.08);
   --color-input-background: #FFFFFF;
-  --color-input-border: #CBD5E1;
-  --color-button-primary: #10B981;
+  --color-input-border: rgba(15, 39, 71, 0.15);
+  --color-button-primary: #0F2747;
   --color-button-primary-text: #FFFFFF;
   --color-button-secondary: #F1F5F9;
-  --color-button-secondary-text: #334155;
-  --color-focus-ring: rgba(16, 185, 129, 0.4);
+  --color-button-secondary-text: #0F2747;
+  --color-focus-ring: rgba(37, 99, 235, 0.4);
   --color-overlay: rgba(15, 23, 42, 0.45);
-  --color-shadow: rgba(15, 23, 42, 0.08);
+  --color-shadow: rgba(15, 23, 42, 0.05);
 
-  --color-confidence-high: #059669;
+  --color-confidence-high: #16A34A;
   --color-confidence-moderate: #D97706;
   --color-confidence-low: #DC2626;
   --color-confidence-unavailable: #64748B;
-  --color-value-strong: #059669;
+  --color-value-strong: #16A34A;
   --color-value-moderate: #D97706;
   --color-warning: #D97706;
-  --color-success: #059669;
+  --color-success: #16A34A;
   --color-error: #DC2626;
   --color-info: #2563EB;
 
-  --color-brand-primary: #10B981;
+  --color-brand-primary: #0F2747;
   --color-brand-secondary: #FFFFFF;
-  --color-brand-accent: #059669;
-  --color-brand-gold: #F59E0B;
+  --color-brand-accent: #2563EB;
+  --color-brand-gold: #D4A017;
 }
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Playfair Display", Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-sans: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
   /* SARIREMIT REDESIGN: Theme variables mapped to dynamic tokens */
@@ -125,8 +125,8 @@ html.light {
 
   /* Dynamic shadows and Radius */
   --shadow-sds-sm: 0 1px 3px 0 var(--color-shadow), 0 1px 2px -1px var(--color-shadow);
-  --shadow-sds-md: 0 4px 12px -2px var(--color-shadow), 0 2px 6px -1px var(--color-shadow);
-  --shadow-sds-lg: 0 12px 24px -4px var(--color-shadow), 0 4px 12px -2px var(--color-shadow);
+  --shadow-sds-md: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --shadow-sds-lg: 0 12px 36px rgba(15, 23, 42, 0.08);
 }
 
 /* Custom directions utilities */

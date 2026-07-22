@@ -87,6 +87,47 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
   // Core Data sets
   const [overrides, setOverrides] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
+  const [scanningSubId, setScanningSubId] = useState<string | null>(null);
+
+  const handleRunFraudScan = async (row: any) => {
+    setScanningSubId(row.id);
+    try {
+      const { runAntiFraudChecks } = await import('../services/supabaseService');
+      const results = await runAntiFraudChecks(row);
+      
+      // Update local submissions list
+      setSubmissions(prev => prev.map(s => {
+        if (s.id === row.id) {
+          return {
+            ...s,
+            fraud_risk_score: results.riskScore,
+            fraud_risk_level: results.riskLevel.toUpperCase() as any,
+            fraud_flags: results.flags
+          };
+        }
+        return s;
+      }));
+
+      // If connected to Supabase, update the database record as well
+      if (isSupabaseConfigured) {
+        const { supabaseClient } = await import('../services/supabaseService');
+        if (supabaseClient) {
+          await supabaseClient
+            .from('community_rate_submissions')
+            .update({
+              fraud_risk_score: results.riskScore,
+              fraud_risk_level: results.riskLevel.toUpperCase(),
+              fraud_flags: results.flags
+            })
+            .eq('id', row.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error running dynamic fraud scan:', err);
+    } finally {
+      setScanningSubId(null);
+    }
+  };
   const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
   const [weights, setWeights] = useState<any>({
     rate_weight: 0.30,
@@ -1634,15 +1675,9 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
     };
   }, [refreshTrigger, overrides, submissions, channels]);
 
-  // --- SRCMC IA & NAVIGATION UPGRADE V2 CONFIG ---
+  // --- SRCMC IA & NAVIGATION V2 ACTIVE ARCHITECTURE ---
   const { resolvedTheme } = useTheme();
   const isDarkTheme = resolvedTheme === 'dark';
-
-  const ENABLE_SRCMC_NAVIGATION_V2 = true;
-  const ENABLE_SRCMC_COMMAND_DASHBOARD = true;
-  const ENABLE_SRCMC_COLLAPSIBLE_SIDEBAR = true;
-  const ENABLE_SRCMC_MOBILE_DRAWER = true;
-  const ENABLE_SRCMC_ROLE_AWARE_NAVIGATION = true;
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -1922,146 +1957,144 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         }
       `}</style>
 
-      {/* Modern V2 Flex Container Wrapper */}
-      <div className={ENABLE_SRCMC_NAVIGATION_V2 ? `min-h-screen flex flex-col md:flex-row ${isDarkTheme ? 'bg-[#051326] text-slate-100' : 'bg-slate-50 text-slate-800'} transition-colors duration-200 w-full` : ''}>
+      {/* Full Modern SRCMC V2 Architecture Wrapper */}
+      <div className={`min-h-screen flex flex-col md:flex-row ${isDarkTheme ? 'bg-[#051326] text-slate-100' : 'bg-slate-50 text-slate-800'} transition-colors duration-200 w-full`}>
         
         {/* A. Desktop Persistent Sidebar */}
-        {ENABLE_SRCMC_NAVIGATION_V2 && (
-          <aside className={`hidden md:flex flex-col border-r shrink-0 transition-all duration-300 ${
-            sidebarCollapsed ? 'w-16' : 'w-64'
-          } ${
-            isDarkTheme ? 'bg-[#071A35] border-slate-800' : 'bg-white border-slate-200'
-          } sticky top-0 h-screen overflow-hidden`}>
-            {/* Logo area */}
-            <div className={`flex items-center gap-3 p-4 border-b h-16 shrink-0 ${
-              isDarkTheme ? 'border-slate-800' : 'border-slate-200'
-            }`}>
-              <div className="p-2 rounded-lg bg-indigo-600 text-white">
-                <Shield className="w-5 h-5" />
+        <aside className={`hidden md:flex flex-col border-r shrink-0 transition-all duration-300 ${
+          sidebarCollapsed ? 'w-16' : 'w-64'
+        } ${
+          isDarkTheme ? 'bg-[#071A35] border-slate-800' : 'bg-white border-slate-200'
+        } sticky top-0 h-screen overflow-hidden`}>
+          {/* Logo area */}
+          <div className={`flex items-center gap-3 p-4 border-b h-16 shrink-0 ${
+            isDarkTheme ? 'border-slate-800' : 'border-slate-200'
+          }`}>
+            <div className="p-2 rounded-lg bg-indigo-600 text-white">
+              <Shield className="w-5 h-5" />
+            </div>
+            {!sidebarCollapsed && (
+              <div className="flex flex-col text-left">
+                <span className="font-black text-xs uppercase tracking-wider font-sans">SariRemit</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest font-mono">Control Centre</span>
               </div>
-              {!sidebarCollapsed && (
-                <div className="flex flex-col text-left">
-                  <span className="font-black text-xs uppercase tracking-wider font-sans">SariRemit</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest font-mono">Control Centre</span>
-                </div>
-              )}
-            </div>
+            )}
+          </div>
 
-            {/* Menu options grouped scrollable */}
-            <div className="flex-1 overflow-y-auto py-4 space-y-4 px-2 select-none">
-              {navGroups.map((group) => {
-                const authorizedItems = group.items.filter(item => isItemAuthorized(item));
-                if (authorizedItems.length === 0) return null;
+          {/* Menu options grouped scrollable */}
+          <div className="flex-1 overflow-y-auto py-4 space-y-4 px-2 select-none">
+            {navGroups.map((group) => {
+              const authorizedItems = group.items.filter(item => isItemAuthorized(item));
+              if (authorizedItems.length === 0) return null;
 
-                const isGroupExpanded = expandedCategories[group.id];
-                const GroupIcon = group.icon;
+              const isGroupExpanded = expandedCategories[group.id];
+              const GroupIcon = group.icon;
 
-                return (
-                  <div key={group.id} className="space-y-1">
-                    {sidebarCollapsed ? (
-                      <div className="flex flex-col items-center gap-2">
-                        {authorizedItems.map((item) => {
-                          const ItemIcon = item.icon;
-                          const isActive = activeSubTab === item.id;
-                          return (
-                            <button
-                              key={item.id}
-                              id={`sidebar-item-${item.id}`}
-                              onClick={() => setActiveSubTab(item.id)}
-                              className={`p-2.5 rounded-xl transition-colors cursor-pointer group relative ${
-                                isActive 
-                                  ? 'bg-indigo-600 text-white' 
-                                  : isDarkTheme 
-                                    ? 'text-slate-400 hover:bg-slate-800/50 hover:text-white' 
-                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                              }`}
-                              title={item.label}
-                            >
-                              <ItemIcon className="w-4 h-4" />
-                              <div className="absolute left-14 top-1/2 -translate-y-1/2 scale-0 group-hover:scale-100 transition-all origin-left z-50 bg-slate-900 text-white text-[10px] font-bold py-1 px-2 rounded shadow-md whitespace-nowrap">
-                                {item.label}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div>
-                        <button
-                          onClick={() => toggleCategory(group.id)}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-colors rounded-lg ${
-                            isDarkTheme 
-                              ? 'text-slate-400 hover:bg-slate-800/30' 
-                              : 'text-slate-500 hover:bg-slate-100/50'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <GroupIcon className="w-3.5 h-3.5" />
-                            <span>{group.label}</span>
-                          </div>
-                          {isGroupExpanded ? (
-                            <ChevronDown className="w-3 h-3" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3" />
-                          )}
-                        </button>
-
-                        {isGroupExpanded && (
-                          <div className="mt-1 space-y-0.5 pl-3">
-                            {authorizedItems.map((item) => {
-                              const ItemIcon = item.icon;
-                              const isActive = activeSubTab === item.id;
-                              return (
-                                <button
-                                  key={item.id}
-                                  id={`sidebar-item-${item.id}`}
-                                  onClick={() => setActiveSubTab(item.id)}
-                                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg font-bold transition-all cursor-pointer ${
-                                    isActive 
-                                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/10' 
-                                      : isDarkTheme 
-                                        ? 'text-slate-300 hover:bg-slate-800/50 hover:text-white' 
-                                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                                  }`}
-                                >
-                                  <ItemIcon className="w-4 h-4 shrink-0" />
-                                  <span className="truncate text-left">{item.label}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
+              return (
+                <div key={group.id} className="space-y-1">
+                  {sidebarCollapsed ? (
+                    <div className="flex flex-col items-center gap-2">
+                      {authorizedItems.map((item) => {
+                        const ItemIcon = item.icon;
+                        const isActive = activeSubTab === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            id={`sidebar-item-${item.id}`}
+                            onClick={() => setActiveSubTab(item.id)}
+                            className={`p-2.5 rounded-xl transition-colors cursor-pointer group relative ${
+                              isActive 
+                                ? 'bg-indigo-600 text-white' 
+                                : isDarkTheme 
+                                  ? 'text-slate-400 hover:bg-slate-800/50 hover:text-white' 
+                                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                            }`}
+                            title={item.label}
+                          >
+                            <ItemIcon className="w-4 h-4" />
+                            <div className="absolute left-14 top-1/2 -translate-y-1/2 scale-0 group-hover:scale-100 transition-all origin-left z-50 bg-slate-900 text-white text-[10px] font-bold py-1 px-2 rounded shadow-md whitespace-nowrap">
+                              {item.label}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div>
+                      <button
+                        onClick={() => toggleCategory(group.id)}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-colors rounded-lg ${
+                          isDarkTheme 
+                            ? 'text-slate-400 hover:bg-slate-800/30' 
+                            : 'text-slate-500 hover:bg-slate-100/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <GroupIcon className="w-3.5 h-3.5" />
+                          <span>{group.label}</span>
+                        </div>
+                        {isGroupExpanded ? (
+                          <ChevronDown className="w-3 h-3" />
+                        ) : (
+                          <ChevronRight className="w-3 h-3" />
                         )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      </button>
 
-            {/* Bottom Controls */}
-            <div className={`p-2 border-t shrink-0 flex items-center justify-between ${
-              isDarkTheme ? 'border-slate-800' : 'border-slate-200'
-            }`}>
-              <button
-                onClick={toggleSidebar}
-                className={`p-2 rounded-lg transition-colors cursor-pointer ${
-                  isDarkTheme ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                } ${sidebarCollapsed ? 'mx-auto' : ''}`}
-                title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-              >
-                <Layout className="w-4 h-4 transform rotate-180" />
-              </button>
-              {!sidebarCollapsed && (
-                <span className="text-[9px] font-mono font-bold text-slate-500 tracking-wider">
-                  v2.4.0-admin
-                </span>
-              )}
-            </div>
-          </aside>
-        )}
+                      {isGroupExpanded && (
+                        <div className="mt-1 space-y-0.5 pl-3">
+                          {authorizedItems.map((item) => {
+                            const ItemIcon = item.icon;
+                            const isActive = activeSubTab === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                id={`sidebar-item-${item.id}`}
+                                onClick={() => setActiveSubTab(item.id)}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg font-bold transition-all cursor-pointer ${
+                                  isActive 
+                                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/10' 
+                                    : isDarkTheme 
+                                      ? 'text-slate-300 hover:bg-slate-800/50 hover:text-white' 
+                                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                                }`}
+                              >
+                                <ItemIcon className="w-4 h-4 shrink-0" />
+                                <span className="truncate text-left">{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom Controls */}
+          <div className={`p-2 border-t shrink-0 flex items-center justify-between ${
+            isDarkTheme ? 'border-slate-800' : 'border-slate-200'
+          }`}>
+            <button
+              onClick={toggleSidebar}
+              className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                isDarkTheme ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+              } ${sidebarCollapsed ? 'mx-auto' : ''}`}
+              title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+            >
+              <Layout className="w-4 h-4 transform rotate-180" />
+            </button>
+            {!sidebarCollapsed && (
+              <span className="text-[9px] font-mono font-bold text-slate-500 tracking-wider">
+                v2.4.0-admin
+              </span>
+            )}
+          </div>
+        </aside>
 
         {/* B. Mobile Drawer Navigation */}
-        {ENABLE_SRCMC_NAVIGATION_V2 && mobileDrawerOpen && (
+        {mobileDrawerOpen && (
           <div className="fixed inset-0 z-50 flex md:hidden" id="mobile-navigation-drawer">
             <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setMobileDrawerOpen(false)} />
             <div className={`relative flex flex-col w-4/5 max-w-sm h-full ${
@@ -2128,13 +2161,20 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
         )}
 
         {/* C. Right Main Content Area Wrapper */}
-        <div className={`flex-1 ${ENABLE_SRCMC_NAVIGATION_V2 ? 'flex flex-col min-w-0 md:h-screen md:overflow-y-auto' : ''}`}>
+        <div className="flex-1 flex flex-col min-w-0 md:h-screen md:overflow-y-auto">
           
           {/* Top Header Grid */}
-          {ENABLE_SRCMC_NAVIGATION_V2 ? (
-            <header className={`h-16 border-b px-6 flex items-center justify-between shrink-0 sticky top-0 z-30 ${
-              isDarkTheme ? 'bg-[#071A35]/90 border-slate-800' : 'bg-white/95 border-slate-200'
-            } backdrop-blur-xs`}>
+          <header className={`h-16 border-b px-6 flex items-center justify-between shrink-0 sticky top-0 z-30 ${
+            isDarkTheme ? 'bg-[#071A35]/90 border-slate-800' : 'bg-white/95 border-slate-200'
+          } backdrop-blur-xs`}>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setMobileDrawerOpen(true)}
+                className="p-2 md:hidden rounded-lg hover:bg-slate-100/10 text-slate-400"
+                title="Toggle Menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
               <nav className="flex items-center gap-1.5 text-xs text-slate-500 font-bold tracking-tight">
                 {getBreadcrumbs().map((crumb, idx) => (
                   <React.Fragment key={idx}>
@@ -2152,81 +2192,50 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                   </React.Fragment>
                 ))}
               </nav>
-
-              <div className="flex items-center gap-3">
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black border uppercase tracking-wider ${
-                  isSupabaseConfigured 
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                }`}>
-                  {isSupabaseConfigured ? 'Supabase Connected' : 'Local Sandbox Emulation'}
-                </span>
-
-                <button 
-                  onClick={() => setRefreshTrigger(prev => prev + 1)}
-                  className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                    isDarkTheme 
-                      ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' 
-                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                  }`}
-                  title="Refresh database state"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-
-                <button
-                  onClick={() => setAdminDetailsOpen(true)}
-                  className={`flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                    isDarkTheme 
-                      ? 'bg-slate-800/80 border-slate-700 text-white hover:bg-slate-800' 
-                      : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-mono text-[10px] font-bold">
-                    {activeSession.user?.name ? activeSession.user.name[0].toUpperCase() : 'A'}
-                  </div>
-                  <div className="flex flex-col text-left text-[10px]">
-                    <span className="font-bold leading-tight truncate max-w-[80px]">{activeSession.user?.name || 'Administrator'}</span>
-                    <span className="text-[8px] text-slate-400 uppercase leading-none mt-0.5">{currentAdmin?.role || 'SYSTEM ROOT'}</span>
-                  </div>
-                </button>
-              </div>
-            </header>
-          ) : (
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-5 px-6 pt-6">
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-sans font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <Settings className="w-8 h-8 text-slate-800" />
-                  <span>SariRemit Control Centre (SRCMC)</span>
-                </h1>
-                <p className="text-xs text-slate-500 font-semibold mt-1 uppercase tracking-wider flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  SRCMC OPERATIONAL COMMAND AND MONITORING HUB
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className={`px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-wider ${
-                  isSupabaseConfigured 
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                }`}>
-                  {isSupabaseConfigured ? 'Supabase Connected' : 'Local Sandbox Emulation'}
-                </span>
-
-                <button 
-                  onClick={() => setRefreshTrigger(prev => prev + 1)}
-                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                  title="Refresh database"
-                >
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
             </div>
-          )}
+
+            <div className="flex items-center gap-3">
+              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black border uppercase tracking-wider ${
+                isSupabaseConfigured 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+              }`}>
+                {isSupabaseConfigured ? 'Supabase Connected' : 'Local Sandbox Emulation'}
+              </span>
+
+              <button 
+                onClick={() => setRefreshTrigger(prev => prev + 1)}
+                className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                  isDarkTheme 
+                    ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' 
+                    : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                }`}
+                title="Refresh database state"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+
+              <button
+                onClick={() => setAdminDetailsOpen(true)}
+                className={`flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                  isDarkTheme 
+                    ? 'bg-slate-800/80 border-slate-700 text-white hover:bg-slate-800' 
+                    : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                <div className="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-mono text-[10px] font-bold">
+                  {activeSession.user?.name ? activeSession.user.name[0].toUpperCase() : 'A'}
+                </div>
+                <div className="flex flex-col text-left text-[10px]">
+                  <span className="font-bold leading-tight truncate max-w-[80px]">{activeSession.user?.name || 'Administrator'}</span>
+                  <span className="text-[8px] text-slate-400 uppercase leading-none mt-0.5">{currentAdmin?.role || 'SYSTEM ROOT'}</span>
+                </div>
+              </button>
+            </div>
+          </header>
 
           {/* D. Profile Details Panel Drawer */}
-          {ENABLE_SRCMC_NAVIGATION_V2 && adminDetailsOpen && (
+          {adminDetailsOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-end" id="admin-details-drawer">
               <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setAdminDetailsOpen(false)} />
               <div className={`relative flex flex-col w-full max-w-md h-full ${
@@ -2335,57 +2344,8 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
             </div>
           )}
 
-          {/* E. Legacy Role Status Card and subtabs */}
-          {!ENABLE_SRCMC_NAVIGATION_V2 && (
-            <div className="px-6 space-y-6">
-              <div className="bg-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-md">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-slate-850 rounded-xl border border-white/10">
-                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black tracking-tight">{activeSession.user?.name || 'Administrator'}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] uppercase font-mono font-bold">
-                        {currentAdmin?.role || 'SYSTEM ROOT'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Authorized Actor: <span className="font-mono text-white font-bold">{loggedInEmail}</span></p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5 max-w-xl">
-                  {(currentAdmin?.permissions || [
-                    'view_dashboard', 'monitor_rates', 'manage_overrides',
-                    'approve_community_rates', 'manage_corridors', 'manage_channels',
-                    'view_sic', 'view_true_cost', 'view_history', 'view_audit_logs', 'manage_admins'
-                  ]).map((p, idx) => (
-                    <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/5 text-[9px] font-mono">
-                      {p}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap border-b border-slate-200 gap-1 sm:gap-0">
-                {allowedSubtabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveSubTab(tab.key as any)}
-                    className={`px-4 py-3 text-xs uppercase tracking-wider font-black border-b-2 transition-all cursor-pointer ${
-                      activeSubTab === tab.key
-                        ? 'border-slate-800 text-slate-900 font-black'
-                        : 'border-transparent text-slate-400 hover:text-slate-600'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* F. Page Padding Container */}
-          <div className={ENABLE_SRCMC_NAVIGATION_V2 ? 'p-6 md:p-8 space-y-8 flex-1' : 'px-6 pb-24 mt-6'}>
+          {/* E. Page Padding Container */}
+          <div className="p-6 md:p-8 space-y-8 flex-1">
             
             {loading ? (
               <div className="py-20 text-center space-y-4">
@@ -2396,7 +2356,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
               <div className="space-y-8">
                 
                 {/* BRAND NEW: SRCMC COMMAND & INTELLIGENCE DASHBOARD LANDING PAGE */}
-                {ENABLE_SRCMC_NAVIGATION_V2 && activeSubTab === 'dashboard' && (
+                {activeSubTab === 'dashboard' && (
                   <div className="space-y-6 text-left animate-in fade-in slide-in-from-bottom-2 duration-300" id="command-dashboard-view">
                     
                     {/* Header Banner */}
@@ -5166,7 +5126,7 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                         const isExpanded = expandedSubId === row.id;
                         
                         // Check if author of report matches the logged in admin
-                        const isSelfSubmission = loggedInEmail.toLowerCase() === (row.submitted_by_email || '').toLowerCase();
+                        const isSelfSubmission = loggedInEmail.toLowerCase() === (row.submitted_by_email || '').toLowerCase() && !isMainAdmin;
                         
                         // Get submitter profile to see if they are restricted
                         const submitterProfile = registeredUsers.find(u => u.email?.toLowerCase() === (row.submitted_by_email || '').toLowerCase());
@@ -5315,6 +5275,28 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                                           </div>
                                         </div>
 
+                                        {/* SAF Security Scan Button */}
+                                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">SAF Security Scan v2.1</span>
+                                          <button
+                                            onClick={() => handleRunFraudScan(row)}
+                                            disabled={scanningSubId === row.id}
+                                            className="px-2.5 py-1 text-[10px] font-extrabold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                          >
+                                            {scanningSubId === row.id ? (
+                                              <>
+                                                <div className="w-2.5 h-2.5 border border-indigo-700 border-t-transparent rounded-full animate-spin"></div>
+                                                <span>Scanning...</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Shield className="w-3 h-3 text-indigo-600" />
+                                                <span>Run Active SAF Scan</span>
+                                              </>
+                                            )}
+                                          </button>
+                                        </div>
+
                                       </div>
 
                                       {/* Submitter Restriction Controls */}
@@ -5347,21 +5329,27 @@ export default function SrcmcControl({ language, t, profile, onSessionSync, srcm
                                     {/* Middle Column: Screenshot Evidence Viewer */}
                                     <div className="lg:col-span-3 space-y-2">
                                       <span className="font-extrabold uppercase text-[10px] tracking-wider text-slate-500 block">Screenshot Evidence</span>
-                                      {row.screenshot_url ? (
-                                        <div className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-100 max-h-56 shadow-xs flex items-center justify-center">
-                                          <img 
-                                            src={row.screenshot_url} 
-                                            alt="Evidence Screenshot" 
-                                            className="max-h-52 w-full object-contain cursor-pointer hover:scale-105 transition-transform duration-250"
-                                            onClick={() => window.open(row.screenshot_url, '_blank')}
-                                            referrerPolicy="no-referrer"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50 font-mono text-[10px]">
-                                          No Screenshot URL Available
-                                        </div>
-                                      )}
+                                      {(() => {
+                                        const rawUrl = row.screenshot_url;
+                                        const path = row.screenshot_path || row.screenshot_storage_path;
+                                        const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+                                        const resolvedScreenshotUrl = rawUrl || (path ? `${supabaseUrl}/storage/v1/object/public/verification-screenshots/${path}` : '');
+                                        return resolvedScreenshotUrl ? (
+                                          <div className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-100 max-h-56 shadow-xs flex items-center justify-center">
+                                            <img 
+                                              src={resolvedScreenshotUrl} 
+                                              alt="Evidence Screenshot" 
+                                              className="max-h-52 w-full object-contain cursor-pointer hover:scale-105 transition-transform duration-250"
+                                              onClick={() => window.open(resolvedScreenshotUrl, '_blank')}
+                                              referrerPolicy="no-referrer"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50 font-mono text-[10px]">
+                                            No Screenshot URL Available
+                                          </div>
+                                        );
+                                      })()}
                                       <p className="text-[9px] text-slate-400 text-center italic">Click the screenshot image to open in new tab</p>
                                     </div>
 

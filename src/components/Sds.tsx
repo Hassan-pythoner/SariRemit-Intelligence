@@ -66,7 +66,7 @@ export function SDSLogo({ className = '', size = 'md', withText = true, tagline 
             </span>
           ) : (
             <span className="text-[9px] text-sds-text-sec font-mono font-bold uppercase tracking-widest mt-0.5">
-              Know Before You Send.
+              SEND SMART. SAVE MORE.
             </span>
           )}
         </div>
@@ -133,20 +133,20 @@ export function SDSButton({
   disabled,
   ...props
 }: SDSButtonProps) {
-  const baseStyle = 'inline-flex items-center justify-center font-bold tracking-wide rounded-xl border transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none';
+  const baseStyle = 'inline-flex items-center justify-center font-bold tracking-wide rounded-2xl border transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none min-h-[44px]';
   
   const variants = {
-    primary: 'bg-sds-primary border-sds-primary text-white hover:bg-[#084937] hover:border-[#084937] focus:ring-sds-primary/40',
-    secondary: 'bg-[#0C2547] border-sds-border text-sds-text hover:bg-[#091F3E] hover:border-sds-border focus:ring-sds-primary/20',
-    ghost: 'bg-transparent border-transparent text-sds-primary hover:bg-sds-bg-sec focus:ring-sds-primary/20',
-    danger: 'bg-[#D94B4B]/10 border-transparent text-[#D94B4B] hover:bg-[#D94B4B]/15 focus:ring-sds-error/30',
-    success: 'bg-sds-success border-sds-success text-white hover:bg-[#1a8557] focus:ring-sds-success/40',
+    primary: 'bg-sds-primary border-sds-primary text-white hover:bg-sds-primary/90 focus:ring-sds-primary/40 shadow-sds-sm',
+    secondary: 'bg-sds-bg-surface-soft border-sds-border text-sds-text hover:bg-sds-border/20 focus:ring-sds-primary/20',
+    ghost: 'bg-transparent border-transparent text-sds-primary hover:bg-sds-bg-surface-soft focus:ring-sds-primary/20',
+    danger: 'bg-rose-500/10 border-transparent text-rose-500 hover:bg-rose-500/20 focus:ring-rose-500/30',
+    success: 'bg-sds-success border-sds-success text-white hover:bg-sds-success/90 focus:ring-sds-success/40 shadow-sds-sm',
   };
 
   const sizes = {
-    sm: 'px-3.5 py-1.5 text-xs rounded-lg gap-1.5',
-    md: 'px-5 py-2.5 text-sm rounded-xl gap-2',
-    lg: 'px-7 py-3.5 text-base rounded-2xl gap-2.5',
+    sm: 'px-4 py-2 text-xs rounded-xl gap-1.5 min-h-[38px]',
+    md: 'px-5 py-2.5 text-sm rounded-2xl gap-2 min-h-[44px]',
+    lg: 'px-7 py-3.5 text-base rounded-2xl gap-2.5 min-h-[50px]',
   };
 
   return (
@@ -196,24 +196,24 @@ export function SDSCard({
   const paddings = {
     none: 'p-0',
     sm: 'p-4',
-    md: 'p-6',
-    lg: 'p-8 sm:p-10',
+    md: 'p-5 sm:p-6',
+    lg: 'p-6 sm:p-8 lg:p-10',
   };
 
   const variants = {
-    flat: 'bg-sds-bg-sec border border-transparent',
+    flat: 'bg-sds-bg-surface-soft border border-transparent',
     outline: 'bg-sds-card border border-sds-border',
-    shadow: 'bg-sds-card border border-sds-border shadow-sds-sm',
+    shadow: 'bg-sds-card border border-sds-border shadow-sds-md',
   };
 
   return (
     <div
       id={id}
       className={`
-        rounded-2xl sm:rounded-3xl 
+        rounded-[20px] 
         ${variants[variant]} 
         ${paddings[padding]} 
-        ${hoverEffect ? 'hover:shadow-sds-md hover:border-sds-primary/20 transition-all duration-300 transform hover:-translate-y-0.5' : ''} 
+        ${hoverEffect ? 'hover:shadow-sds-lg hover:border-sds-primary/30 transition-all duration-300 transform hover:-translate-y-0.5' : ''} 
         ${className}
       `}
       {...props}
@@ -390,17 +390,17 @@ export function SDSInput({
         <input
           id={id}
           className={`
-            w-full px-4 py-3 bg-sds-bg-sec border border-sds-border rounded-xl font-bold font-sans text-sm text-sds-text
+            w-full px-4 py-3 min-h-[44px] bg-sds-bg-surface-soft border border-sds-border rounded-[14px] font-semibold font-sans text-base sm:text-sm text-sds-text placeholder:text-sds-text-muted
             focus:outline-none focus:ring-2 focus:ring-sds-primary/20 focus:border-sds-primary transition-all duration-200
             ${icon ? 'pl-11' : ''}
-            ${error ? 'border-[#D94B4B] focus:ring-[#D94B4B]/20 focus:border-[#D94B4B]' : ''}
+            ${error ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : ''}
             ${className}
           `}
           {...props}
         />
       </div>
       {error ? (
-        <p className="text-xs text-[#D94B4B] font-bold flex items-center gap-1">
+        <p className="text-xs text-rose-500 font-bold flex items-center gap-1">
           <AlertTriangle className="w-3.5 h-3.5" />
           <span>{error}</span>
         </p>
@@ -444,21 +444,21 @@ export function SDSSelect({
       <select
         id={id}
         className={`
-          w-full px-4 py-3 bg-sds-bg-sec border border-sds-border rounded-xl font-bold text-sm text-sds-text
+          w-full px-4 py-3 min-h-[44px] bg-sds-bg-surface-soft border border-sds-border rounded-[14px] font-semibold text-base sm:text-sm text-sds-text
           focus:outline-none focus:ring-2 focus:ring-sds-primary/20 focus:border-sds-primary cursor-pointer transition-all duration-200
-          ${error ? 'border-[#D94B4B] focus:ring-[#D94B4B]/20 focus:border-[#D94B4B]' : ''}
+          ${error ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' : ''}
           ${className}
         `}
         {...props}
       >
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value} disabled={opt.disabled} className="font-bold">
+          <option key={opt.value} value={opt.value} disabled={opt.disabled} className="font-semibold bg-sds-card text-sds-text">
             {opt.label}
           </option>
         ))}
       </select>
       {error ? (
-        <p className="text-xs text-[#D94B4B] font-bold flex items-center gap-1">
+        <p className="text-xs text-rose-500 font-bold flex items-center gap-1">
           <AlertTriangle className="w-3.5 h-3.5" />
           <span>{error}</span>
         </p>

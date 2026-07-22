@@ -9,6 +9,10 @@ import {
   Mail, MessageSquare, ExternalLink, HelpCircle, UserPlus, Phone, Globe, MapPin, Award, Lock, Info
 } from 'lucide-react';
 import { SDSButton, SDSCard, SDSBadge, SDSInput, SDSSelect } from './Sds';
+import { ProviderLogo } from './SdsBamComponents';
+import { LiveIntelligenceStatus } from './intelligence/LiveIntelligenceStatus';
+import { MarketHeartbeat } from './intelligence/MarketHeartbeat';
+import { useIntelligenceFreshness } from '../hooks/useIntelligenceFreshness';
 import logoImg from '../assets/images/sariremit_logo_1783671155763.jpg';
 import heroBg from '../assets/images/hero_bg_1783671141946.jpg';
 
@@ -34,7 +38,16 @@ export default function LandingPage({
     return session.user?.preferredCorridorId || 'sa-pk';
   });
   const [resolvedRate, setResolvedRate] = useState<number>(0);
-  const [bestProvider, setBestProvider] = useState<string>('Digital Wallet');
+  const [bestProvider, setBestProvider] = useState<string>('STC Pay');
+  const [bestProviderId, setBestProviderId] = useState<string>('stc-pay');
+  const [bestSisScore, setBestSisScore] = useState<number>(94);
+  const [bestConfidence, setBestConfidence] = useState<string>('HIGH');
+  const [bestFee, setBestFee] = useState<number>(8.05);
+  const [bestDelivery, setBestDelivery] = useState<string>('Instant Transfer');
+  const [lastUpdated, setLastUpdated] = useState<string>(() => new Date().toISOString());
+  
+  // SDS 2.0 Ambient Intelligence Freshness Hook
+  const freshnessInfo = useIntelligenceFreshness(lastUpdated, false, true);
   
   // Auto-cycling states for landing page engagement
   const [isAutoCycling, setIsAutoCycling] = useState<boolean>(true);
@@ -90,17 +103,26 @@ export default function LandingPage({
 
   const activeCorridor = CORRIDORS.find(c => c.id === selectedCorridor) || CORRIDORS[0];
 
-  // Fetch the best provider rate dynamically
+  // Fetch the best provider rate dynamically via RRE 2.0
   useEffect(() => {
     let isMounted = true;
     setResolvedRate(activeCorridor.baseExchangeRate);
     getRecommendations(selectedCorridor, amount)
       .then(res => {
         if (isMounted && res.bestOption) {
-          const matchedOption = res.allOptions.find(o => o.resolved.provider_id === res.bestOption.best_provider_id);
+          setBestProviderId(res.bestOption.best_provider_id || 'stc-pay');
+          setBestConfidence((res.bestOption.confidence || 'HIGH').toUpperCase());
+
+          const matchedOption = res.allOptions?.find(o => o.resolved.provider_id === res.bestOption.best_provider_id);
           if (matchedOption) {
             setResolvedRate(matchedOption.resolved.resolved_rate);
             setBestProvider(matchedOption.resolved.provider_name);
+            setBestFee(matchedOption.resolved.transfer_fee || 8.05);
+            setBestSisScore(matchedOption.sis?.sis_score || 94);
+            setBestDelivery(res.bestOption.best_channel || 'Instant Transfer');
+            if (matchedOption.resolved.last_updated) {
+              setLastUpdated(matchedOption.resolved.last_updated);
+            }
           }
         }
       })
@@ -639,22 +661,47 @@ export default function LandingPage({
                 className="bg-[#071A35]/90 border-slate-700 text-white focus:border-amber-400 rounded-xl text-xs sm:text-sm"
               />
 
-              {/* Estimate Preview - Force key update to trigger standard CSS fade/glow on corridor change */}
+              {/* Estimate Preview with Provider Identity & Confidence */}
               <div 
                 key={`payout-${selectedCorridor}`}
-                className="p-4 rounded-xl bg-[#071A35]/60 border border-slate-700/50 flex items-center justify-between shadow-inner animate-fadeIn transition-all duration-300"
+                className="p-4 rounded-xl bg-[#071A35]/80 border border-slate-700/70 space-y-3 shadow-inner animate-fadeIn transition-all duration-300"
               >
-                <div className="text-left space-y-1">
-                  <span className="text-[10px] font-mono font-bold text-amber-400 block uppercase tracking-wider">Best Rate ({bestProvider})</span>
-                  <span className="font-mono text-xs font-bold text-slate-100">
-                    1 SAR ≈ {resolvedRate || activeCorridor.baseExchangeRate} {activeCorridor.currencyCode}
-                  </span>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <ProviderLogo channel={{ providerCode: bestProviderId, displayName: bestProvider }} size="xs" shape="circle" />
+                    <div>
+                      <span className="text-[10px] font-mono font-bold text-amber-400 block uppercase tracking-wider">
+                        {isRtl ? 'المزود الموصى به' : 'RRE 2.0 Top Recommendation'}
+                      </span>
+                      <span className="text-xs font-black text-white">{bestProvider}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-block">
+                      SIS {bestSisScore}%
+                    </span>
+                    <span className="text-[9px] text-slate-400 block font-mono mt-0.5">{bestConfidence} {isRtl ? 'ثقة' : 'CONF'}</span>
+                  </div>
                 </div>
-                <div className="text-right space-y-1">
-                  <span className="text-[10px] font-mono font-bold text-slate-400 block uppercase tracking-wider">Max Est Payout</span>
-                  <span className="font-mono text-sm font-black text-emerald-400">
-                    {(amount * (resolvedRate || activeCorridor.baseExchangeRate)).toLocaleString(undefined, { maximumFractionDigits: 1 })} {activeCorridor.currencyCode}
-                  </span>
+
+                <div className="grid grid-cols-2 gap-2 text-left">
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 block uppercase tracking-wider">{isRtl ? 'سعر الصرف' : 'Rate'}</span>
+                    <span className="font-mono text-xs sm:text-sm font-extrabold text-slate-100">
+                      1 SAR ≈ {resolvedRate || activeCorridor.baseExchangeRate} {activeCorridor.currencyCode}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-mono text-slate-400 block uppercase tracking-wider">{isRtl ? 'المبلغ المستلم' : 'Net Payout'}</span>
+                    <span className="font-mono text-sm font-black text-emerald-400">
+                      {(amount * (resolvedRate || activeCorridor.baseExchangeRate)).toLocaleString(undefined, { maximumFractionDigits: 1 })} {activeCorridor.currencyCode}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 font-mono">
+                  <span>Fee: {bestFee} SAR (inc. VAT)</span>
+                  <span className="text-emerald-400 font-semibold">{bestDelivery}</span>
                 </div>
               </div>
 
@@ -688,6 +735,40 @@ export default function LandingPage({
           </div>
         </div>
       </section>
+
+      {/* SDS 2.0 PLATFORM LIVE STATUS BAR */}
+      <div className="bg-[#041226] border-y border-slate-800/80 py-4 px-4 sm:px-8 relative z-20 shadow-xl">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <LiveIntelligenceStatus 
+              status={freshnessInfo.status} 
+              lastUpdatedText={isRtl ? freshnessInfo.formattedTextAr : freshnessInfo.formattedTextEn} 
+              isRtl={isRtl} 
+              size="sm"
+            />
+            <span className="hidden sm:inline text-slate-700">|</span>
+            <span className="text-xs text-amber-400 font-mono font-bold hidden sm:inline">
+              {isRtl ? 'محرك تسوية الأسعار RRE 2.0 نشط' : 'SDS 2.0 Engine Active'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-6 text-xs font-mono">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-slate-400">{isRtl ? 'القنوات المراقَبة:' : 'Monitored Providers:'}</span>
+              <span className="text-emerald-400 font-extrabold">7+ Banks & Digital Wallets</span>
+            </div>
+            <div className="hidden md:flex items-center gap-2">
+              <span className="text-slate-400">{isRtl ? 'متوسط درجة الثقة:' : 'Average SIS Score:'}</span>
+              <span className="text-amber-400 font-extrabold">96%</span>
+            </div>
+            <div className="hidden lg:flex items-center gap-2">
+              <span className="text-slate-400">{isRtl ? 'المشاركات المعتمدة:' : 'Verified Submissions:'}</span>
+              <span className="text-slate-200 font-extrabold">1,240+ Receipts</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* 2. QUICK VALUE PROPOSITION SECTION (SLIGHTLY LIGHTER NAVY GRADIENT) */}
       <section className="relative overflow-hidden w-full py-16 sm:py-24 bg-gradient-to-b from-[#0C2547] to-[#0A203F] border-b border-slate-800/60">
@@ -987,6 +1068,20 @@ export default function LandingPage({
                 <span className="text-[9px] text-amber-400 font-bold uppercase block text-center tracking-wide">⏳ PENDING VERIFICATION</span>
               </div>
             </div>
+          </div>
+
+          {/* SDS 2.0 Live Corridor Market Heartbeat Integration */}
+          <div className="pt-6">
+            <MarketHeartbeat 
+              activeCorridor={activeCorridor} 
+              benchmarkRate={activeCorridor.baseExchangeRate} 
+              currencyCode={activeCorridor.currencyCode} 
+              monitoredProvidersCount={7} 
+              status={freshnessInfo.status} 
+              lastUpdatedText={isRtl ? freshnessInfo.formattedTextAr : freshnessInfo.formattedTextEn} 
+              isRtl={isRtl} 
+              className="!bg-[#0C2547]/80 !border-slate-700/60"
+            />
           </div>
         </div>
       </section>

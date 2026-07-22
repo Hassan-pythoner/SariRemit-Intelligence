@@ -127,15 +127,15 @@ export default function Savings({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         
         {/* KPI 1: Monthly Savings */}
-        <div className="bg-[#0C2547] rounded-3xl border border-sds-border p-5 shadow-sds-md relative overflow-hidden text-left">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-[#10B981]/5 rounded-full blur-2xl pointer-events-none" />
-          <div className="p-2.5 bg-[#071A35] border border-sds-border text-white rounded-xl w-fit">
-            <Wallet className="w-4 h-4 text-[#F59E0B]" />
+        <div className="bg-sds-card rounded-3xl border border-sds-border p-5 shadow-sds-md relative overflow-hidden text-left">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-sds-success/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="p-2.5 bg-sds-bg-sec border border-sds-border text-sds-text rounded-xl w-fit">
+            <Wallet className="w-4 h-4 text-sds-gold" />
           </div>
           <span className="text-[10px] text-sds-text-sec font-black uppercase tracking-widest block mt-4 font-mono">
             Optimized This Month
           </span>
-          <span className="text-2xl sm:text-3xl font-black text-white font-mono block mt-1.5 leading-none">
+          <span className="text-2xl sm:text-3xl font-black text-sds-text font-mono block mt-1.5 leading-none">
             {monthlySavings.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs font-sans font-bold text-sds-text-sec">SAR</span>
           </span>
           <p className="text-[10px] text-sds-text-sec font-semibold mt-2 leading-tight">
@@ -144,16 +144,16 @@ export default function Savings({
         </div>
 
         {/* KPI 2: Lifetime Savings */}
-        <div className="bg-[#0C2547] rounded-3xl border border-sds-border p-5 shadow-sds-md relative overflow-hidden text-left">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-[#10B981]/5 rounded-full blur-2xl pointer-events-none" />
-          <div className="p-2.5 bg-[#071A35] border border-sds-border text-[#10B981] rounded-xl w-fit">
-            <PiggyBank className="w-4 h-4 text-[#10B981]" />
+        <div className="bg-sds-card rounded-3xl border border-sds-border p-5 shadow-sds-md relative overflow-hidden text-left">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-sds-success/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="p-2.5 bg-sds-bg-sec border border-sds-border text-sds-success rounded-xl w-fit">
+            <PiggyBank className="w-4 h-4 text-sds-success" />
           </div>
           <span className="text-[10px] text-sds-text-sec font-black uppercase tracking-widest block mt-4 font-mono">
             Lifetime Optimization
           </span>
-          <span className="text-2xl sm:text-3xl font-black text-[#10B981] font-mono block mt-1.5 leading-none">
-            {lifetimeSavings.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs font-sans font-bold text-[#10B981]">SAR</span>
+          <span className="text-2xl sm:text-3xl font-black text-sds-success font-mono block mt-1.5 leading-none">
+            {lifetimeSavings.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs font-sans font-bold text-sds-success">SAR</span>
           </span>
           <p className="text-[10px] text-sds-text-sec font-semibold mt-2 leading-tight">
             Total funds saved compared to standard rates.
@@ -161,10 +161,10 @@ export default function Savings({
         </div>
 
         {/* KPI 3: Achievement Tier Card */}
-        <div className="bg-[#0C2547] rounded-3xl border border-sds-border p-5 shadow-sds-md relative overflow-hidden text-left">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-[#10B981]/5 rounded-full blur-2xl pointer-events-none" />
-          <div className="p-2.5 bg-[#071A35] border border-sds-border text-[#F59E0B] rounded-xl w-fit">
-            <Award className="w-4 h-4 text-[#F59E0B]" />
+        <div className="bg-sds-card rounded-3xl border border-sds-border p-5 shadow-sds-md relative overflow-hidden text-left">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-sds-success/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="p-2.5 bg-sds-bg-sec border border-sds-border text-sds-gold rounded-xl w-fit">
+            <Award className="w-4 h-4 text-sds-gold" />
           </div>
           <span className="text-[10px] text-sds-text-sec font-black uppercase tracking-widest block mt-4 font-mono">
             Contributor Status
@@ -174,8 +174,8 @@ export default function Savings({
           </span>
           
           {/* Progress Mini Bar */}
-          <div className="w-full h-1 bg-[#071A35] rounded-full mt-2.5 overflow-hidden">
-            <div className="h-full bg-[#10B981]" style={{ width: `${tier.progress}%` }} />
+          <div className="w-full h-1 bg-sds-bg-sec rounded-full mt-2.5 overflow-hidden border border-sds-border/50">
+            <div className="h-full bg-sds-success" style={{ width: `${tier.progress}%` }} />
           </div>
           <p className="text-[8px] text-sds-text-sec font-black uppercase mt-1">
             Next Level: {tier.next}
@@ -188,16 +188,16 @@ export default function Savings({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* Dynamic SVG Area Chart Dashboard */}
-        <div className="lg:col-span-8 bg-[#0C2547] border border-sds-border rounded-3xl p-5 sm:p-6 shadow-sds-md space-y-4">
-          <div className="flex justify-between items-center border-b border-sds-border/60 pb-3">
+        <div className="lg:col-span-8 bg-sds-card border border-sds-border rounded-3xl p-5 sm:p-6 shadow-sds-md space-y-4">
+          <div className="flex justify-between items-center border-b border-sds-border pb-3">
             <div className="text-left">
-              <h3 className="text-xs font-black uppercase text-white tracking-widest flex items-center gap-1.5 font-mono">
-                <TrendingUp className="w-4 h-4 text-[#10B981]" />
+              <h3 className="text-xs font-black uppercase text-sds-text tracking-widest flex items-center gap-1.5 font-mono">
+                <TrendingUp className="w-4 h-4 text-sds-success" />
                 Cumulative Savings Curve
               </h3>
               <p className="text-[9px] text-sds-text-sec font-medium">Visualizing capital retention over your logged transfer history</p>
             </div>
-            <div className="px-2.5 py-1 bg-[#10B981]/10 border border-[#10B981]/25 text-[#10B981] rounded-lg text-[9px] font-mono font-black uppercase tracking-widest">
+            <div className="px-2.5 py-1 bg-sds-success/10 border border-sds-success/25 text-sds-success rounded-lg text-[9px] font-mono font-black uppercase tracking-widest">
               RRE Audited
             </div>
           </div>
@@ -217,9 +217,9 @@ export default function Savings({
                 </defs>
 
                 {/* Grid guidelines */}
-                <line x1="20" y1="20" x2="480" y2="20" stroke="rgba(148,163,184,0.08)" strokeDasharray="3 3" />
-                <line x1="20" y1="55" x2="480" y2="55" stroke="rgba(148,163,184,0.08)" strokeDasharray="3 3" />
-                <line x1="20" y1="90" x2="480" y2="90" stroke="rgba(148,163,184,0.08)" strokeDasharray="3 3" />
+                <line x1="20" y1="20" x2="480" y2="20" stroke="rgba(148,163,184,0.15)" strokeDasharray="3 3" />
+                <line x1="20" y1="55" x2="480" y2="55" stroke="rgba(148,163,184,0.15)" strokeDasharray="3 3" />
+                <line x1="20" y1="90" x2="480" y2="90" stroke="rgba(148,163,184,0.15)" strokeDasharray="3 3" />
 
                 {/* Filled Area */}
                 {chartPoints && (
@@ -251,7 +251,7 @@ export default function Savings({
                       cx={cx}
                       cy={cy}
                       r="3.5"
-                      fill="#0C2547"
+                      className="fill-sds-card"
                       stroke="#10B981"
                       strokeWidth="2"
                     />
@@ -263,7 +263,7 @@ export default function Savings({
                 <span>Latest optimization</span>
               </div>
               {transfers.length === 1 && (
-                <div className="mt-3 text-center text-[#F59E0B] text-[10px] font-semibold font-mono">
+                <div className="mt-3 text-center text-sds-gold text-[10px] font-semibold font-mono">
                   ℹ️ Only 1 transfer recorded. Add more transfers to trace a cumulative trendline.
                 </div>
               )}
@@ -273,12 +273,12 @@ export default function Savings({
 
         {/* Dynamic tips card (Col span 4) */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-gradient-to-br from-[#0C2547] to-[#071A35] text-white border border-sds-border rounded-3xl p-5 shadow-sds-md relative overflow-hidden text-left">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-[#10B981]/5 rounded-full blur-2xl pointer-events-none" />
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-mono font-bold uppercase tracking-wider mb-3">
+          <div className="bg-sds-card text-sds-text border border-sds-border rounded-3xl p-5 shadow-sds-md relative overflow-hidden text-left">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-sds-success/5 rounded-full blur-2xl pointer-events-none" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-sds-success/10 border border-sds-success/20 text-sds-success text-[10px] font-mono font-bold uppercase tracking-wider mb-3">
               <Sparkles className="w-3 h-3" /> Community Impact
             </div>
-            <h4 className="text-xs font-black text-white">
+            <h4 className="text-xs font-black text-sds-text">
               Expats Savings Standard
             </h4>
             <p className="text-xs text-sds-text-sec mt-2 leading-relaxed">
@@ -286,21 +286,21 @@ export default function Savings({
             </p>
           </div>
 
-          <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-5 shadow-sds-md text-left">
-            <h4 className="text-xs font-extrabold text-white uppercase tracking-widest mb-3 font-mono text-sds-secondary">
+          <div className="bg-sds-card border border-sds-border rounded-3xl p-5 shadow-sds-md text-left">
+            <h4 className="text-xs font-extrabold text-sds-text uppercase tracking-widest mb-3 font-mono">
               💡 Smart Tips
             </h4>
             <ul className="space-y-3 text-xs text-sds-text-sec leading-relaxed">
               <li className="flex gap-2 items-start">
-                <ChevronRight className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                <ChevronRight className="w-4 h-4 text-sds-success shrink-0 mt-0.5" />
                 <span>Avoid weekend cash pickups when traditional counters have high margins.</span>
               </li>
               <li className="flex gap-2 items-start">
-                <ChevronRight className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                <ChevronRight className="w-4 h-4 text-sds-success shrink-0 mt-0.5" />
                 <span>STC Pay and UrPay offer competitive digital rates with instant processing.</span>
               </li>
               <li className="flex gap-2 items-start">
-                <ChevronRight className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                <ChevronRight className="w-4 h-4 text-sds-success shrink-0 mt-0.5" />
                 <span>Double-check transfer fees; sometimes a worse rate with zero fee is cheaper for smaller transfers.</span>
               </li>
             </ul>
@@ -310,10 +310,10 @@ export default function Savings({
       </div>
 
       {/* 4. TRANSACTION LOG LIST */}
-      <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-5 sm:p-6 shadow-sds-lg text-left">
+      <div className="bg-sds-card border border-sds-border rounded-3xl p-5 sm:p-6 shadow-sds-md text-left">
         <div className="flex justify-between items-center mb-5">
-          <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5 font-mono">
-            <History className="w-4 h-4 text-[#10B981]" />
+          <h3 className="text-xs font-extrabold text-sds-text uppercase tracking-wider flex items-center gap-1.5 font-mono">
+            <History className="w-4 h-4 text-sds-success" />
             Transfer Ledger Log
           </h3>
           <span className="text-[10px] font-mono text-sds-text-sec font-bold uppercase">{transfers.length} records active</span>
@@ -324,7 +324,7 @@ export default function Savings({
         ) : transfers.length === 0 ? (
           <div className="py-16 text-center text-sds-text-sec border border-dashed border-sds-border rounded-2xl max-w-md mx-auto">
             <PiggyBank className="w-12 h-12 text-sds-text-sec opacity-40 mx-auto mb-3" />
-            <p className="font-extrabold text-sm text-white uppercase">No recorded transfers</p>
+            <p className="font-extrabold text-sm text-sds-text uppercase">No recorded transfers</p>
             <p className="text-xs text-sds-text-sec mt-1 max-w-xs mx-auto text-center">
               Your savings history will appear here after you record a transfer from a provider card.
             </p>
@@ -344,27 +344,27 @@ export default function Savings({
               </thead>
               <tbody className="divide-y divide-sds-border/40 font-sans">
                 {transfers.map((t) => (
-                  <tr key={t.id} className="hover:bg-[#071A35]/40 transition-colors">
+                  <tr key={t.id} className="hover:bg-sds-bg-sec/50 transition-colors">
                     <td className="py-3.5 font-mono text-sds-text-sec font-bold">
                       {t.recordedAt ? new Date(t.recordedAt).toLocaleDateString() : 'N/A'}
                     </td>
-                    <td className="py-3.5 font-bold text-white flex items-center gap-1.5">
+                    <td className="py-3.5 font-bold text-sds-text flex items-center gap-1.5">
                       <CountryFlag country="" currency={t.corridorId.split('-')[1]} size="xs" />
                       <span>{getCorridorName(t.corridorId)}</span>
                     </td>
-                    <td className="py-3.5 text-slate-300 font-semibold">
+                    <td className="py-3.5 text-sds-text-sec font-semibold">
                       <div className="flex items-center gap-1.5">
                         <ProviderLogo channel={{ providerCode: t.channelId, displayName: getProviderName(t.channelId) }} size="xs" shape="circle" />
                         <span>{getProviderName(t.channelId)}</span>
                       </div>
                     </td>
-                    <td className="py-3.5 font-mono font-extrabold text-white">
+                    <td className="py-3.5 font-mono font-extrabold text-sds-text">
                       {t.sendAmountSAR.toLocaleString()} SAR
                     </td>
-                    <td className="py-3.5 font-mono font-bold text-slate-400">
+                    <td className="py-3.5 font-mono font-bold text-sds-text-sec">
                       {t.estimatedRecipientAmount.toLocaleString()}
                     </td>
-                    <td className="py-3.5 font-mono font-black text-[#10B981] text-right">
+                    <td className="py-3.5 font-mono font-black text-sds-success text-right">
                       +{t.estimatedSavingsSAR ? t.estimatedSavingsSAR.toLocaleString() : '0'} SAR
                     </td>
                   </tr>

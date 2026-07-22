@@ -193,7 +193,7 @@ export default function SupportHistory({ language, t, onBack }: SupportHistoryPr
           <SDSButton 
             onClick={loadRequests} 
             variant="secondary"
-            className="flex items-center gap-1.5 bg-[#0C2547]/60 border border-slate-750 text-slate-300 hover:text-white px-3 py-1.5 text-xs rounded-xl"
+            className="flex items-center gap-1.5 bg-sds-card border border-sds-border text-sds-text-sec hover:text-sds-text px-3 py-1.5 text-xs rounded-xl"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             {language === 'en' ? 'Refresh' : 'تحديث'}
@@ -212,8 +212,8 @@ export default function SupportHistory({ language, t, onBack }: SupportHistoryPr
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           {/* LEFT PANEL: Ticket details */}
           <div className="lg:col-span-1 space-y-4">
-            <SDSCard className="bg-[#0C2547]/40 border-slate-750/50 p-5 space-y-4 rounded-2xl shadow-xl">
-              <h3 className="text-sm font-extrabold text-white uppercase tracking-wider border-b border-slate-800 pb-2">
+            <SDSCard className="bg-sds-card border-sds-border p-5 space-y-4 rounded-2xl shadow-sds-md">
+              <h3 className="text-sm font-extrabold text-sds-text uppercase tracking-wider border-b border-sds-border pb-2">
                 {language === 'en' ? 'Ticket Properties' : 'خصائص التذكرة'}
               </h3>
               
@@ -368,15 +368,15 @@ export default function SupportHistory({ language, t, onBack }: SupportHistoryPr
         /* LIST VIEW */
         <div className="space-y-4">
           {requests.length === 0 ? (
-            <div className="text-center py-16 bg-[#0C2547]/20 border border-slate-800/60 rounded-2xl space-y-4">
-              <div className="w-12 h-12 bg-[#0C2547]/60 text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-700/50">
+            <div className="text-center py-16 bg-sds-card border border-sds-border rounded-2xl space-y-4">
+              <div className="w-12 h-12 bg-sds-bg-sec text-sds-text-sec rounded-full flex items-center justify-center mx-auto border border-sds-border">
                 <MessageSquare className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-white">
+                <h3 className="text-sm font-bold text-sds-text">
                   {language === 'en' ? 'No Support Requests Found' : 'لا توجد طلبات دعم حالياً'}
                 </h3>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                <p className="text-xs text-sds-text-sec max-w-sm mx-auto">
                   {language === 'en' 
                     ? 'Any compliance queries, rate discrepancies, or general feedback tickets you submit will appear here.'
                     : 'أي استفسارات امتثال أو تذاكر اختلاف أسعار الصرف أو ملاحظات ترسلها ستظهر هنا.'}
@@ -389,27 +389,27 @@ export default function SupportHistory({ language, t, onBack }: SupportHistoryPr
                 <div 
                   key={req.id}
                   onClick={() => handleSelectRequest(req)}
-                  className="bg-[#0C2547]/30 hover:bg-[#0C2547]/50 border border-slate-750/50 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition-all duration-300 space-y-3.5 flex flex-col justify-between"
+                  className="bg-sds-card hover:bg-sds-bg-sec border border-sds-border rounded-2xl p-5 cursor-pointer transition-all duration-300 space-y-3.5 flex flex-col justify-between shadow-sds-sm"
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start gap-2">
-                      <span className="text-xs font-mono font-bold text-amber-400">
+                      <span className="text-xs font-mono font-bold text-sds-gold">
                         {req.ticket_number}
                       </span>
                       {getStatusBadge(req.status)}
                     </div>
 
                     <div>
-                      <h4 className="text-sm font-bold text-white line-clamp-1">
+                      <h4 className="text-sm font-bold text-sds-text line-clamp-1">
                         {req.subject}
                       </h4>
-                      <p className="text-xs text-slate-400 line-clamp-2 mt-1">
+                      <p className="text-xs text-sds-text-sec line-clamp-2 mt-1">
                         {req.message}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono border-t border-slate-800/60 pt-3">
+                  <div className="flex justify-between items-center text-[10px] text-sds-text-sec font-mono border-t border-sds-border pt-3">
                     <span>
                       {getCategoryLabel(req.category)}
                     </span>

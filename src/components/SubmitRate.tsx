@@ -406,11 +406,11 @@ export default function SubmitRate({
       )}
 
       {success ? (
-        <div className="bg-[#0C2547] border border-[#10B981]/30 rounded-3xl p-8 text-center max-w-xl mx-auto space-y-4 shadow-lg">
-          <div className="w-16 h-16 rounded-full bg-[#10B981]/10 text-[#10B981] flex items-center justify-center mx-auto shadow-md border border-[#10B981]/20">
+        <div className="bg-sds-card border border-sds-success/30 rounded-3xl p-8 text-center max-w-xl mx-auto space-y-4 shadow-sds-md">
+          <div className="w-16 h-16 rounded-full bg-sds-success/10 text-sds-success flex items-center justify-center mx-auto shadow-sds-sm border border-sds-success/20">
             <CheckCircle2 className="w-10 h-10" />
           </div>
-          <h3 className="text-lg font-black text-white uppercase tracking-wide">
+          <h3 className="text-lg font-black text-sds-text uppercase tracking-wide">
             {language === 'en' ? 'Thank you, Rate Submitted!' : 'شكراً لك، تم إرسال السعر بنجاح!'}
           </h3>
           <p className="text-xs text-sds-text-sec leading-relaxed">
@@ -418,7 +418,7 @@ export default function SubmitRate({
               ? "Your rate contribution has been submitted to the SariRemit verification system. Once approved, it will update live for fellow expats."
               : "تم إرسال مساهمتك بنجاح إلى نظام التدقيق. بمجرد الموافقة عليها، سيتم تحديث الأسعار للمغتربين الآخرين."}
           </p>
-          <div className="p-4 bg-[#071A35] rounded-xl max-w-sm mx-auto text-xs font-bold text-[#10B981] font-mono border border-sds-border">
+          <div className="p-4 bg-sds-bg-sec rounded-xl max-w-sm mx-auto text-xs font-bold text-sds-success font-mono border border-sds-border">
             {activeProvider.name} • 1 SAR = {parsedRate} {activeCorridor.currencyCode}
           </div>
         </div>
@@ -426,7 +426,7 @@ export default function SubmitRate({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* TIMELINE FORM - LEFT (Col span 7) */}
-          <div className="lg:col-span-7 bg-[#0C2547] border border-sds-border rounded-3xl p-6 sm:p-8 space-y-6 shadow-sds-lg">
+          <div className="lg:col-span-7 bg-sds-card border border-sds-border rounded-3xl p-6 sm:p-8 space-y-6 shadow-sds-md">
             
             {/* INTERACTIVE TIMELINE HEADER */}
             <div className="relative flex justify-between items-center max-w-md mx-auto mb-6">
@@ -860,26 +860,26 @@ export default function SubmitRate({
           <div className="lg:col-span-5 space-y-6 text-left">
             
             {/* Guidelines Card */}
-            <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-6 space-y-4 shadow-sds-md">
-              <div className="p-2 bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] rounded-xl w-fit">
+            <div className="bg-sds-card border border-sds-border rounded-3xl p-6 space-y-4 shadow-sds-md">
+              <div className="p-2 bg-sds-success/10 border border-sds-success/20 text-sds-success rounded-xl w-fit">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <h3 className="text-sm font-black uppercase tracking-wider text-white">Why share rates with SariRemit?</h3>
+              <h3 className="text-sm font-black uppercase tracking-wider text-sds-text">Why share rates with SariRemit?</h3>
               <p className="text-xs text-sds-text-sec leading-relaxed">
                 Remittance services fluctuate every hour. By sharing the rate currently showing inside your app, you empower thousands of expats to make smart decisions and save money.
               </p>
               
               <div className="space-y-3 pt-3 text-xs border-t border-sds-border/60">
                 <div className="flex items-start gap-2">
-                  <span className="text-[#10B981] font-bold font-mono">✓</span>
+                  <span className="text-sds-success font-bold font-mono">✓</span>
                   <span className="text-sds-text-sec">Earn Contributor points on your Profile.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-[#10B981] font-bold font-mono">✓</span>
+                  <span className="text-sds-success font-bold font-mono">✓</span>
                   <span className="text-sds-text-sec">Screenshots are auto-redacted for safety. No private data is ever shared.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-[#10B981] font-bold font-mono">✓</span>
+                  <span className="text-sds-success font-bold font-mono">✓</span>
                   <span className="text-sds-text-sec">Rates are immediately verified by community moderators.</span>
                 </div>
               </div>
@@ -887,9 +887,9 @@ export default function SubmitRate({
 
             {/* CONTRIBUTION HISTORY TIMELINE */}
             {myRecentSubmissions.length > 0 && (
-              <div className="bg-[#0C2547] border border-sds-border rounded-3xl p-6 space-y-4 shadow-sds-md">
-                <div className="flex items-center justify-between border-b border-sds-border/60 pb-2.5">
-                  <h3 className="text-xs font-black text-white uppercase tracking-wider">
+              <div className="bg-sds-card border border-sds-border rounded-3xl p-6 space-y-4 shadow-sds-md">
+                <div className="flex items-center justify-between border-b border-sds-border pb-2.5">
+                  <h3 className="text-xs font-black text-sds-text uppercase tracking-wider">
                     {language === 'en' ? 'Your Contribution Timeline' : 'مشاركاتك الأخيرة'}
                   </h3>
                   <button

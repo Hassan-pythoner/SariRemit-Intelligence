@@ -104,7 +104,7 @@ export default function Navigation({
   return (
     <>
       {/* Top sticky header */}
-      <header className="sticky top-0 z-50 w-full bg-[#051326] border-b border-slate-800 shadow-lg">
+      <header className="sticky top-0 z-50 w-full bg-sds-bg-sidebar/80 backdrop-blur-md border-b border-sds-border shadow-sds-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           
           {/* 1. LEFT: Genuine Corporate Logo Image (Preserving Proportions) */}
@@ -112,7 +112,7 @@ export default function Navigation({
             onClick={() => setActiveTab('landing')} 
             className={`flex items-center gap-3 cursor-pointer transition-transform active:scale-98 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}
           >
-            <SariRemitLogo variant="primary" size="md" surface="dark" showSlogan={true} />
+            <SariRemitLogo variant="primary" size="md" surface={resolvedTheme} showSlogan={true} />
           </div>
 
           {/* 2. CENTER NAVIGATION */}
@@ -127,13 +127,13 @@ export default function Navigation({
                     key={item.id}
                     id={`nav-desktop-${item.id}`}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex items-center gap-2 text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer pb-2 pt-2 border-b-2 hover:-translate-y-[1px] ${
+                    className={`flex items-center gap-2 text-xs uppercase tracking-wider font-semibold transition-all cursor-pointer pb-2 pt-2 border-b-2 hover:-translate-y-[1px] ${
                       isActive
-                        ? 'text-amber-400 border-amber-400'
-                        : 'text-slate-300 border-transparent hover:text-white hover:border-slate-600'
+                        ? 'text-sds-text border-sds-primary'
+                        : 'text-sds-text-muted border-transparent hover:text-sds-text hover:border-sds-text-sec/30'
                     }`}
                   >
-                    <Icon className={`w-3.5 h-3.5 transition-colors ${isActive ? 'text-amber-400' : 'text-slate-400 group-hover:text-white'}`} />
+                    <Icon className={`w-3.5 h-3.5 transition-colors ${isActive ? 'text-sds-primary' : 'text-sds-text-muted group-hover:text-sds-text'}`} />
                     <span>{item.label}</span>
                   </button>
                 );
@@ -141,12 +141,12 @@ export default function Navigation({
             </nav>
           ) : (
             /* Redesigned Landing Page anchors */
-            <nav className={`hidden md:flex items-center gap-5 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}>
+            <nav className={`hidden md:flex items-center gap-6 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}>
               {publicLinks.map((link, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleScroll(link.anchor)}
-                  className="text-xs font-black uppercase tracking-widest text-slate-300 hover:text-amber-400 transition-colors cursor-pointer"
+                  className="text-xs font-semibold uppercase tracking-widest text-sds-text-muted hover:text-sds-text transition-colors cursor-pointer"
                 >
                   {isRtl ? link.labelAr : link.labelEn}
                 </button>
@@ -170,9 +170,9 @@ export default function Navigation({
             <button
               id="lang-toggle-btn"
               onClick={toggleLanguage}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-850 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-200 transition-colors cursor-pointer border border-slate-800 shrink-0 font-mono"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-sds-bg-surface-soft hover:bg-sds-border/20 rounded-xl text-[10px] font-bold uppercase tracking-wider text-sds-text transition-colors cursor-pointer border border-sds-border shrink-0"
             >
-              <Globe2 className="w-3.5 h-3.5 text-amber-400" />
+              <Globe2 className="w-3.5 h-3.5 text-sds-secondary" />
               <span>{language === 'en' ? 'EN | عربي' : 'عربي | EN'}</span>
             </button>
 
@@ -181,12 +181,12 @@ export default function Navigation({
               id="theme-toggle-btn"
               onClick={toggleTheme}
               title={resolvedTheme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              className="flex items-center justify-center p-2.5 bg-slate-900 hover:bg-slate-850 rounded-lg text-slate-200 transition-colors cursor-pointer border border-slate-800 shrink-0"
+              className="flex items-center justify-center p-2.5 bg-sds-bg-surface-soft hover:bg-sds-border/20 rounded-xl text-sds-text transition-colors cursor-pointer border border-sds-border shrink-0"
             >
               {resolvedTheme === 'dark' ? (
                 <span className="text-amber-400 text-[13px] leading-none" role="img" aria-label="light mode">☀️</span>
               ) : (
-                <span className="text-indigo-400 text-[13px] leading-none" role="img" aria-label="dark mode">🌙</span>
+                <span className="text-indigo-600 text-[13px] leading-none" role="img" aria-label="dark mode">🌙</span>
               )}
             </button>
 
@@ -194,12 +194,12 @@ export default function Navigation({
               /* Logged In User Capsule - Avatar and Preferred indicator */
               <div 
                 onClick={() => setActiveTab('profile')}
-                className={`flex items-center gap-2 px-2 py-1 bg-slate-900/60 border border-slate-800 hover:border-amber-400/40 rounded-xl cursor-pointer transition-all hover:scale-102 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}
+                className={`flex items-center gap-2 px-2.5 py-1.5 bg-sds-bg-surface-soft border border-sds-border hover:border-sds-primary/40 rounded-xl cursor-pointer transition-all hover:scale-102 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}
               >
-                <div className="w-7 h-7 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 flex items-center justify-center font-black text-xs shrink-0 font-mono">
+                <div className="w-7 h-7 rounded-full bg-sds-secondary/10 border border-sds-secondary/20 text-sds-secondary flex items-center justify-center font-black text-xs shrink-0 font-mono">
                   {profile.name.charAt(0).toUpperCase() || <User className="w-3.5 h-3.5" />}
                 </div>
-                <span className="text-xs font-bold text-slate-200 hidden lg:inline-block max-w-[90px] truncate">
+                <span className="text-xs font-bold text-sds-text hidden lg:inline-block max-w-[90px] truncate">
                   {profile.name}
                 </span>
               </div>
@@ -208,13 +208,13 @@ export default function Navigation({
               <div className="hidden md:flex items-center gap-3">
                 <button 
                   onClick={() => setActiveTab('sign-in')}
-                  className="text-xs font-bold uppercase tracking-wider text-slate-300 hover:text-white"
+                  className="text-xs font-bold uppercase tracking-wider text-sds-text-sec hover:text-sds-text"
                 >
                   {isRtl ? 'دخول' : 'Sign In'}
                 </button>
                 <button 
                   onClick={handleCompareClick}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow-md"
+                  className="px-4 py-2 bg-sds-primary hover:bg-sds-primary/90 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sds-sm"
                 >
                   {isRtl ? 'مقارنة الأسعار' : 'Compare Rates'}
                 </button>
@@ -226,16 +226,16 @@ export default function Navigation({
               <div className="md:hidden flex items-center gap-2">
                 <button 
                   onClick={handleCompareClick}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider"
+                  className="px-3 py-1.5 bg-sds-primary hover:bg-sds-primary/90 text-white rounded-xl text-[10px] font-black uppercase tracking-wider"
                 >
                   {isRtl ? 'قارن' : 'Compare'}
                 </button>
                 <button
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="p-1.5 text-slate-200 hover:text-white rounded-lg border border-slate-800 bg-slate-900 shrink-0"
+                  className="p-1.5 text-sds-text hover:text-sds-text-sec rounded-xl border border-sds-border bg-sds-bg-surface shrink-0"
                   aria-label="Toggle Menu"
                 >
-                  {isMenuOpen ? <X className="w-5 h-5 text-amber-400" /> : <Menu className="w-5 h-5" />}
+                  {isMenuOpen ? <X className="w-5 h-5 text-sds-secondary" /> : <Menu className="w-5 h-5" />}
                 </button>
               </div>
             )}
@@ -246,16 +246,16 @@ export default function Navigation({
 
       {/* 4. SMOOTH MOBILE NAVIGATION DRAWER (Only when menu is open) */}
       {isMenuOpen && !isLoggedIn && (
-        <div className="fixed inset-0 z-40 bg-[#051326] flex flex-col pt-20 px-6 space-y-6 md:hidden animate-fadeIn">
+        <div className="fixed inset-0 z-40 bg-sds-bg flex flex-col pt-20 px-6 space-y-6 md:hidden animate-fadeIn">
           <div className="flex flex-col space-y-4 text-left">
             {publicLinks.map((link, idx) => (
               <button
                 key={idx}
                 onClick={() => handleScroll(link.anchor)}
-                className={`text-base font-black uppercase tracking-widest text-slate-200 hover:text-amber-400 py-2 border-b border-slate-850 flex items-center justify-between ${isRtl ? 'flex-row-reverse text-right' : ''}`}
+                className={`text-base font-semibold uppercase tracking-widest text-sds-text hover:text-sds-secondary py-2 border-b border-sds-border flex items-center justify-between ${isRtl ? 'flex-row-reverse text-right' : ''}`}
               >
                 <span>{isRtl ? link.labelAr : link.labelEn}</span>
-                <ArrowRight className="w-4 h-4 text-slate-500" />
+                <ArrowRight className="w-4 h-4 text-sds-text-muted" />
               </button>
             ))}
           </div>
@@ -266,13 +266,13 @@ export default function Navigation({
                 setIsMenuOpen(false);
                 setActiveTab('sign-in');
               }}
-              className="w-full py-3.5 bg-slate-900 border border-slate-800 rounded-xl text-xs font-extrabold uppercase tracking-wider text-slate-200"
+              className="w-full py-3.5 bg-sds-bg-surface border border-sds-border rounded-xl text-xs font-semibold uppercase tracking-wider text-sds-text"
             >
               {isRtl ? 'تسجيل الدخول' : 'Sign In'}
             </button>
             <button
               onClick={handleCompareClick}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg"
+              className="w-full py-3.5 bg-sds-primary hover:bg-sds-primary/90 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sds-md"
             >
               {isRtl ? 'مقارنة الأسعار الآن' : 'Compare Rates Now'}
             </button>
@@ -282,7 +282,7 @@ export default function Navigation({
 
       {/* 5. USER-SIDE MOBILE BOTTOM NAVIGATION (Only for logged-in users to preserve full-app screen flow) */}
       {isLoggedIn && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#051326] border-t border-slate-800 shadow-xl px-2 pb-safe">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sds-bg-sidebar/90 backdrop-blur-md border-t border-sds-border shadow-sds-lg px-2 pb-safe">
           <div className={`grid ${canSeeSrcmcNav ? 'grid-cols-6' : 'grid-cols-5'} h-16 max-w-lg mx-auto items-center`}>
             {[
               { id: 'dashboard', label: isRtl ? 'الرئيسية' : 'Home', icon: Home },
@@ -303,15 +303,15 @@ export default function Navigation({
                     onClick={() => setActiveTab(item.id)}
                     className="flex flex-col items-center justify-center -mt-5 focus:outline-none cursor-pointer"
                   >
-                    <div className={`w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-all ${
+                    <div className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sds-md transition-all ${
                       isActive 
-                        ? 'bg-amber-400 text-slate-900 scale-95' 
-                        : 'bg-amber-400 text-slate-900 hover:scale-105 active:scale-95'
+                        ? 'bg-sds-primary text-white scale-95' 
+                        : 'bg-sds-primary text-white hover:scale-105 active:scale-95'
                     }`}>
                       <Plus className="w-5 h-5 stroke-[3]" />
                     </div>
-                    <span className={`text-[9px] font-black tracking-tight mt-1 truncate max-w-full px-1 ${
-                      isActive ? 'text-amber-400 font-extrabold' : 'text-slate-400'
+                    <span className={`text-[9px] font-bold tracking-tight mt-1 truncate max-w-full px-1 ${
+                      isActive ? 'text-sds-text font-semibold' : 'text-sds-text-muted'
                     }`}>
                       {item.label}
                     </span>
@@ -326,15 +326,15 @@ export default function Navigation({
                   onClick={() => setActiveTab(item.id)}
                   className="flex flex-col items-center justify-center focus:outline-none cursor-pointer"
                 >
-                  <div className={`px-4 py-1 rounded-full transition-all ${
+                  <div className={`px-4 py-1 rounded-xl transition-all ${
                     isActive 
-                      ? 'bg-slate-900 text-amber-400' 
-                      : 'text-slate-400 hover:text-amber-400'
+                      ? 'bg-sds-bg-surface text-sds-text' 
+                      : 'text-sds-text-muted hover:text-sds-text'
                   }`}>
                     <IconComponent className="w-4 h-4" />
                   </div>
-                  <span className={`text-[9px] font-black tracking-tight mt-1 truncate max-w-full px-1 ${
-                    isActive ? 'text-amber-400 font-extrabold' : 'text-slate-400'
+                  <span className={`text-[9px] font-bold tracking-tight mt-1 truncate max-w-full px-1 ${
+                    isActive ? 'text-sds-text font-semibold' : 'text-sds-text-muted'
                   }`}>
                     {item.label}
                   </span>

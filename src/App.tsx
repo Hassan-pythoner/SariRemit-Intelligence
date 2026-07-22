@@ -779,12 +779,6 @@ export default function App() {
                 size={isSidebarCollapsed ? 'sm' : 'md'} 
                 surface="dark" 
               />
-              {!isSidebarCollapsed && (
-                <div className="flex flex-col text-left">
-                  <span className="font-sans font-black text-xs uppercase tracking-wider text-amber-400">SariRemit</span>
-                  <span className="text-[10px] text-slate-400 tracking-tight font-mono">Know before you send.</span>
-                </div>
-              )}
             </div>
             {!isSidebarCollapsed && (
               <button 

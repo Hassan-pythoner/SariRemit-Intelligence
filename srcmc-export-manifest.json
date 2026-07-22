@@ -1,0 +1,130 @@
+{
+  "manifest_version": "1.0.0",
+  "project_name": "SRCMC Control & Remittance Intelligence Suite",
+  "description": "Export manifest for migrating the Saudi Arabian Remittance Intelligence and Corridor Management Centre (SRCMC) platform from the integrated SariRemit workspace into an independent, dedicated AI Studio project.",
+  "export_date": "2026-07-21T00:58:00Z",
+  "source_applet_id": "8c33be54-4988-457a-a38b-d4233dc25110",
+  "environment": {
+    "runtime": "React 19 + Vite 6 + TypeScript",
+    "styling": "Tailwind CSS v4",
+    "icons": "Lucide React",
+    "animation": "Motion"
+  },
+  "required_env_variables": [
+    {
+      "name": "VITE_SUPABASE_URL",
+      "required": true,
+      "description": "Supabase project database URL endpoint."
+    },
+    {
+      "name": "VITE_SUPABASE_ANON_KEY",
+      "required": true,
+      "description": "Supabase anonymous API key for client-side authentication and database access."
+    },
+    {
+      "name": "GEMINI_API_KEY",
+      "required": true,
+      "description": "Google Gemini API key for running automated intelligence scans, rate compliance reviews, and suspicious activity detection."
+    }
+  ],
+  "package_dependencies": {
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3",
+    "typescript": "~5.8.2",
+    "@supabase/supabase-js": "^2.110.1",
+    "@google/genai": "^2.4.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24"
+  },
+  "source_manifest": {
+    "entry_points": [
+      {
+        "path": "index.html",
+        "description": "SPA entry point with viewport configuration and root mounting container."
+      },
+      {
+        "path": "src/main.tsx",
+        "description": "Application bootstrapper mounting React with theme and localization providers."
+      },
+      {
+        "path": "src/index.css",
+        "description": "Global style file incorporating Tailwind CSS directives and custom SariRemit Design System (SDS) variables."
+      }
+    ],
+    "core_components": [
+      {
+        "path": "src/components/SrcmcControl.tsx",
+        "description": "Unified administrative interface governing rate overrides, community submissions reviews, Brand Asset Management, policy definitions, audit logs, and fraud detection."
+      },
+      {
+        "path": "src/components/SdsBamComponents.tsx",
+        "description": "SDS/BAM presentational components enforcing priority fallbacks for brand assets (logos, flags, badges)."
+      },
+      {
+        "path": "src/components/Navigation.tsx",
+        "description": "Main navigation wrapper providing secure navigation toggles for authorized admin panels."
+      }
+    ],
+    "intelligence_services": [
+      {
+        "path": "src/services/sic/sisIntelligenceService.ts",
+        "description": "SariRemit Intelligence & Score (SIS) service managing dynamic metrics scoring, currency freshness, and confidence bands."
+      },
+      {
+        "path": "src/services/sic/evidenceResolutionService.ts",
+        "description": "Evidence Resolution Engine (EDE) analyzing submissions, screenshot hashing, and auto-matching with community logs."
+      },
+      {
+        "path": "src/services/sic/evidenceProvenanceService.ts",
+        "description": "Evidence Provenance Engine (EPE) auditing log provenance, user submission consistency, and historical truth ratings."
+      }
+    ],
+    "supporting_services": [
+      {
+        "path": "src/services/supabaseService.ts",
+        "description": "Database broker managing all direct Supabase API transactions (overrides, submissions, audit logging, asset cataloging)."
+      },
+      {
+        "path": "src/services/bamAssetResolver.ts",
+        "description": "Brand Asset Resolver orchestrating asset mappings, fallback initials generation, and theme surface conversions."
+      },
+      {
+        "path": "src/services/notificationService.ts",
+        "description": "Broadcaster routing real-time security alerts, admin notifications, and rate flags directly to users."
+      },
+      {
+        "path": "src/types.ts",
+        "description": "Global TypeScript type system housing strict definitions for brand assets, evidence logs, resolution models, and admin structures."
+      }
+    ],
+    "database": [
+      {
+        "path": "supabase-schema.sql",
+        "description": "Complete PostgreSQL relational schema detailing Brand Assets (BAM), Overrides, Corridors, Audit Logs, and User Profiles."
+      }
+    ]
+  },
+  "database_tables_required": [
+    "public.user_profiles",
+    "public.brand_assets",
+    "public.brand_asset_permissions",
+    "public.remittance_channels",
+    "public.channel_corridor_coverage",
+    "public.corridor_settings",
+    "public.rate_overrides",
+    "public.community_rate_submissions",
+    "public.srcmc_admin_access",
+    "public.sis_weights",
+    "public.srcmc_audit_logs",
+    "public.fraud_integrity_events"
+  ],
+  "migration_checklist": [
+    "1. Export complete repository as a ZIP archive through the AI Studio settings menu.",
+    "2. Provision a new AI Studio applet using the React + TypeScript stack.",
+    "3. Set up a Supabase PostgreSQL instance using the schema definitions in 'supabase-schema.sql'.",
+    "4. Configure environment variables in the new project UI (URL, anon key, and Gemini API key).",
+    "5. Populate 'src/components/SrcmcControl.tsx' as the primary routing view in the separated project.",
+    "6. Verify dependencies build successfully via 'npm run build'."
+  ]
+}

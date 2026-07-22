@@ -4216,6 +4216,64 @@ export async function getAndRepairUserSrcmcAccess(userId: string, email: string)
         }
         return emailAccess as SRCMCAdminAccess;
       }
+
+      // 3. SEED INITIAL ADMIN: If the email is in the recognized initialAdmins list, and not found in Supabase, let's seed it!
+      const isRecognizedEmail = normalizedEmail === 'hassan.gaturu20@gmail.com' || 
+                                normalizedEmail === 'gaturuhassan@gmail.com' || 
+                                normalizedEmail === 'hassan.dev26@gmail.com';
+      if (isRecognizedEmail) {
+        const initRec = initialAdmins.find(a => a.email.toLowerCase() === normalizedEmail);
+        if (initRec) {
+          // 3a. Ensure user_profiles row exists
+          const { data: existingProfile } = await supabaseClient
+            .from('user_profiles')
+            .select('id')
+            .eq('id', userId)
+            .maybeSingle();
+
+          if (!existingProfile) {
+            console.log('[SRCMC Auth Seed] Creating shell user_profiles record for seeding primary admin:', normalizedEmail);
+            await supabaseClient.from('user_profiles').insert({
+              id: userId,
+              email: normalizedEmail,
+              name: normalizedEmail.split('@')[0],
+              phone: '',
+              preferred_corridor_id: 'sa-pk',
+              language: 'en',
+              onboarding_completed: true,
+              created_at: new Date().toISOString(),
+              privacy_policy_version: 'v1.2',
+              privacy_policy_accepted_at: new Date().toISOString(),
+              terms_version: 'v1.0',
+              terms_accepted_at: new Date().toISOString()
+            });
+          }
+
+          const newAdminRecord = {
+            id: initRec.id || `admin-${Date.now()}`,
+            user_id: userId,
+            email: normalizedEmail,
+            role: 'main_admin',
+            permissions: initRec.permissions,
+            pin_code: initRec.pin_code || '123456',
+            pin_generated_at: new Date().toISOString(),
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          console.log('[SRCMC Auth Seed] Seeding primary admin access in Supabase for:', normalizedEmail);
+          const { data: seeded, error: seedError } = await supabaseClient
+            .from('srcmc_admin_access')
+            .upsert(newAdminRecord)
+            .select()
+            .maybeSingle();
+          if (!seedError && seeded) {
+            return seeded as SRCMCAdminAccess;
+          } else {
+            console.warn('[SRCMC Auth Seed] Failed to seed primary admin:', seedError);
+          }
+        }
+      }
     } catch (err) {
       console.warn('[SRCMC Auth Repair] Failed to repair admin access:', err);
     }
@@ -4259,14 +4317,38 @@ export async function assignAdminAccess(params: {
         .eq('email', normalizedEmail)
         .maybeSingle();
 
+      let targetUserId: string;
+
       if (profileError || !profile) {
-        return {
-          success: false,
-          message: 'No registered SariRemit account found for this email address. Users must first register/onboard before administrative access can be assigned.'
-        };
+        // Auto-provision a placeholder profile for the user
+        const shellUserId = `usr-${Date.now()}`;
+        const { error: insertError } = await supabaseClient.from('user_profiles').insert({
+          id: shellUserId,
+          email: normalizedEmail,
+          name: normalizedEmail.split('@')[0],
+          phone: '',
+          preferred_corridor_id: 'sa-pk',
+          language: 'en',
+          onboarding_completed: true,
+          created_at: new Date().toISOString(),
+          privacy_policy_version: 'v1.2',
+          privacy_policy_accepted_at: new Date().toISOString(),
+          terms_version: 'v1.0',
+          terms_accepted_at: new Date().toISOString()
+        });
+
+        if (insertError) {
+          console.error('[SRCMC Admin Provision] Failed to create shell user profile:', insertError);
+          return {
+            success: false,
+            message: `Failed to auto-provision user profile: ${insertError.message}`
+          };
+        }
+        targetUserId = shellUserId;
+      } else {
+        targetUserId = profile.id;
       }
 
-      const targetUserId = profile.id;
       const pin = Math.floor(100000 + Math.random() * 900000).toString();
 
       // Check if there is an existing access record (avoid duplicates)
@@ -4311,13 +4393,22 @@ export async function assignAdminAccess(params: {
 
   // Local Emulation Fallback
   const registeredUsers = getLocalStorageItem<any[]>('sr_supabase_registered_users', initialRegisteredUsers);
-  const matchedUser = registeredUsers.find(u => u.email.toLowerCase().trim() === normalizedEmail);
+  let matchedUser = registeredUsers.find(u => u.email.toLowerCase().trim() === normalizedEmail);
 
   if (!matchedUser) {
-    return {
-      success: false,
-      message: 'No registered SariRemit account found for this email address. Users must first register/onboard before administrative access can be assigned.'
+    const shellUserId = `usr-${Date.now()}`;
+    matchedUser = {
+      id: shellUserId,
+      email: normalizedEmail,
+      name: normalizedEmail.split('@')[0],
+      phone: '',
+      preferred_corridor_id: 'sa-pk',
+      language: 'en',
+      onboarding_completed: true,
+      created_at: new Date().toISOString()
     };
+    registeredUsers.push(matchedUser);
+    saveLocalStorageItem('sr_supabase_registered_users', registeredUsers);
   }
 
   const targetUserId = matchedUser.id;
@@ -5267,6 +5358,183 @@ export async function syncSupabaseToLocal(): Promise<void> {
     }
   } catch (err) {
     console.warn('Failed to sync database to localStorage:', err);
+  }
+}
+
+export async function syncLocalToSupabase(): Promise<{ success: boolean; syncedCount: number; errors: string[] }> {
+  if (!supabaseClient) {
+    return { success: false, syncedCount: 0, errors: ['Supabase client is not connected or configured.'] };
+  }
+
+  const errors: string[] = [];
+  let syncedCount = 0;
+
+  try {
+    // 1. Sync Remittance Channels
+    const localChannels = getLocalStorageItem<any[]>(CHANNELS_KEY, initialChannels);
+    if (localChannels.length > 0) {
+      const dbChannels = localChannels.map(c => ({
+        id: c.id,
+        provider_name: c.providerName || c.provider_name || c.displayName || 'Provider',
+        provider_code: c.providerCode || c.provider_code,
+        display_name: c.displayName || c.display_name,
+        category: c.category || 'other',
+        status: c.status || 'active',
+        supported_corridors: c.supportedCorridors || c.supported_corridors || [],
+        supported_transfer_methods: c.supportedTransferMethods || c.supported_transfer_methods || [],
+        default_transfer_fee: c.defaultTransferFee ?? c.default_transfer_fee ?? 0,
+        default_vat_rate: c.defaultVatRate ?? c.default_vat_rate ?? 0.15,
+        fee_currency: c.feeCurrency || c.fee_currency || 'SAR',
+        logo_url: c.logoUrl || c.logo_url || null,
+        website_url: c.websiteUrl || c.website_url || null,
+        notes: c.notes || null,
+        created_by: c.createdBy || c.created_by || null,
+        created_at: c.createdAt || c.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+      const { error } = await supabaseClient.from('remittance_channels').upsert(dbChannels);
+      if (error) {
+        errors.push(`Channels sync error: ${error.message}`);
+      } else {
+        syncedCount += localChannels.length;
+      }
+    }
+
+    // 2. Sync Corridor Settings
+    const localCorridors = getLocalStorageItem<CorridorSetting[]>(CORRIDOR_SETTINGS_KEY, initialCorridorSettings);
+    if (localCorridors.length > 0) {
+      const dbCorridors = localCorridors.map(c => ({
+        id: c.id || `corridor-${c.corridor_code}`,
+        corridor_code: c.corridor_code,
+        destination_country: c.destination_country,
+        destination_currency: c.destination_currency,
+        status: c.status || 'active',
+        display_as_coming_soon: c.display_as_coming_soon ?? false,
+        notes: c.notes || null,
+        activated_at: c.activated_at || null,
+        disabled_at: c.disabled_at || null,
+        updated_at: c.updated_at || new Date().toISOString()
+      }));
+      const { error } = await supabaseClient.from('corridor_settings').upsert(dbCorridors);
+      if (error) errors.push(`Corridors sync error: ${error.message}`);
+      else syncedCount += localCorridors.length;
+    }
+
+    // 3. Sync Channel Coverage
+    const localCoverages = getLocalStorageItem<ChannelCorridorCoverage[]>(CHANNEL_COVERAGE_KEY, initialCoverages);
+    if (localCoverages.length > 0) {
+      const dbCoverages = localCoverages.map(c => ({
+        id: c.id || `cov-${c.channel_id}-${c.corridor_id}`,
+        channel_id: c.channel_id,
+        corridor_id: c.corridor_id,
+        status: c.status || 'active',
+        supported_transfer_methods: c.supported_transfer_methods || ['Bank Transfer'],
+        custom_transfer_fee: c.custom_transfer_fee ?? c.transfer_fee ?? null,
+        custom_vat_rate: c.custom_vat_rate ?? c.vat_rate ?? null,
+        notes: c.notes || null,
+        updated_at: c.updated_at || new Date().toISOString()
+      }));
+      const { error } = await supabaseClient.from('channel_corridor_coverage').upsert(dbCoverages);
+      if (error) errors.push(`Channel coverage sync error: ${error.message}`);
+      else syncedCount += localCoverages.length;
+    }
+
+    // 4. Sync Admin Access
+    const localAdmins = getLocalStorageItem<SRCMCAdminAccess[]>(ADMIN_ACCESS_KEY, initialAdmins);
+    if (localAdmins.length > 0) {
+      const dbAdmins = localAdmins.map(a => ({
+        id: a.id || `admin-${Date.now()}`,
+        email: a.email,
+        role: a.role || 'rate_monitor',
+        permissions: a.permissions || [],
+        pin_code: a.pin_code || '123456',
+        pin_generated_at: a.pin_generated_at || new Date().toISOString(),
+        is_active: a.is_active !== undefined ? a.is_active : true,
+        updated_at: a.updated_at || new Date().toISOString()
+      }));
+      const { error } = await supabaseClient.from('srcmc_admin_access').upsert(dbAdmins);
+      if (error) errors.push(`Admin access sync error: ${error.message}`);
+      else syncedCount += localAdmins.length;
+    }
+
+    // 5. Sync Community Rate Submissions
+    const localSubmissions = getLocalStorageItem<DbCommunitySubmission[]>(COMMUNITY_KEY, initialCommunitySubmissions);
+    if (localSubmissions.length > 0) {
+      const dbSubmissions = localSubmissions.map(s => ({
+        id: s.id,
+        corridor_id: s.corridor_id,
+        provider_id: s.provider_id,
+        provider_name: s.provider_name,
+        exchange_rate: s.exchange_rate,
+        transfer_fee: s.transfer_fee,
+        send_amount: s.send_amount || 1000,
+        receive_amount: s.receive_amount || (1000 * s.exchange_rate),
+        submitted_by_name: s.submitted_by_name || 'Contributor',
+        submitted_by_email: s.submitted_by_email || '',
+        screenshot_name: s.screenshot_name || null,
+        screenshot_url: s.screenshot_url || null,
+        screenshot_storage_path: s.screenshot_storage_path || null,
+        status: s.status || 'pending',
+        vat_amount: s.vat_amount ?? null,
+        other_costs: s.other_costs ?? null,
+        destination_country: s.destination_country || null,
+        destination_currency: s.destination_currency || null,
+        date_observed: s.date_observed || null,
+        time_observed: s.time_observed || null,
+        transfer_method: s.transfer_method || 'Bank Transfer',
+        user_note: s.user_note || null,
+        amount_sent: s.amount_sent || s.send_amount || 1000,
+        amount_received: s.amount_received || s.receive_amount || (1000 * s.exchange_rate),
+        screenshot_path: s.screenshot_path || s.screenshot_storage_path || null,
+        screenshot_original_name: s.screenshot_original_name || s.screenshot_name || null,
+        screenshot_mime_type: s.screenshot_mime_type || null,
+        screenshot_size_bytes: s.screenshot_size_bytes || null,
+        screenshot_hash: s.screenshot_hash || null,
+        screenshot_uploaded_at: s.screenshot_uploaded_at || null,
+        evidence_status: s.evidence_status || 'pending',
+        fraud_risk_score: s.fraud_risk_score || 0,
+        fraud_risk_level: s.fraud_risk_level || 'low',
+        fraud_flags: s.fraud_flags || [],
+        approved_by: s.approved_by || null,
+        approved_at: s.approved_at || null,
+        rejected_by: s.rejected_by || null,
+        rejected_at: s.rejected_at || null,
+        rejection_reason: s.rejection_reason || null,
+        reviewer_notes: s.reviewer_notes || null,
+        valid_until: s.valid_until || null,
+        created_at: s.submitted_at || new Date().toISOString(),
+        updated_at: s.updated_at || new Date().toISOString()
+      }));
+      const { error } = await supabaseClient.from('community_rate_submissions').upsert(dbSubmissions);
+      if (error) errors.push(`Submissions sync error: ${error.message}`);
+      else syncedCount += localSubmissions.length;
+    }
+
+    // 6. Sync Rate Overrides
+    const localOverrides = getLocalStorageItem<DbRateOverride[]>(OVERRIDES_KEY, initialOverrides);
+    if (localOverrides.length > 0) {
+      const dbOverrides = localOverrides.map(o => ({
+        corridor_id: o.corridor_id,
+        provider_id: o.provider_id,
+        rate: o.rate,
+        transfer_fee: o.transfer_fee,
+        expires_at: o.expires_at || new Date(Date.now() + 86400000).toISOString(),
+        is_active: o.is_active !== undefined ? o.is_active : true,
+        status: o.status || 'active',
+        source_note: o.source_note || null,
+        created_by: o.created_by || null,
+        vat_amount: o.vat_amount ?? null,
+        other_costs: o.other_costs ?? null,
+        created_at: o.created_at || new Date().toISOString()
+      }));
+      const { error } = await supabaseClient.from('rate_overrides').upsert(dbOverrides);
+      if (error) errors.push(`Overrides sync error: ${error.message}`);
+      else syncedCount += localOverrides.length;
+    }
+
+    return { success: errors.length === 0, syncedCount, errors };
+  } catch (err: any) {
+    return { success: false, syncedCount, errors: [err.message || 'Sync failed'] };
   }
 }
 

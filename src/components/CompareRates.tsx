@@ -641,12 +641,12 @@ export default function CompareRates({
       </div>
 
       {/* SDS 3.0 HORIZONTAL SEND WIDGET */}
-      <div className="bg-[#0C2547] p-5 sm:p-6 rounded-3xl text-white shadow-sds-lg border border-sds-border space-y-4">
+      <div className="bg-sds-card p-5 sm:p-6 rounded-3xl text-sds-text shadow-sds-md border border-sds-border space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
           
           {/* Item 1: You send */}
           <div className="md:col-span-4 space-y-2 text-left">
-            <label className={`block text-[10px] font-black text-slate-400 uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
+            <label className={`block text-[10px] font-black text-sds-text-sec uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
               {isRtl ? 'أنت ترسل' : 'You send'}
             </label>
             <div className="relative">
@@ -655,9 +655,9 @@ export default function CompareRates({
                 id="compare-send-amount-input"
                 value={sendAmount}
                 onChange={(e) => setSendAmount(Math.max(1, parseInt(e.target.value) || 0))}
-                className="w-full pl-4 pr-16 py-3 bg-[#071A35] border border-sds-border rounded-xl font-black font-mono text-lg text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] transition-all"
+                className="w-full pl-4 pr-16 py-3 bg-sds-bg-sec border border-sds-border rounded-xl font-black font-mono text-lg text-sds-text focus:outline-none focus:ring-2 focus:ring-sds-primary/20 focus:border-sds-primary transition-all"
               />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-[#0C2547] px-2.5 py-1 rounded-lg border border-sds-border text-xs font-black font-mono text-white">
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-sds-card px-2.5 py-1 rounded-lg border border-sds-border text-xs font-black font-mono text-sds-text">
                 <span>🇸🇦</span>
                 <span>SAR</span>
               </div>
@@ -666,7 +666,7 @@ export default function CompareRates({
 
           {/* Item 2: They receive */}
           <div className="md:col-span-4 space-y-2 text-left">
-            <label className={`block text-[10px] font-black text-slate-400 uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
+            <label className={`block text-[10px] font-black text-sds-text-sec uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
               {isRtl ? 'المستلم يحصل على (تقريبي)' : 'They receive'}
             </label>
             <div className="relative">
@@ -674,9 +674,9 @@ export default function CompareRates({
                 type="text"
                 disabled
                 value={recommendation ? (sendAmount * recommendation.resolved_exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 1 }) : (sendAmount * activeCorridor.baseExchangeRate).toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                className="w-full pl-4 pr-16 py-3 bg-[#071A35]/60 border border-sds-border/60 rounded-xl font-black font-mono text-lg text-slate-400 select-all"
+                className="w-full pl-4 pr-16 py-3 bg-sds-bg-sec/70 border border-sds-border rounded-xl font-black font-mono text-lg text-sds-text-sec select-all"
               />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-[#0C2547] px-2.5 py-1 rounded-lg border border-sds-border text-xs font-black font-mono text-white">
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-sds-card px-2.5 py-1 rounded-lg border border-sds-border text-xs font-black font-mono text-sds-text">
                 <span>{activeCorridor.flag}</span>
                 <span>{activeCorridor.currencyCode}</span>
               </div>
@@ -685,17 +685,17 @@ export default function CompareRates({
 
           {/* Item 3: Destination Corridor select */}
           <div className="md:col-span-4 space-y-2 text-left">
-            <label className={`block text-[10px] font-black text-slate-400 uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
+            <label className={`block text-[10px] font-black text-sds-text-sec uppercase tracking-widest ${isRtl ? 'text-right' : 'text-left'}`}>
               {isRtl ? 'وجهة التحويل' : 'Destination'}
             </label>
             <select
               id="compare-corridor-select"
               value={corridorId}
               onChange={(e) => setCorridorId(e.target.value)}
-              className="w-full px-4 py-3 bg-[#071A35] border border-sds-border rounded-xl font-bold text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#10B981]/20 focus:border-[#10B981] cursor-pointer h-[48px]"
+              className="w-full px-4 py-3 bg-sds-bg-sec border border-sds-border rounded-xl font-bold text-sm text-sds-text focus:outline-none focus:ring-2 focus:ring-sds-primary/20 focus:border-sds-primary cursor-pointer h-[48px]"
             >
               {CORRIDORS.map((c) => (
-                <option key={c.id} value={c.id} className="bg-[#071A35] text-slate-850 font-bold">
+                <option key={c.id} value={c.id} className="bg-sds-card text-sds-text font-bold">
                   {c.flag} {language === 'en' ? c.toCountry : c.toCountryAr} ({c.currencyCode})
                 </option>
               ))}
@@ -705,17 +705,17 @@ export default function CompareRates({
         </div>
 
         {/* Quick Presets row & Checklist bullets underneath */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-3 border-t border-slate-800/40">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-3 border-t border-sds-border">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">{isRtl ? 'المبالغ الشائعة:' : 'Quick Presets:'}</span>
+            <span className="text-[10px] text-sds-text-muted font-black uppercase tracking-wider">{isRtl ? 'المبالغ الشائعة:' : 'Quick Presets:'}</span>
             {presets.map((p) => (
               <button
                 key={p}
                 onClick={() => setSendAmount(p)}
                 className={`px-3 py-1 rounded-lg text-[10px] font-black border transition-all cursor-pointer ${
                   sendAmount === p
-                    ? 'bg-[#10B981] border-[#10B981] text-[#071A35] shadow-xs'
-                    : 'bg-[#071A35] border-sds-border text-slate-300 hover:bg-[#071A35]/80'
+                    ? 'bg-sds-primary border-sds-primary text-white shadow-xs'
+                    : 'bg-sds-bg-sec border-sds-border text-sds-text-sec hover:bg-sds-border/30'
                 }`}
               >
                 {p} SAR
@@ -724,7 +724,7 @@ export default function CompareRates({
           </div>
 
           {/* Verification bullets */}
-          <div className="flex flex-wrap items-center gap-3.5 text-[10px] sm:text-[11px] text-[#10B981] font-extrabold">
+          <div className="flex flex-wrap items-center gap-3.5 text-[10px] sm:text-[11px] text-sds-success font-extrabold">
             <span className="flex items-center gap-1">
               <Check className="w-3.5 h-3.5 stroke-[3]" />
               <span>{isRtl ? 'شامل كل الرسوم والضرائب' : 'All fees & taxes included'}</span>
@@ -733,7 +733,7 @@ export default function CompareRates({
               <Check className="w-3.5 h-3.5 stroke-[3]" />
               <span>{isRtl ? 'تحديث فوري بالدقيقة' : 'Real-time rates'}</span>
             </span>
-            <span className="flex items-center gap-1 text-amber-400">
+            <span className="flex items-center gap-1 text-sds-warning">
               <Check className="w-3.5 h-3.5 stroke-[3]" />
               <span>{isRtl ? 'موثق مجتمعياً' : 'Crowdsourced verifications'}</span>
             </span>
@@ -747,8 +747,8 @@ export default function CompareRates({
       {/* 3. DUAL-COLUMN BENTO GRID */}
       {loading ? (
         <div className="space-y-6">
-          <div className="bg-[#0C2547] border border-sds-border rounded-2xl p-4 flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-t-[#10B981] border-sds-border rounded-full animate-spin"></div>
+          <div className="bg-sds-card border border-sds-border rounded-2xl p-4 flex items-center gap-3 shadow-sds-sm">
+            <div className="w-5 h-5 border-2 border-t-sds-primary border-sds-border rounded-full animate-spin"></div>
             <p className="text-xs font-black uppercase tracking-wider font-mono text-sds-text-sec">
               {language === 'en' ? "Running Rate Resolution Engine (RRE)..." : "جاري تشغيل محرك أسعار الصرف (RRE)..."}
             </p>
@@ -763,17 +763,17 @@ export default function CompareRates({
           <div className="lg:col-span-12 space-y-5">
             
             {/* Top Options Tabs Selector */}
-            <div className="flex bg-[#0C2547] p-1 rounded-2xl border border-sds-border w-fit">
+            <div className="flex bg-sds-bg-sec p-1 rounded-2xl border border-sds-border w-fit">
               <button
                 onClick={() => setOptionsTab('all')}
                 className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-2 ${
                   optionsTab === 'all'
-                    ? 'bg-[#10B981] text-[#071A35] font-black'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-sds-primary text-white font-black shadow-sds-sm'
+                    : 'text-sds-text-sec hover:text-sds-text'
                 }`}
               >
                 <span>{isRtl ? 'كل الخيارات' : 'All Options'}</span>
-                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${optionsTab === 'all' ? 'bg-[#071A35]/20 text-[#071A35]' : 'bg-slate-850 text-slate-400'}`}>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${optionsTab === 'all' ? 'bg-white/20 text-white' : 'bg-sds-card text-sds-text-sec'}`}>
                   {options.length}
                 </span>
               </button>
@@ -781,8 +781,8 @@ export default function CompareRates({
                 onClick={() => setOptionsTab('recommended')}
                 className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-2 ${
                   optionsTab === 'recommended'
-                    ? 'bg-[#10B981] text-[#071A35] font-black'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-sds-primary text-white font-black shadow-sds-sm'
+                    : 'text-sds-text-sec hover:text-sds-text'
                 }`}
               >
                 <span>⭐ {isRtl ? 'الموصى بها فقط' : 'Recommended Only'}</span>
@@ -790,9 +790,9 @@ export default function CompareRates({
             </div>
 
             {/* Results Sort header bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1 border-b border-sds-border/45 pb-3 text-left">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1 border-b border-sds-border pb-3 text-left">
               <div>
-                <span className="text-sm font-black text-white uppercase tracking-wide">
+                <span className="text-sm font-black text-sds-text uppercase tracking-wide">
                   {filteredOptions.length} {language === 'en' ? 'verified remittance channels active' : 'قنوات تحويل مؤكدة ونشطة'}
                 </span>
                 <p className="text-xs text-sds-text-sec font-medium">
@@ -803,13 +803,13 @@ export default function CompareRates({
               {/* Sort Controls */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-sds-text-sec font-black uppercase tracking-wider flex items-center gap-1 shrink-0 font-mono">
-                  <ArrowUpDown className="w-3 h-3 text-[#10B981]" /> {isRtl ? 'ترتيب حسب:' : 'Sort by:'}
+                  <ArrowUpDown className="w-3 h-3 text-sds-primary" /> {isRtl ? 'ترتيب حسب:' : 'Sort by:'}
                 </span>
-                <div className="flex bg-[#0C2547] p-0.5 rounded-xl border border-sds-border text-[10px] font-black uppercase">
+                <div className="flex bg-sds-bg-sec p-0.5 rounded-xl border border-sds-border text-[10px] font-black uppercase">
                   <button
                     onClick={() => setSortBy('value')}
                     className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                      sortBy === 'value' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                      sortBy === 'value' ? 'bg-sds-primary text-white shadow-xs' : 'text-sds-text-sec hover:text-sds-text'
                     }`}
                   >
                     Best Value
@@ -817,7 +817,7 @@ export default function CompareRates({
                   <button
                     onClick={() => setSortBy('received')}
                     className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                      sortBy === 'received' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                      sortBy === 'received' ? 'bg-sds-primary text-white shadow-xs' : 'text-sds-text-sec hover:text-sds-text'
                     }`}
                   >
                     Highest Payout
@@ -825,7 +825,7 @@ export default function CompareRates({
                   <button
                     onClick={() => setSortBy('rate')}
                     className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-black ${
-                      sortBy === 'rate' ? 'bg-[#10B981] text-[#071A35] shadow-xs' : 'text-slate-400 hover:text-white'
+                      sortBy === 'rate' ? 'bg-sds-primary text-white shadow-xs' : 'text-sds-text-sec hover:text-sds-text'
                     }`}
                   >
                     Best Rate
@@ -865,15 +865,15 @@ export default function CompareRates({
                     return (
                       <div 
                         key={opt.resolved.provider_id}
-                        className={`bg-[#0C2547] rounded-3xl border transition-all ${
+                        className={`bg-sds-card rounded-3xl border transition-all ${
                           isBestValue 
-                            ? 'border-amber-500/60 ring-4 ring-amber-500/10 shadow-lg bg-gradient-to-b from-[#0e2c53] to-[#0C2547]' 
-                            : 'border-sds-border hover:border-sds-border/80 shadow-xs'
+                            ? 'border-sds-gold/60 ring-4 ring-sds-gold/10 shadow-sds-md' 
+                            : 'border-sds-border hover:border-sds-primary/30 shadow-sds-xs'
                         } overflow-hidden`}
                       >
                         {/* Optimal Recommended badge banner */}
                         {isBestValue && (
-                          <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-[#071A35] text-[10px] font-black px-4 py-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                          <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-[10px] font-black px-4 py-1.5 uppercase tracking-wider flex items-center gap-1.5">
                             <span>⭐</span>
                             <span>{isRtl ? 'الخيار الأفضل اليوم' : "TODAY'S BEST RECOMMENDED OPTION"}</span>
                           </div>
@@ -883,15 +883,15 @@ export default function CompareRates({
                           {/* Header section: Provider identity & Value Badge */}
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex items-center gap-2.5">
-                              <ProviderLogo channel={{ ...opt.resolved, providerCode: opt.resolved.provider_id, displayName: opt.resolved.provider_name }} size="md" shape="circle" surface="dark" />
+                              <ProviderLogo channel={{ ...opt.resolved, providerCode: opt.resolved.provider_id, displayName: opt.resolved.provider_name }} size="md" shape="circle" surface="light" />
                               <div className="text-left">
-                                <h4 className="font-black text-white text-sm uppercase leading-none tracking-tight">
+                                <h4 className="font-black text-sds-text text-sm uppercase leading-none tracking-tight">
                                   {opt.resolved.provider_name}
                                 </h4>
                                 <div className="flex flex-col gap-1 mt-1">
                                   <div className="flex items-center gap-1">
                                     {getMethodIcon(opt.resolved.provider_id)}
-                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                                    <span className="text-[8px] font-black text-sds-text-muted uppercase tracking-wider">
                                       {getMethodLabel(opt.resolved.provider_id)}
                                     </span>
                                   </div>
@@ -901,28 +901,28 @@ export default function CompareRates({
                             </div>
 
                             {/* Labelled Value Badge */}
-                            <span className={`inline-block px-2.5 py-1 text-[9px] font-black border rounded-lg uppercase tracking-wider bg-[#071A35] ${isBestValue ? 'border-amber-500/30 text-amber-400' : 'border-sds-border text-[#10B981]'}`}>
+                            <span className={`inline-block px-2.5 py-1 text-[9px] font-black border rounded-lg uppercase tracking-wider bg-sds-bg-sec ${isBestValue ? 'border-sds-gold/40 text-sds-gold' : 'border-sds-border text-sds-success'}`}>
                               {getValueLabel(opt, bestNetAmount)}
                             </span>
                           </div>
 
                           {/* 2. Visual Recipient Payout Area */}
-                          <div className="bg-[#071A35] rounded-2xl p-4 border border-sds-border/50 text-left space-y-1">
-                            <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider leading-none">
+                          <div className="bg-sds-bg-sec rounded-2xl p-4 border border-sds-border text-left space-y-1">
+                            <span className="text-[9px] text-sds-text-muted font-black uppercase tracking-wider leading-none">
                               {isRtl ? 'المبلغ المستلم للمستفيد' : 'They Receive'}
                             </span>
                             <div className="flex items-baseline gap-1">
-                              <span className="font-mono text-3xl font-black text-[#10B981] tracking-tight">
+                              <span className="font-mono text-3xl font-black text-sds-success tracking-tight">
                                 {opt.netAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                               </span>
-                              <span className="text-sm font-black text-white font-mono uppercase">
+                              <span className="text-sm font-black text-sds-text font-mono uppercase">
                                 {activeCorridor.currencyCode}
                               </span>
                             </div>
                             
                             {/* Estimated savings story difference line */}
-                            <div className="text-[10px] font-bold text-slate-300 pt-1 flex items-center gap-1.5">
-                              <span className={isBestValue ? 'text-amber-400' : 'text-slate-400'}>●</span>
+                            <div className="text-[10px] font-bold text-sds-text-sec pt-1 flex items-center gap-1.5">
+                              <span className={isBestValue ? 'text-sds-gold' : 'text-sds-text-muted'}>●</span>
                               <span>
                                 {isBestValue ? (
                                   isRtl ? (
@@ -943,40 +943,40 @@ export default function CompareRates({
 
                           {/* 3. Rate & Fee Row */}
                           <div className="grid grid-cols-2 gap-3 text-left">
-                            <div className="p-2.5 bg-[#071A35]/40 border border-sds-border/40 rounded-xl">
-                              <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">
+                            <div className="p-2.5 bg-sds-bg-sec/50 border border-sds-border rounded-xl">
+                              <span className="text-[8px] text-sds-text-muted font-black uppercase tracking-wider block">
                                 {isRtl ? 'سعر الصرف' : "Today's Rate"}
                               </span>
-                              <span className="font-mono text-sm font-black text-white block mt-0.5">
-                                {opt.resolved.resolved_rate} <span className="text-[9px] text-slate-400">{activeCorridor.currencyCode}</span>
+                              <span className="font-mono text-sm font-black text-sds-text block mt-0.5">
+                                {opt.resolved.resolved_rate} <span className="text-[9px] text-sds-text-muted">{activeCorridor.currencyCode}</span>
                               </span>
                             </div>
-                            <div className="p-2.5 bg-[#071A35]/40 border border-sds-border/40 rounded-xl">
-                              <span className="text-[8px] text-slate-400 font-black uppercase tracking-wider block">
+                            <div className="p-2.5 bg-sds-bg-sec/50 border border-sds-border rounded-xl">
+                              <span className="text-[8px] text-sds-text-muted font-black uppercase tracking-wider block">
                                 {isRtl ? 'رسوم التحويل' : 'Transfer Fee'}
                               </span>
-                              <span className="font-mono text-sm font-black text-white block mt-0.5">
+                              <span className="font-mono text-sm font-black text-sds-text block mt-0.5">
                                 {opt.resolved.transfer_fee === 0 ? (isRtl ? 'مجاناً' : 'FREE') : `${opt.resolved.transfer_fee} SAR`}
                               </span>
                             </div>
                           </div>
 
                           {/* 4. Confidence Badge & Helper */}
-                          <div className="p-3 bg-[#071A35]/60 rounded-xl border border-sds-border/40 space-y-1 text-left">
-                            <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                              <ShieldAlert className="w-3.5 h-3.5 text-[#10B981]" />
+                          <div className="p-3 bg-sds-bg-sec/60 rounded-xl border border-sds-border space-y-1 text-left">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black text-sds-text-sec uppercase tracking-wider">
+                              <ShieldAlert className="w-3.5 h-3.5 text-sds-success" />
                               <span>{isRtl ? 'مستوى الثقة:' : 'Confidence Level:'}</span>
                               {(() => {
                                 const sisRes = sisResultsV2[opt.resolved.id];
                                 if (!sisRes) {
-                                  return <span className="text-slate-400 font-mono">...</span>;
+                                  return <span className="text-sds-text-muted font-mono">...</span>;
                                 }
                                 const band = sisRes.confidenceBand;
                                 const score = sisRes.overallScore;
-                                let colorClass = 'text-slate-400';
-                                if (band === 'Very High' || band === 'High') colorClass = 'text-[#10B981]';
-                                else if (band === 'Moderate') colorClass = 'text-amber-400';
-                                else if (band === 'Low' || band === 'Very Low') colorClass = 'text-rose-400';
+                                let colorClass = 'text-sds-text-muted';
+                                if (band === 'Very High' || band === 'High') colorClass = 'text-sds-success';
+                                else if (band === 'Moderate') colorClass = 'text-sds-warning';
+                                else if (band === 'Low' || band === 'Very Low') colorClass = 'text-sds-error';
 
                                 const labelText = isRtl
                                   ? (band === 'Very High' || band === 'High' ? 'ثقة عالية' : band === 'Moderate' ? 'ثقة متوسطة' : band === 'Unavailable' ? 'غير متوفر' : 'ثقة محدودة')
@@ -989,23 +989,23 @@ export default function CompareRates({
                                 );
                               })()}
                             </div>
-                            <p className="text-[9px] text-slate-400/80 font-medium leading-tight">
+                            <p className="text-[9px] text-sds-text-muted font-medium leading-tight">
                               {isRtl ? 'يوضح مدى موثوقية وحداثة هذه البيانات المستخرجة.' : 'This shows how reliable and recent the extracted data is.'}
                             </p>
                           </div>
 
                           {/* 5. Freshness & Source */}
-                          <div className="flex justify-between items-center text-[9px] font-bold text-slate-400">
+                          <div className="flex justify-between items-center text-[9px] font-bold text-sds-text-sec">
                             <span>{getFreshnessLabel(opt)}</span>
-                            <span className="px-1.5 py-0.5 bg-[#071A35] border border-sds-border/50 rounded-md text-[8px] font-black uppercase">
+                            <span className="px-1.5 py-0.5 bg-sds-bg-sec border border-sds-border rounded-md text-[8px] font-black uppercase text-sds-text">
                               {getSourceLabelHuman(opt.resolved.source_type)}
                             </span>
                           </div>
 
                           {/* 6. Why This Option? row of bullets */}
-                          <div className="bg-emerald-950/15 border border-[#10B981]/10 px-3 py-2 rounded-xl text-left flex items-center gap-2">
+                          <div className="bg-sds-success/10 border border-sds-success/20 px-3 py-2 rounded-xl text-left flex items-center gap-2">
                             <span className="text-xs">✨</span>
-                            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wide">
+                            <span className="text-[10px] font-black text-sds-success uppercase tracking-wide">
                               {getWhyThisOption(opt, isBestValue).join('  ·  ')}
                             </span>
                           </div>
@@ -1016,7 +1016,7 @@ export default function CompareRates({
                               <button
                                 type="button"
                                 onClick={() => setComparisonTargetId(opt.resolved.provider_id)}
-                                className="flex-1 py-3 bg-[#071A35] hover:bg-[#091f3e] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center h-[44px]"
+                                className="flex-1 py-3 bg-sds-bg-sec hover:bg-sds-border/40 border border-sds-border text-sds-text font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center h-[44px]"
                               >
                                 {isRtl ? 'تحليل ومقارنة' : 'Compare'}
                               </button>
@@ -1024,7 +1024,7 @@ export default function CompareRates({
                               <button
                                 type="button"
                                 onClick={() => setExpandedSisId(isExpanded ? null : opt.resolved.id)}
-                                className="flex-1 py-3 bg-[#071A35] border border-sds-border text-slate-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1 h-[44px]"
+                                className="flex-1 py-3 bg-sds-bg-sec hover:bg-sds-border/40 border border-sds-border text-sds-text font-black text-[10px] uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1 h-[44px]"
                               >
                                 <span>{isExpanded ? (isRtl ? 'إخفاء التفاصيل' : 'Hide Details') : (isRtl ? 'تفاصيل أكثر' : 'More Details')}</span>
                                 {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -1035,7 +1035,7 @@ export default function CompareRates({
                               <button
                                 type="button"
                                 onClick={() => setRecordTransferOption(opt)}
-                                className="w-full py-3.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black text-[11px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm h-[44px]"
+                                className="w-full py-3.5 bg-sds-primary hover:opacity-90 text-white font-black text-[11px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sds-sm h-[44px]"
                               >
                                 <Award className="w-4 h-4" />
                                 <span>{isRtl ? 'تسجيل هذا التحويل المالي' : 'Record Transfer'}</span>
