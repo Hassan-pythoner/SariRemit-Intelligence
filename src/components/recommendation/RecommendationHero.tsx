@@ -73,8 +73,8 @@ export function RecommendationHero({
       {/* 1. Header: Badge & Ambient Live Status */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sds-border pb-4">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-sds-primary text-white text-[10px] font-mono font-black uppercase tracking-wider shadow-sds-xs">
-            <Sparkles className="w-3 h-3" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-sds-gold text-slate-950 text-[10px] font-mono font-black uppercase tracking-wider shadow-sds-xs border border-sds-gold/30">
+            <Sparkles className="w-3 h-3 text-slate-950" />
             {isRtl ? 'التوصية الأولى اليوم' : "Today's Top Recommendation"}
           </span>
 
@@ -211,7 +211,7 @@ export function RecommendationHero({
         <button
           type="button"
           onClick={onRecordTransfer}
-          className="flex-1 min-w-[160px] py-3.5 px-5 bg-sds-primary hover:opacity-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sds-sm flex items-center justify-center gap-2 cursor-pointer"
+          className="flex-1 min-w-[160px] py-3.5 px-5 bg-sds-gold hover:opacity-90 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sds-sm flex items-center justify-center gap-2 cursor-pointer"
         >
           <Award className="w-4 h-4" />
           <span>{isRtl ? 'تسجيل هذا التحويل المالي' : 'Record Transfer'}</span>

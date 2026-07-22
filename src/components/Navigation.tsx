@@ -16,8 +16,6 @@ interface NavigationProps {
   toggleLanguage: () => void;
   t: TranslationDict;
   profile: UserProfile;
-  srcmcAccess?: any;
-  srcmcAccessLoading?: boolean;
 }
 
 export default function Navigation({
@@ -26,14 +24,11 @@ export default function Navigation({
   language,
   toggleLanguage,
   t,
-  profile,
-  srcmcAccess,
-  srcmcAccessLoading
+  profile
 }: NavigationProps) {
   const isRtl = language === 'ar';
   const { toggleTheme, resolvedTheme } = useTheme();
   const isLoggedIn = !!profile.email;
-  const canSeeSrcmcNav = srcmcAccess?.is_active === true;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Prevent background scrolling when mobile menu drawer is open
@@ -95,9 +90,6 @@ export default function Navigation({
     navItems.push({ id: 'submit', label: isRtl ? 'توثيق الحوالات' : 'Verify', icon: PlusCircle });
     navItems.push({ id: 'savings', label: isRtl ? 'المدخرات' : 'Savings', icon: PiggyBank });
     navItems.push({ id: 'support', label: isRtl ? 'الدعم الفني' : 'Support', icon: MessageSquare });
-    if (canSeeSrcmcNav) {
-      navItems.push({ id: 'srcmc', label: isRtl ? 'لوحة التحكم' : 'SRCMC', icon: ShieldCheck });
-    }
     navItems.push({ id: 'profile', label: isRtl ? 'الملف الشخصي' : 'Profile', icon: User });
   }
 
@@ -214,7 +206,7 @@ export default function Navigation({
                 </button>
                 <button 
                   onClick={handleCompareClick}
-                  className="px-4 py-2 bg-sds-primary hover:bg-sds-primary/90 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sds-sm"
+                  className="px-4 py-2 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider shadow-sds-sm cursor-pointer"
                 >
                   {isRtl ? 'مقارنة الأسعار' : 'Compare Rates'}
                 </button>
@@ -226,7 +218,7 @@ export default function Navigation({
               <div className="md:hidden flex items-center gap-2">
                 <button 
                   onClick={handleCompareClick}
-                  className="px-3 py-1.5 bg-sds-primary hover:bg-sds-primary/90 text-white rounded-xl text-[10px] font-black uppercase tracking-wider"
+                  className="px-3 py-1.5 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer"
                 >
                   {isRtl ? 'قارن' : 'Compare'}
                 </button>
@@ -272,7 +264,7 @@ export default function Navigation({
             </button>
             <button
               onClick={handleCompareClick}
-              className="w-full py-3.5 bg-sds-primary hover:bg-sds-primary/90 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sds-md"
+              className="w-full py-3.5 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider shadow-sds-md cursor-pointer"
             >
               {isRtl ? 'مقارنة الأسعار الآن' : 'Compare Rates Now'}
             </button>
@@ -283,13 +275,12 @@ export default function Navigation({
       {/* 5. USER-SIDE MOBILE BOTTOM NAVIGATION (Only for logged-in users to preserve full-app screen flow) */}
       {isLoggedIn && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sds-bg-sidebar/90 backdrop-blur-md border-t border-sds-border shadow-sds-lg px-2 pb-safe">
-          <div className={`grid ${canSeeSrcmcNav ? 'grid-cols-6' : 'grid-cols-5'} h-16 max-w-lg mx-auto items-center`}>
+          <div className="grid grid-cols-5 h-16 max-w-lg mx-auto items-center">
             {[
               { id: 'dashboard', label: isRtl ? 'الرئيسية' : 'Home', icon: Home },
               { id: 'compare', label: isRtl ? 'المقارنة' : 'Compare', icon: ArrowLeftRight },
               { id: 'submit', label: isRtl ? 'مشاركة' : 'Submit', icon: Plus, isFab: true },
               { id: 'savings', label: isRtl ? 'المدخرات' : 'Savings', icon: PiggyBank },
-              ...(canSeeSrcmcNav ? [{ id: 'srcmc', label: isRtl ? 'لوحة التحكم' : 'SRCMC', icon: ShieldCheck }] : []),
               { id: 'profile', label: isRtl ? 'الحساب' : 'Profile', icon: User }
             ].map((item) => {
               const IconComponent = item.icon;
@@ -305,8 +296,8 @@ export default function Navigation({
                   >
                     <div className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sds-md transition-all ${
                       isActive 
-                        ? 'bg-sds-primary text-white scale-95' 
-                        : 'bg-sds-primary text-white hover:scale-105 active:scale-95'
+                        ? 'bg-sds-gold text-slate-950 scale-95 font-bold' 
+                        : 'bg-sds-gold text-slate-950 hover:scale-105 active:scale-95 font-bold'
                     }`}>
                       <Plus className="w-5 h-5 stroke-[3]" />
                     </div>

@@ -1035,7 +1035,7 @@ export default function CompareRates({
                               <button
                                 type="button"
                                 onClick={() => setRecordTransferOption(opt)}
-                                className="w-full py-3.5 bg-sds-primary hover:opacity-90 text-white font-black text-[11px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sds-sm h-[44px]"
+                                className="w-full py-3.5 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 font-black text-[11px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sds-sm h-[44px]"
                               >
                                 <Award className="w-4 h-4" />
                                 <span>{isRtl ? 'تسجيل هذا التحويل المالي' : 'Record Transfer'}</span>

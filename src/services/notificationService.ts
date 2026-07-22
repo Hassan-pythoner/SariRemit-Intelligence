@@ -1,4 +1,4 @@
-import { isSupabaseConfigured, supabaseClient, fetchAllUserProfiles, fetchAdminAccess, getAuthSession } from './supabaseService';
+import { isSupabaseConfigured, supabaseClient, fetchAllUserProfiles, getAuthSession } from './supabaseService';
 import { Notification, NotificationCategory, NotificationPriority } from '../types';
 
 export type CreateNotificationInput = {
@@ -93,24 +93,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
           .map(p => p.id)
           .filter(Boolean);
       } else if (input.audienceType === 'srcmc' || input.audienceType === 'srcmc_permission' || input.audienceType === 'main_admin') {
-        const adminAccessList = await fetchAdminAccess();
-        let targetAdmins = adminAccessList.filter(a => a.is_active);
-
-        if (input.audienceType === 'srcmc_permission') {
-          const reqPermission = input.payload?.requiredPermission;
-          if (reqPermission) {
-            targetAdmins = targetAdmins.filter(a => a.permissions?.includes(reqPermission));
-          }
-        } else if (input.audienceType === 'main_admin') {
-          targetAdmins = targetAdmins.filter(a => a.role === 'main_admin');
-        }
-
-        // Map admin emails/ids to user profile IDs
-        const adminEmails = targetAdmins.map(a => a.email.toLowerCase());
-        targetUserIds = profiles
-          .filter(p => adminEmails.includes(p.email?.toLowerCase()))
-          .map(p => p.id)
-          .filter(Boolean);
+        targetUserIds = [];
       }
     }
   } catch (err) {

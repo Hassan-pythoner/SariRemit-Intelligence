@@ -136,9 +136,9 @@ export function SDSButton({
   const baseStyle = 'inline-flex items-center justify-center font-bold tracking-wide rounded-2xl border transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none min-h-[44px]';
   
   const variants = {
-    primary: 'bg-sds-primary border-sds-primary text-white hover:bg-sds-primary/90 focus:ring-sds-primary/40 shadow-sds-sm',
-    secondary: 'bg-sds-bg-surface-soft border-sds-border text-sds-text hover:bg-sds-border/20 focus:ring-sds-primary/20',
-    ghost: 'bg-transparent border-transparent text-sds-primary hover:bg-sds-bg-surface-soft focus:ring-sds-primary/20',
+    primary: 'bg-sds-gold border-sds-gold text-slate-950 hover:bg-sds-gold/90 focus:ring-sds-gold/40 shadow-sds-sm font-black',
+    secondary: 'bg-sds-bg-surface-soft border-sds-border text-sds-text hover:bg-sds-border/20 focus:ring-sds-gold/20',
+    ghost: 'bg-transparent border-transparent text-sds-gold hover:bg-sds-bg-surface-soft focus:ring-sds-gold/20',
     danger: 'bg-rose-500/10 border-transparent text-rose-500 hover:bg-rose-500/20 focus:ring-rose-500/30',
     success: 'bg-sds-success border-sds-success text-white hover:bg-sds-success/90 focus:ring-sds-success/40 shadow-sds-sm',
   };

@@ -564,7 +564,7 @@ export default function SubmitRate({
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="px-5 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                    className="px-5 py-2.5 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                   >
                     <span>Configure Rates</span>
                     <ArrowRight className="w-4 h-4" />
@@ -706,7 +706,7 @@ export default function SubmitRate({
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="px-5 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                    className="px-5 py-2.5 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                   >
                     <span>Upload Proof</span>
                     <ArrowRight className="w-4 h-4" />
@@ -845,7 +845,7 @@ export default function SubmitRate({
                     type="button"
                     onClick={handleSubmit}
                     disabled={isUploading}
-                    className="px-6 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#071A35] font-black rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                    className="px-6 py-2.5 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Submit Verification</span>

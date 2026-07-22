@@ -510,7 +510,7 @@ export function getLandingHeroImage(): ResolvedBrandAsset {
   // Fallback to our newly generated image path
   return {
     source: 'sds_fallback',
-    url: '/src/assets/images/sariremit_landing_hero_primary_1784359364187.jpg',
+    url: '/src/assets/images/logo-sariremit.png',
     altText: 'An expat using SariRemit on a smartphone to compare remittance options before sending money to family.',
     fallbackInitials: 'SR'
   };

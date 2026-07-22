@@ -455,7 +455,7 @@ export default function Dashboard({
             {/* Core Action */}
             <button
               onClick={() => handleCompareFull()}
-              className="w-full py-3 bg-sds-primary hover:bg-sds-primary/90 text-white rounded-2xl text-xs font-bold uppercase tracking-wider transition-all block text-center shadow-sds-sm"
+              className="w-full py-3 bg-sds-gold hover:bg-sds-gold/90 text-slate-950 rounded-2xl text-xs font-black uppercase tracking-wider transition-all block text-center shadow-sds-sm cursor-pointer"
             >
               {isRtl ? 'قارن خيارات اليوم' : "Compare Today's Options"}
             </button>
@@ -1150,7 +1150,7 @@ export default function Dashboard({
 
             <button
               onClick={() => setIsExplainOpen(false)}
-              className="w-full py-3 bg-sds-primary hover:opacity-90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer font-bold"
+              className="w-full py-3 bg-sds-gold hover:opacity-90 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer font-bold"
             >
               {isRtl ? 'فهمت ذلك، شكراً لك' : 'I understand, thank you'}
             </button>
@@ -1555,7 +1555,7 @@ function LegacyDashboard({
 
             <button
               onClick={handleCompareFull}
-              className="px-5 py-2.5 bg-sds-primary text-white rounded-xl text-xs font-bold uppercase transition-all shadow-sds-sm hover:opacity-90"
+              className="px-5 py-2.5 bg-sds-gold text-slate-950 font-black rounded-xl text-xs uppercase transition-all shadow-sds-sm hover:opacity-90 cursor-pointer"
             >
               {isRtl ? 'قارن كل الخيارات' : 'Compare Options Now'}
             </button>
@@ -1571,12 +1571,12 @@ function LegacyDashboard({
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(Math.max(1, parseInt(e.target.value) || 0))}
-                className="w-full bg-sds-bg-sec border border-sds-border rounded-xl px-3 py-2 text-sds-text font-mono text-xs focus:outline-none focus:border-sds-primary"
+                className="w-full bg-sds-bg-sec border border-sds-border rounded-xl px-3 py-2 text-sds-text font-mono text-xs focus:outline-none focus:border-sds-gold"
               />
             </div>
             <button
               onClick={handleCompareFull}
-              className="w-full py-2.5 bg-sds-primary text-white rounded-xl text-xs font-bold uppercase shadow-sds-sm hover:opacity-90 transition-all"
+              className="w-full py-2.5 bg-sds-gold text-slate-950 font-black rounded-xl text-xs uppercase shadow-sds-sm hover:opacity-90 transition-all cursor-pointer"
             >
               {isRtl ? 'تحليل الأسعار' : 'Compare All'}
             </button>

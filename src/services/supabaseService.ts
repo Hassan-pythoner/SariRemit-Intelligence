@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Corridor, Provider, UserProfile, ResolvedRate, RecommendationResult, SISResult, SicSnapshot, TrueCostResult, RecordedTransfer, UserExperienceFeedback, AchievementDefinition, UserAchievement, UserProgress, BrandAsset, BrandAssetType, BrandAssetStatus, BrandingApprovalStatus, BrandAssetPermission, SupportCategory, SupportFeedbackRequest, SupportRequestMessage, SriReferenceBenchmark } from '../types';
 import { PROVIDERS, CORRIDORS } from './constants';
-import logoImg from '../assets/images/sariremit_logo_1783671155763.jpg';
+import logoImg from '../assets/images/logo-sariremit.png';
 import { EpeService } from './sic/evidenceProvenanceService';
 
 // Interfaces for Supabase tables
@@ -5550,7 +5550,7 @@ export const initialBrandAssets: BrandAsset[] = [
     asset_name: 'SariRemit Primary Logo',
     owner_type: 'system',
     provider_code: 'sariremit',
-    storage_path: 'brand/sariremit_logo_1783671155763.jpg',
+    storage_path: 'brand/logo-sariremit.png',
     public_url: logoImg,
     light_url: logoImg,
     dark_url: logoImg,
@@ -5563,7 +5563,7 @@ export const initialBrandAssets: BrandAsset[] = [
     metadata: {
       width: 1440,
       height: 960,
-      mime_type: 'image/jpeg'
+      mime_type: 'image/png'
     },
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -5575,7 +5575,7 @@ export const initialBrandAssets: BrandAsset[] = [
     asset_name: 'SariRemit Compact Monogram',
     owner_type: 'system',
     provider_code: 'sariremit',
-    storage_path: 'brand/sariremit_logo_1783671155763.jpg',
+    storage_path: 'brand/logo-sariremit.png',
     public_url: logoImg,
     light_url: logoImg,
     dark_url: logoImg,
@@ -6242,7 +6242,7 @@ export async function submitSupportRequest(input: {
       title: 'New support request',
       message: `A new ${input.category.replace('_', ' ')} support request ${ticketNumber} has been submitted.`,
       actionLabel: 'Review Request',
-      actionUrl: `/srcmc/support`,
+      actionUrl: `/support`,
       payload: { requiredPermission: 'manage_support_requests' },
       sourceSystem: 'Support',
       sourceEvent: 'support_request_admin_alert',

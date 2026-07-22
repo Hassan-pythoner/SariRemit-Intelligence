@@ -355,7 +355,7 @@ export default function SupportHistory({ language, t, onBack }: SupportHistoryPr
                     type="submit" 
                     disabled={isSending || !newMessageText.trim()}
                     variant="primary"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl p-2.5 flex items-center justify-center transition disabled:opacity-50"
+                    className="bg-sds-gold hover:bg-sds-gold/90 text-slate-950 rounded-xl p-2.5 flex items-center justify-center transition disabled:opacity-50"
                   >
                     <Send className="w-4 h-4" />
                   </SDSButton>

@@ -13,7 +13,7 @@ import { ProviderLogo } from './SdsBamComponents';
 import { LiveIntelligenceStatus } from './intelligence/LiveIntelligenceStatus';
 import { MarketHeartbeat } from './intelligence/MarketHeartbeat';
 import { useIntelligenceFreshness } from '../hooks/useIntelligenceFreshness';
-import logoImg from '../assets/images/sariremit_logo_1783671155763.jpg';
+import logoImg from '../assets/images/logo-sariremit.png';
 import heroBg from '../assets/images/hero_bg_1783671141946.jpg';
 
 interface LandingPageProps {
@@ -719,13 +719,13 @@ export default function LandingPage({
                 </div>
               )}
 
-              {/* Action Button - Green strictly reserved for main CTA */}
+              {/* Action Button - Premium Gold primary CTA */}
               <SDSButton
                 id="landing-hero-compare-btn"
                 onClick={handleStartComparing}
                 variant="primary"
                 fullWidth
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs tracking-wider uppercase py-3.5 shadow-lg shadow-emerald-950/20 rounded-xl transition-all duration-300"
+                className="bg-sds-gold hover:bg-sds-gold/90 text-slate-950 font-black text-xs tracking-wider uppercase py-3.5 shadow-lg shadow-amber-950/20 rounded-xl transition-all duration-300"
                 icon={isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                 iconPosition="right"
               >
@@ -1268,11 +1268,11 @@ export default function LandingPage({
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 pt-4">
-            {/* Primary Action is Green */}
+            {/* Primary Action is Gold */}
             <SDSButton
               onClick={() => handleStartComparing()}
               variant="primary"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs tracking-wider uppercase px-8 py-4 rounded-xl shadow-lg w-full sm:w-auto transition-all duration-300"
+              className="bg-sds-gold hover:bg-sds-gold/90 text-slate-950 font-black text-xs tracking-wider uppercase px-8 py-4 rounded-xl shadow-lg w-full sm:w-auto transition-all duration-300"
             >
               {lt.finalCtaPrimary}
             </SDSButton>
@@ -1361,7 +1361,7 @@ export default function LandingPage({
                       setSupportMessage('');
                     }}
                     variant="primary"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs tracking-wider uppercase px-6 py-3 rounded-xl shadow-lg transition-all"
+                    className="bg-sds-gold hover:bg-sds-gold/90 text-slate-950 font-black text-xs tracking-wider uppercase px-6 py-3 rounded-xl shadow-lg transition-all"
                   >
                     {language === 'en' ? 'Submit Another Request' : 'إرسال طلب آخر'}
                   </SDSButton>
@@ -1494,7 +1494,7 @@ export default function LandingPage({
                     type="submit" 
                     disabled={isSupportSubmitting}
                     variant="primary" 
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs tracking-wider uppercase px-6 py-3 rounded-xl shadow-lg transition-all duration-300 disabled:opacity-50"
+                    className="bg-sds-gold hover:bg-sds-gold/90 text-slate-950 font-black text-xs tracking-wider uppercase px-6 py-3 rounded-xl shadow-lg transition-all duration-300 disabled:opacity-50"
                   >
                     {isSupportSubmitting 
                       ? (language === 'en' ? 'Sending...' : 'جاري الإرسال...') 

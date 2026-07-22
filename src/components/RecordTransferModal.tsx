@@ -362,14 +362,14 @@ export const RecordTransferModal: React.FC<RecordTransferModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setComparisonType('best_vs_average')}
-                    className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${comparisonType === 'best_vs_average' ? 'bg-[#10B981] text-[#071A35]' : 'text-sds-text-sec hover:text-white'}`}
+                    className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${comparisonType === 'best_vs_average' ? 'bg-sds-gold text-slate-950' : 'text-sds-text-sec hover:text-white'}`}
                   >
                     {isRtl ? 'متوسط السوق' : 'Market Avg'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setComparisonType('best_vs_worst')}
-                    className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${comparisonType === 'best_vs_worst' ? 'bg-[#10B981] text-[#071A35]' : 'text-sds-text-sec hover:text-white'}`}
+                    className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${comparisonType === 'best_vs_worst' ? 'bg-sds-gold text-slate-950' : 'text-sds-text-sec hover:text-white'}`}
                   >
                     {isRtl ? 'أسوأ بديل' : 'Worst Price'}
                   </button>
@@ -382,7 +382,7 @@ export const RecordTransferModal: React.FC<RecordTransferModalProps> = ({
                       }
                     }}
                     disabled={validOthers.length === 0}
-                    className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer disabled:opacity-40 ${comparisonType === 'direct_matchup' ? 'bg-[#10B981] text-[#071A35]' : 'text-sds-text-sec hover:text-white'}`}
+                    className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer disabled:opacity-40 ${comparisonType === 'direct_matchup' ? 'bg-sds-gold text-slate-950' : 'text-sds-text-sec hover:text-white'}`}
                   >
                     {isRtl ? 'مقارنة مباشرة' : 'Matchup Target'}
                   </button>
@@ -447,7 +447,7 @@ export const RecordTransferModal: React.FC<RecordTransferModalProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3 bg-[#10B981] hover:bg-[#0ea271] disabled:bg-[#10B981]/50 text-[#071A35] font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3 bg-sds-gold hover:bg-sds-gold/90 disabled:bg-sds-gold/50 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                 id="confirm-record-btn"
               >
                 {isSubmitting ? (

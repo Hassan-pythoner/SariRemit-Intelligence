@@ -147,8 +147,6 @@ export default function NotificationCenter({
       setActiveTab('savings');
     } else if (actionUrl === '/profile' || actionUrl.includes('profile')) {
       setActiveTab('profile');
-    } else if (actionUrl === '/srcmc' || actionUrl.includes('srcmc')) {
-      setActiveTab('srcmc');
     }
   };
 

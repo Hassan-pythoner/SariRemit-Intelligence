@@ -212,7 +212,7 @@ export function PersonalInformation({ language, t, name, setName, phone, setPhon
       <button
         type="submit"
         disabled={isLoading}
-        className="w-full sm:w-auto px-6 py-2.5 bg-[#10B981] hover:bg-emerald-600 disabled:bg-[#10B981]/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
+        className="w-full sm:w-auto px-6 py-2.5 bg-sds-gold hover:bg-sds-gold/90 disabled:bg-sds-gold/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
       >
         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         <span>{isRtl ? 'حفظ التغييرات' : 'Save Details'}</span>
@@ -329,7 +329,7 @@ export function DefaultPreferences({ language, t, preferredCorridorId, setPrefer
       <button
         type="submit"
         disabled={isLoading}
-        className="w-full sm:w-auto px-6 py-2.5 bg-[#10B981] hover:bg-emerald-600 disabled:bg-[#10B981]/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
+        className="w-full sm:w-auto px-6 py-2.5 bg-sds-gold hover:bg-sds-gold/90 disabled:bg-sds-gold/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
       >
         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         <span>Save Transfer Preferences</span>
@@ -481,7 +481,7 @@ export function NotificationSettings({
       <button
         onClick={() => onSave()}
         disabled={isLoading}
-        className="w-full sm:w-auto px-6 py-2.5 bg-[#10B981] hover:bg-emerald-600 disabled:bg-[#10B981]/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
+        className="w-full sm:w-auto px-6 py-2.5 bg-sds-gold hover:bg-sds-gold/90 disabled:bg-sds-gold/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
       >
         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         <span>Save Notification Preferences</span>
@@ -623,7 +623,7 @@ export function LanguageSettings({ language, userLanguage, setUserLanguage, onSa
       <button
         onClick={() => onSave()}
         disabled={isLoading}
-        className="w-full sm:w-auto px-6 py-2.5 bg-[#10B981] hover:bg-emerald-600 disabled:bg-[#10B981]/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
+        className="w-full sm:w-auto px-6 py-2.5 bg-sds-gold hover:bg-sds-gold/90 disabled:bg-sds-gold/50 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
       >
         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         <span>{isRtl ? 'حفظ اللغة وتطبيقها' : 'Save & Sync Language'}</span>

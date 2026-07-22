@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { enTranslations, arTranslations } from './translations';
 import { getUserProfile, saveUserProfile } from './services/ratesService';
-import { getAuthSession, checkIsAdminSync, syncSupabaseToLocal, signOutSession } from './services/supabaseService';
+import { getAuthSession, syncSupabaseToLocal, signOutSession } from './services/supabaseService';
 import { UserProfile as UserProfileType, TranslationDict } from './types';
 import Navigation from './components/Navigation';
 import LandingPage from './components/LandingPage';
@@ -16,7 +16,6 @@ import SubmitRate from './components/SubmitRate';
 import CorridorInsights from './components/CorridorInsights';
 import Alerts from './components/Alerts';
 import UserProfile from './components/UserProfile';
-import SrcmcControl from './components/SrcmcControl';
 import Dashboard from './components/Dashboard';
 import Savings from './components/Savings';
 import Onboarding from './components/Onboarding';
@@ -24,7 +23,7 @@ import LegalPages from './components/LegalPages';
 import SupportHistory from './components/SupportHistory';
 import { 
   Bell, Sparkles, CheckCircle2, MessageSquare, Landmark, Info,
-  LayoutDashboard, ArrowLeftRight, PlusCircle, PiggyBank, Compass, User, ShieldCheck,
+  LayoutDashboard, ArrowLeftRight, PlusCircle, PiggyBank, Compass, User,
   LogOut, ChevronLeft, ChevronRight, Menu, X, Globe
 } from 'lucide-react';
 import NotificationCenter from './components/NotificationCenter';
@@ -68,8 +67,6 @@ export default function App() {
 
   const [profile, setProfile] = useState<UserProfileType>(getInitialProfile());
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
-  const [srcmcAccess, setSrcmcAccess] = useState<any | null>(null);
-  const [srcmcAccessLoading, setSrcmcAccessLoading] = useState<boolean>(true);
   const [loadingTimeout, setLoadingTimeout] = useState<boolean>(false);
   const isLoggedIn = !!profile.email;
 
@@ -86,7 +83,7 @@ export default function App() {
   // Monitor loading timeout
   useEffect(() => {
     let timer: any;
-    if (appLoading || (isLoggedIn && srcmcAccessLoading)) {
+    if (appLoading) {
       timer = setTimeout(() => {
         setLoadingTimeout(true);
       }, 10000); // 10 seconds timeout for resilient fallback
@@ -94,7 +91,7 @@ export default function App() {
       setLoadingTimeout(false);
     }
     return () => clearTimeout(timer);
-  }, [appLoading, srcmcAccessLoading, isLoggedIn]);
+  }, [appLoading]);
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(prev => {
@@ -133,9 +130,6 @@ export default function App() {
           if (resolvedProfile.language) {
             setLanguage(resolvedProfile.language);
           }
-          const { getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
-          const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
-          setSrcmcAccess(access);
 
           setActiveTab('dashboard');
           triggerToast(language === 'en' ? "Signed in with Google successfully!" : "تم تسجيل الدخول باستخدام Google بنجاح!");
@@ -154,14 +148,13 @@ export default function App() {
     async function checkSessionOnMount() {
       try {
         console.log('[SariRemit Mount Check] Checking for active Supabase session...');
-        setSrcmcAccessLoading(true);
         
         // Check if we are handling a Google OAuth redirect callback
         const isCallback = window.location.pathname.startsWith('/auth/callback');
         if (isCallback) {
           console.log('[SariRemit Auth Callback] Detected auth callback path. Handling Google OAuth...');
           try {
-            const { handleGoogleCallback, getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
+            const { handleGoogleCallback } = await import('./services/supabaseService');
             const session = await handleGoogleCallback();
             
             if (session && session.user) {
@@ -192,11 +185,6 @@ export default function App() {
                 setLanguage(resolvedProfile.language);
               }
 
-              const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
-              setSrcmcAccess(access);
-
-              // 10. If onboarding_completed is true, redirect to /dashboard.
-              // 11. If onboarding_completed is false, redirect to /onboarding (onboarding handles this automatically when logged in)
               setActiveTab('dashboard');
               triggerToast(language === 'en' ? "Signed in with Google successfully!" : "تم تسجيل الدخول باستخدام Google بنجاح!");
             }
@@ -217,14 +205,13 @@ export default function App() {
               } catch (e) {
                 console.warn('Failed to clean up URL:', e);
               }
-              setSrcmcAccessLoading(false);
               setAppLoading(false);
             }
           }
           return;
         }
 
-        const { getCurrentSessionProfile, getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
+        const { getCurrentSessionProfile } = await import('./services/supabaseService');
         const session = await getCurrentSessionProfile();
         
         if (session && session.user) {
@@ -249,18 +236,12 @@ export default function App() {
           if (resolvedProfile.language) {
             setLanguage(resolvedProfile.language);
           }
-          
-          // Fetch SRCMC access record using user.id
-          const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
-          console.log('[SariRemit Mount Check] SRCMC Access result:', access);
-          setSrcmcAccess(access);
 
           // Redirect to dashboard (renders onboarding if incomplete, else home dashboard)
           setActiveTab('dashboard');
           console.log('[SariRemit Mount Check] Redirect destination:', resolvedProfile.onboarding_completed ? 'dashboard' : 'onboarding');
         } else {
           console.log('[SariRemit Mount Check] No active session found.');
-          setSrcmcAccess(null);
           setProfile({
             name: '',
             email: '',
@@ -274,7 +255,6 @@ export default function App() {
       } catch (err) {
         console.error('[SariRemit Mount Check] Error during session validation:', err);
       } finally {
-        setSrcmcAccessLoading(false);
         setAppLoading(false);
       }
     }
@@ -284,26 +264,11 @@ export default function App() {
 
   // Sync profile when session state updates
   const syncProfileWithSession = async () => {
-    setSrcmcAccessLoading(true);
     const updated = getInitialProfile();
     setProfile(updated);
     if (updated.language) {
       setLanguage(updated.language);
     }
-
-    const session = getAuthSession();
-    if (session.user) {
-      try {
-        const { getAndRepairUserSrcmcAccess } = await import('./services/supabaseService');
-        const access = await getAndRepairUserSrcmcAccess(session.user.id, session.user.email);
-        setSrcmcAccess(access);
-      } catch (err) {
-        console.error('Error syncing SRCMC access during session sync:', err);
-      }
-    } else {
-      setSrcmcAccess(null);
-    }
-    setSrcmcAccessLoading(false);
 
     // Handle tab redirection on login/logout
     if (updated.email) {
@@ -334,20 +299,12 @@ export default function App() {
 
   // Protect routes and redirect unauthorized users
   useEffect(() => {
-    const restrictedTabs = ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'srcmc', 'profile', 'support'];
+    const restrictedTabs = ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'profile', 'support'];
     if (!isLoggedIn && restrictedTabs.includes(activeTab)) {
       setActiveTab('sign-in');
-      triggerToast(language === 'en' ? "Please sign in or sign up to access S." : "يرجى تسجيل الدخول أو إنشاء حساب للوصول.");
-    } else if (isLoggedIn && activeTab === 'srcmc') {
-      if (srcmcAccessLoading) {
-        return; // wait for check to complete
-      }
-      if (!srcmcAccess || srcmcAccess.is_active !== true) {
-        setActiveTab('dashboard');
-        triggerToast(language === 'en' ? "Access denied. Admins only." : "تم رفض الوصول. للمسؤولين فقط.");
-      }
+      triggerToast(language === 'en' ? "Please sign in or sign up to access." : "يرجى تسجيل الدخول أو إنشاء حساب للوصول.");
     }
-  }, [activeTab, isLoggedIn, srcmcAccess, srcmcAccessLoading, language]);
+  }, [activeTab, isLoggedIn, language]);
 
   const toggleLanguage = () => {
     const nextLang = language === 'en' ? 'ar' : 'en';
@@ -387,8 +344,6 @@ export default function App() {
 
   const isSidebarVisible = isLoggedIn && ENABLE_SDS_3_USER_SHELL && profile.onboarding_completed && !['landing', 'privacy-policy', 'terms-of-use', 'disclaimer', 'community-verification-policy', 'rate-update-policy'].includes(activeTab);
 
-  const canSeeSrcmc = srcmcAccess?.is_active === true;
-
   const sidebarItems = [
     { id: 'dashboard', label: language === 'en' ? 'Dashboard' : 'لوحة التحكم', icon: LayoutDashboard },
     { id: 'compare', label: language === 'en' ? 'Compare Rates' : 'مقارنة الأسعار', icon: ArrowLeftRight },
@@ -396,7 +351,6 @@ export default function App() {
     { id: 'savings', label: language === 'en' ? 'Savings Journey' : 'المدخرات والوفر', icon: PiggyBank },
     { id: 'profile', label: language === 'en' ? 'Profile Settings' : 'الملف الشخصي', icon: User },
     { id: 'support', label: language === 'en' ? 'Support Center' : 'الدعم والمساعدة', icon: MessageSquare },
-    ...(canSeeSrcmc ? [{ id: 'srcmc', label: language === 'en' ? 'SRCMC Control' : 'لوحة تحكم SRCMC', icon: ShieldCheck }] : []),
   ];
 
   const renderTabContent = (currentTab: string) => {
@@ -607,29 +561,6 @@ export default function App() {
                 }}
               />
             );
-          case 'srcmc':
-            return srcmcAccessLoading ? (
-              <div className="min-h-[400px] flex flex-col items-center justify-center font-sans">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest animate-pulse">
-                    <div className="w-2 h-2 rounded-full bg-sds-secondary animate-ping" />
-                    Loading SRCMC Access Configuration...
-                  </div>
-                </div>
-              </div>
-            ) : srcmcAccess?.is_active ? (
-              <SrcmcControl
-                language={language}
-                t={tDict}
-                profile={profile}
-                onSessionSync={syncProfileWithSession}
-                srcmcAccess={srcmcAccess}
-              />
-            ) : (
-              <div className="text-center py-12 text-rose-400 font-bold uppercase tracking-wider font-mono">
-                Access Denied.
-              </div>
-            );
           case 'support':
             return (
               <SupportHistory
@@ -648,7 +579,7 @@ export default function App() {
   const isRtl = language === 'ar';
   const isOnboardingRequired = isLoggedIn && !profile.onboarding_completed;
 
-  if (appLoading || (isLoggedIn && srcmcAccessLoading)) {
+  if (appLoading) {
     if (loadingTimeout) {
       return (
         <div className="min-h-screen bg-[#071A35] flex flex-col items-center justify-center font-sans p-6 text-center select-none animate-fade-in">
@@ -688,7 +619,6 @@ export default function App() {
                   signOutSession();
                   setLoadingTimeout(false);
                   setAppLoading(false);
-                  setSrcmcAccessLoading(false);
                   setProfile({
                     name: '',
                     email: '',
@@ -708,7 +638,6 @@ export default function App() {
                 onClick={() => {
                   setLoadingTimeout(false);
                   setAppLoading(false);
-                  setSrcmcAccessLoading(false);
                   setActiveTab('landing');
                 }}
                 className="w-full py-2.5 text-xs text-slate-400 hover:text-slate-300 font-medium transition-all cursor-pointer"
@@ -838,7 +767,7 @@ export default function App() {
                 {!isSidebarCollapsed && (
                   <div className="text-left min-w-0">
                     <p className="text-xs font-bold text-sds-text-primary truncate max-w-[120px]">{profile.name}</p>
-                    <p className="text-[10px] text-sds-text-muted font-mono truncate">{canSeeSrcmc ? (isRtl ? 'مشرف' : 'Admin') : (isRtl ? 'مستخدم' : 'Verified User')}</p>
+                    <p className="text-[10px] text-sds-text-muted font-mono truncate">{isRtl ? 'مستخدم موثق' : 'Verified User'}</p>
                   </div>
                 )}
               </div>
@@ -998,25 +927,13 @@ export default function App() {
                   
                   <button 
                     onClick={() => { setActiveTab('support'); setIsMobileMoreOpen(false); }}
-                    className={`p-3.5 bg-sds-bg-surface-soft border border-sds-border rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold ${
+                    className={`p-3.5 bg-sds-bg-surface-soft border border-sds-border rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold col-span-2 ${
                       activeTab === 'support' ? 'border-[#10B981] text-[#10B981]' : 'text-sds-text-primary'
                     }`}
                   >
                     <MessageSquare className="w-5 h-5" />
                     <span>{isRtl ? 'الدعم الفني' : 'Support Center'}</span>
                   </button>
-                  
-                  {canSeeSrcmc && (
-                    <button 
-                      onClick={() => { setActiveTab('srcmc'); setIsMobileMoreOpen(false); }}
-                      className={`p-3.5 bg-sds-bg-surface-soft border border-sds-border rounded-xl flex flex-col items-center gap-2 text-center text-xs font-bold col-span-2 ${
-                        activeTab === 'srcmc' ? 'border-[#10B981] text-[#10B981]' : 'text-sds-text-primary'
-                      }`}
-                    >
-                      <ShieldCheck className="w-5 h-5" />
-                      <span>{isRtl ? 'لوحة تحكم SRCMC' : 'SRCMC Control Panel'}</span>
-                    </button>
-                  )}
                 </div>
                 
                 <div className="pt-4 border-t border-sds-border flex items-center justify-between gap-4">
@@ -1075,8 +992,6 @@ export default function App() {
         toggleLanguage={toggleLanguage}
         t={t}
         profile={profile}
-        srcmcAccess={srcmcAccess}
-        srcmcAccessLoading={srcmcAccessLoading}
       />
 
       {/* Main Content Area */}
@@ -1191,7 +1106,7 @@ export default function App() {
               )}
 
               {/* Guarded/Authenticated Views */}
-              {!isLoggedIn && ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'srcmc', 'support'].includes(activeTab) && (
+              {!isLoggedIn && ['dashboard', 'compare', 'submit', 'savings', 'insights', 'alerts', 'support'].includes(activeTab) && (
                 <div className="max-w-md mx-auto my-12 p-8 bg-white border border-slate-200 rounded-3xl text-center shadow-xl space-y-5">
                   <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
                     <CheckCircle2 className="w-8 h-8" />
@@ -1276,31 +1191,6 @@ export default function App() {
                         );
                       }}
                     />
-                  )}
-
-                  {activeTab === 'srcmc' && (
-                    srcmcAccessLoading ? (
-                      <div className="min-h-[400px] flex flex-col items-center justify-center font-sans">
-                        <div className="flex flex-col items-center gap-4">
-                          <div className="flex items-center gap-2 text-sds-text-sec font-mono text-xs font-bold uppercase tracking-widest animate-pulse">
-                            <div className="w-2 h-2 rounded-full bg-sds-secondary animate-ping" />
-                            Loading SRCMC Access Configuration...
-                          </div>
-                        </div>
-                      </div>
-                    ) : srcmcAccess?.is_active ? (
-                      <SrcmcControl
-                        language={language}
-                        t={t}
-                        profile={profile}
-                        onSessionSync={syncProfileWithSession}
-                        srcmcAccess={srcmcAccess}
-                      />
-                    ) : (
-                      <div className="text-center py-12 text-rose-400 font-bold uppercase tracking-wider font-mono">
-                        Access Denied.
-                      </div>
-                    )
                   )}
 
                   {activeTab === 'support' && (
